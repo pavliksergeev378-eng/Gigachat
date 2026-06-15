@@ -117,6 +117,28 @@ Write-Host "==> Активация..."
 Write-Host ""
 Write-Host "==> Установка зависимостей из локальных wheels (без интернета)..."
 python -m pip install --no-index --find-links=wheels --upgrade pip
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ОШИБКА: не удалось обновить pip. Возможно, нет pip в бандле или битый wheel." -ForegroundColor Red
+    Write-Host "Попробуй: python -m ensurepip --upgrade" -ForegroundColor Yellow
+    exit 1
+}
+
+# Ставим сначала numpy (ядро), потом torch (тяжёлый), потом остальное
+Write-Host "  -> Шаг 1/3: numpy..."
+python -m pip install --no-index --find-links=wheels numpy==1.26.4
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ОШИБКА: numpy не установился." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "  -> Шаг 2/3: torch + torchvision..."
+python -m pip install --no-index --find-links=wheels torch==2.12.0 torchvision==0.27.0
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ПРЕДУПРЕЖДЕНИЕ: torch не установился. EasyOCR будет недоступен (только PyMuPDF)." -ForegroundColor Yellow
+}
+
+Write-Host "  -> Шаг 3/3: остальные зависимости..."
 python -m pip install --no-index --find-links=wheels -r requirements.txt
 
 if ($LASTEXITCODE -ne 0) {
@@ -125,6 +147,11 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  - в wheels не хватает пакета" -ForegroundColor Red
     Write-Host "  - версия Python не совпадает с той, где собирался бандл" -ForegroundColor Red
     Write-Host "  - архитектура отличается (например, ARM vs x86)" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "ЧТО ДЕЛАТЬ: проверь список wheels ниже. На рабочем ПК Python 3.12 —" -ForegroundColor Yellow
+    Write-Host "нужны файлы с *cp312* в имени. Если есть *cp311* или *cp313* — не подойдут." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Скачай свежий бандл с GitHub: https://github.com/Jorden-maker/GigaChat/releases/latest" -ForegroundColor Cyan
     exit 1
 }
 

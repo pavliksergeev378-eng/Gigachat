@@ -42,7 +42,7 @@
     (document.head || document.documentElement).appendChild(__gcSel);
   } catch (e) {}
 
-  var cfg = global.GIGACHAT_CONFIG || { N8N_BASE: 'http://localhost:5678' };
+  var cfg = global.GIGACHAT_CONFIG || { N8N_BASE: 'http://130.100.92.170:5678' };
 
   var FETCH_TIMEOUT_MS = 60000;
   var MAX_RETRIES = 2;

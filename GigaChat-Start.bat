@@ -46,7 +46,7 @@ if not exist "%~dp0Caddyfile" (
 echo ============================================
 echo  GigaChat Server
 echo  ----
-echo  URL:  http://localhost:8765/
+echo  URL:  http://130.100.94.119:8765/
 echo  ----
 echo  Open this URL in your browser manually.
 echo  Close this window to stop the server.
