@@ -1,0 +1,903 @@
+{
+  "name": "Compliance KB. Загрузчик базы знаний",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "compliance-kb",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "kb-webhook",
+      "name": "Webhook KB"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst action = String(body.action || '').trim();\nif (action === 'ping' || body.message === 'ping') return [{ json: { valid: 0, error: 'pong', action: 'ping' } }];\nconst ALLOWED = ['kb_list','kb_add_violation','kb_add_measure','kb_add_requirement','kb_add_norm','kb_delete'];\nif (!ALLOWED.includes(action)) return [{ json: { valid: 0, error: 'Неизвестный action: ' + action } }];\nconst t = String(body.token || '').trim();\nif (!/^[a-f0-9]{64}$/.test(t)) return [{ json: { valid: 0, error: 'Неверный формат токена' } }];\nconst s = (v, n) => String(v == null ? '' : v).slice(0, n);\nconst out = { valid: 1, action, token: t };\nout.title = s(body.title, 500); out.category = s(body.category, 120); out.processes = s(body.processes, 1000);\nout.description = s(body.description, 5000); out.criticality = ['low','medium','high','critical'].includes(body.criticality) ? body.criticality : 'medium';\nout.mtype = ['organizational','technical','administrative','controlling'].includes(body.mtype) ? body.mtype : 'organizational';\nout.name = s(body.name, 500); out.effect = s(body.effect, 2000); out.text = s(body.text, 20000);\nout.norm_ref = s(body.norm_ref, 500); out.doc_name = s(body.doc_name, 500); out.doc_version = s(body.doc_version, 50); out.section = s(body.section, 200);\nout.entity = ['violation','measure','requirement','norm'].includes(body.entity) ? body.entity : '';\nout.id = parseInt(body.id, 10) || 0;\nout.measure_ids = Array.isArray(body.measure_ids) ? body.measure_ids.map(x=>parseInt(x,10)).filter(Boolean) : [];\nout.requirement_ids = Array.isArray(body.requirement_ids) ? body.requirement_ids.map(x=>parseInt(x,10)).filter(Boolean) : [];\nout.risk_ids = Array.isArray(body.risk_ids) ? body.risk_ids.map(x=>parseInt(x,10)).filter(Boolean) : [];\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "id": "kb-validate",
+      "name": "Валидация",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "kb-if-validc",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        300
+      ],
+      "id": "kb-if-valid",
+      "name": "Запрос валиден?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (UPDATE auth_sessions SET last_used_at = NOW() WHERE token = $1 AND expires_at > NOW() RETURNING user_id) SELECT u.id AS user_id, u.is_admin FROM upd JOIN auth_users u ON u.id = upd.user_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        300
+      ],
+      "id": "kb-verify",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\nif (data && data.error) return [{ json: { allow: false, response: 'error', error: 'database_unavailable' } }];\nif (!data || !data.user_id) return [{ json: { allow: false, response: 'unauthorized', error: 'unauthorized', auth_required: true } }];\n// Пополнять Базу знаний может ЛЮБОЙ вошедший пользователь (по решению заказчика).\nreturn [{ json: Object.assign({}, src, { allow: true, user_id: data.user_id }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ],
+      "id": "kb-access",
+      "name": "Проверка доступа",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "kb-if-accessc",
+              "leftValue": "={{ $json.allow }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        300
+      ],
+      "id": "kb-if-access",
+      "name": "Доступ?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "kb_list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "kb_list"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "kb_add_violation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "kb_add_violation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "kb_add_measure",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "kb_add_measure"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "kb_add_requirement",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "kb_add_requirement"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "kb_add_norm",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "kb_add_norm"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "kb_delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "kb_delete"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1560,
+        300
+      ],
+      "id": "kb-switch",
+      "name": "Switch action"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT json_build_object('violations', (SELECT COALESCE(json_agg(json_build_object('id',id,'title',title,'category',category,'criticality',criticality,'has_vec',(embedding IS NOT NULL)) ORDER BY id), '[]'::json) FROM kb_violations),'measures', (SELECT COALESCE(json_agg(json_build_object('id',id,'type',type,'name',name) ORDER BY id), '[]'::json) FROM kb_measures),'requirements', (SELECT COALESCE(json_agg(json_build_object('id',id,'text',text,'source',norm_ref) ORDER BY id), '[]'::json) FROM kb_requirements),'risks', (SELECT COALESCE(json_agg(json_build_object('id',id,'title',title) ORDER BY id), '[]'::json) FROM kb_risks),'norms', (SELECT COALESCE(json_agg(d ORDER BY d->>'doc_name'), '[]'::json) FROM (SELECT json_build_object('doc_name',doc_name,'chunks',count(*),'has_vec',bool_or(embedding IS NOT NULL)) AS d FROM kb_norms GROUP BY doc_name) q)) AS kb;",
+        "options": {},
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1780,
+        120
+      ],
+      "id": "kb-sql-list",
+      "name": "SQL: list",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json; const kb = (r && r.kb) || {}; return [{ json: Object.assign({ ok: true, response: 'ok' }, kb) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        120
+      ],
+      "id": "kb-fmt-list",
+      "name": "Формат list",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "async function embed(text){\n  const EMBED_URL = 'http://130.100.94.119:8001/embed';\n  try {\n    const resp = await this.helpers.httpRequest({ method:'POST', url: EMBED_URL, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ input: String(text).slice(0,2000), type:'passage' }), timeout: 8000, json: false });\n    const j = (typeof resp==='string')?JSON.parse(resp):resp;\n    if (j && Array.isArray(j.embedding) && j.embedding.length) return '[' + j.embedding.join(',') + ']';\n  } catch(e) {}\n  return null;\n}\nconst src = $('Валидация').first().json;\nconst vec = await embed([src.title, src.category, src.description].filter(Boolean).join('. '));\nreturn [{ json: Object.assign({}, src, { _vec: vec }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        260
+      ],
+      "id": "kb-emb-vio",
+      "name": "Эмбеддинг нарушения",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (INSERT INTO kb_violations (title, category, processes, description, criticality, embedding) VALUES ($1,$2,$3,$4,$5, CASE WHEN $6='' THEN NULL ELSE $6::vector END) ON CONFLICT (title) DO UPDATE SET category=EXCLUDED.category, processes=EXCLUDED.processes, description=EXCLUDED.description, criticality=EXCLUDED.criticality, embedding=EXCLUDED.embedding RETURNING id), lm AS (INSERT INTO kb_violation_measure (violation_id, measure_id) SELECT (SELECT id FROM ins), unnest($7::int[]) ON CONFLICT DO NOTHING RETURNING 1), lr AS (INSERT INTO kb_violation_requirement (violation_id, requirement_id) SELECT (SELECT id FROM ins), unnest($8::int[]) ON CONFLICT DO NOTHING RETURNING 1), lk AS (INSERT INTO kb_violation_risk (violation_id, risk_id) SELECT (SELECT id FROM ins), unnest($9::int[]) ON CONFLICT DO NOTHING RETURNING 1) SELECT (SELECT id FROM ins) AS id;",
+        "options": {
+          "queryReplacement": "={{ [$json.title, $json.category, $json.processes, $json.description, $json.criticality, $json._vec || '', '{' + ($json.measure_ids||[]).join(',') + '}', '{' + ($json.requirement_ids||[]).join(',') + '}', '{' + ($json.risk_ids||[]).join(',') + '}'] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        260
+      ],
+      "id": "kb-sql-vio",
+      "name": "SQL: add violation",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$input.first().json; if(!r||r.error||!r.id) return [{json:{ok:false,response:'error',error:'Не удалось сохранить нарушение: '+((r&&r.error&&(r.error.message||r.error))||'неизвестно')}}]; return [{json:{ok:true,response:'ok',id:r.id,message:'Нарушение сохранено в Базе знаний'+($('Эмбеддинг нарушения').first().json._vec?'':' (без вектора — эмбеддер недоступен, переиндексируйте позже)')}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        260
+      ],
+      "id": "kb-fmt-vio",
+      "name": "Формат add vio",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO kb_measures (type, name, description, expected_effect) VALUES ($1,$2,$3,$4) ON CONFLICT (name) DO UPDATE SET type=EXCLUDED.type, description=EXCLUDED.description, expected_effect=EXCLUDED.expected_effect RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$json.mtype, $json.name, $json.description, $json.effect] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1780,
+        400
+      ],
+      "id": "kb-sql-meas",
+      "name": "SQL: add measure",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$input.first().json; if(!r||r.error||!r.id) return [{json:{ok:false,response:'error',error:'Не удалось сохранить меру: '+((r&&r.error&&(r.error.message||r.error))||'проверьте имя (должно быть уникальным)')}}]; return [{json:{ok:true,response:'ok',id:r.id,message:'Мера сохранена'}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        400
+      ],
+      "id": "kb-fmt-meas",
+      "name": "Формат add meas",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO kb_requirements (text, norm_ref, criticality) VALUES ($1,$2,$3) RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$json.text, $json.norm_ref, $json.criticality] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1780,
+        540
+      ],
+      "id": "kb-sql-req",
+      "name": "SQL: add requirement",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$input.first().json; if(!r||r.error||!r.id) return [{json:{ok:false,response:'error',error:'Не удалось сохранить требование'}}]; return [{json:{ok:true,response:'ok',id:r.id,message:'Требование сохранено'}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        540
+      ],
+      "id": "kb-fmt-req",
+      "name": "Формат add req",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "async function embed(text){\n  const EMBED_URL = 'http://130.100.94.119:8001/embed';\n  try {\n    const resp = await this.helpers.httpRequest({ method:'POST', url: EMBED_URL, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ input: String(text).slice(0,2000), type:'passage' }), timeout: 8000, json: false });\n    const j = (typeof resp==='string')?JSON.parse(resp):resp;\n    if (j && Array.isArray(j.embedding) && j.embedding.length) return '[' + j.embedding.join(',') + ']';\n  } catch(e) {}\n  return null;\n}\nconst src = $('Валидация').first().json;\nconst text = String(src.text || '').replace(/\\r/g,'');\nconst words = text.split(/\\s+/).filter(Boolean);\nconst CW = 400, OV = 40; const chunks = [];\nif (!words.length) return [{ json: { _empty: true, doc_name: src.doc_name } }];\nfor (let i = 0; i < words.length; i += (CW - OV)) { chunks.push(words.slice(i, i + CW).join(' ')); if (i + CW >= words.length) break; }\nconst out = [];\nfor (let ci = 0; ci < chunks.length; ci++) {\n  const vec = await embed(chunks[ci]);\n  out.push({ json: { doc_name: src.doc_name || 'Документ', doc_version: src.doc_version || '', section: src.section || '', chunk_index: ci, chunk_text: chunks[ci], _vec: vec, _total: chunks.length } });\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        680
+      ],
+      "id": "kb-chunk-norm",
+      "name": "Нарезка+эмбеддинг нормы",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO kb_norms (doc_name, doc_version, section, chunk_index, chunk_text, embedding) VALUES ($1,$2,$3,$4,$5, CASE WHEN $6='' THEN NULL ELSE $6::vector END) ON CONFLICT (doc_name, doc_version, chunk_index) DO UPDATE SET chunk_text=EXCLUDED.chunk_text, embedding=EXCLUDED.embedding, section=EXCLUDED.section RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$json.doc_name, $json.doc_version, $json.section, $json.chunk_index, $json.chunk_text, $json._vec || ''] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        680
+      ],
+      "id": "kb-sql-norm",
+      "name": "SQL: add norm",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items=$input.all().map(i=>i.json); const n=items.filter(x=>x&&x.id).length; if(!n) return [{json:{ok:false,response:'error',error:'Не удалось сохранить нормативный документ (пустой текст?)'}}]; return [{json:{ok:true,response:'ok',message:'Нормативный документ сохранён: '+n+' фрагм. векторизовано'}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        680
+      ],
+      "id": "kb-fmt-norm",
+      "name": "Формат add norm",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH dv AS (DELETE FROM kb_violations WHERE $1='violation' AND id=$2 RETURNING 1), dm AS (DELETE FROM kb_measures WHERE $1='measure' AND id=$2 RETURNING 1), dr AS (DELETE FROM kb_requirements WHERE $1='requirement' AND id=$2 RETURNING 1), dn AS (DELETE FROM kb_norms WHERE $1='norm' AND doc_name=$3 RETURNING 1) SELECT (SELECT count(*) FROM dv)+(SELECT count(*) FROM dm)+(SELECT count(*) FROM dr)+(SELECT count(*) FROM dn) AS n;",
+        "options": {
+          "queryReplacement": "={{ [$json.entity, $json.id, $json.doc_name] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1780,
+        820
+      ],
+      "id": "kb-sql-del",
+      "name": "SQL: delete",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$input.first().json; const n=r&&r.n?Number(r.n):0; return [{json:{ok:n>0,response:n>0?'ok':'error',message:n>0?'Удалено':'Запись не найдена'}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        820
+      ],
+      "id": "kb-fmt-del",
+      "name": "Формат delete",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2440,
+        300
+      ],
+      "id": "kb-resp-ok",
+      "name": "Ответ: OK"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.response || 'error', error: $json.error || 'Ошибка', auth_required: !!$json.auth_required }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2440,
+        900
+      ],
+      "id": "kb-resp-err",
+      "name": "Ответ: ошибка"
+    }
+  ],
+  "connections": {
+    "Webhook KB": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Запрос валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Запрос валиден?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Проверка доступа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка доступа": {
+      "main": [
+        [
+          {
+            "node": "Доступ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Доступ?": {
+      "main": [
+        [
+          {
+            "node": "Switch action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch action": {
+      "main": [
+        [
+          {
+            "node": "SQL: list",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Эмбеддинг нарушения",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: add measure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: add requirement",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Нарезка+эмбеддинг нормы",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: list": {
+      "main": [
+        [
+          {
+            "node": "Формат list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат list": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Эмбеддинг нарушения": {
+      "main": [
+        [
+          {
+            "node": "SQL: add violation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: add violation": {
+      "main": [
+        [
+          {
+            "node": "Формат add vio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат add vio": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: add measure": {
+      "main": [
+        [
+          {
+            "node": "Формат add meas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат add meas": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: add requirement": {
+      "main": [
+        [
+          {
+            "node": "Формат add req",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат add req": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Нарезка+эмбеддинг нормы": {
+      "main": [
+        [
+          {
+            "node": "SQL: add norm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: add norm": {
+      "main": [
+        [
+          {
+            "node": "Формат add norm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат add norm": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: delete": {
+      "main": [
+        [
+          {
+            "node": "Формат delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат delete": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

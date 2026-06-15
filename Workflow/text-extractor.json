@@ -1,0 +1,808 @@
+{
+  "name": "Извлечение текста. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "extract-text",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "te-0001-webhook",
+      "name": "Webhook Extract",
+      "webhookId": "extract-text-webhook-001"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-ping-te",
+              "leftValue": "={{ $json.query?.ping || $json.body?.ping || ($json.body?.message === 'ping' ? '1' : '') }}",
+              "rightValue": "1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        100
+      ],
+      "id": "te-ping-if-0001",
+      "name": "Ping?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: 'pong'}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        420,
+        100
+      ],
+      "id": "te-ping-resp-0001",
+      "name": "Ответ: pong"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Определяем тип файла, валидируем размер.\n// Маршруты:\n//   ocr     — image/* | pdf | doc | docx | rtf | odt   (через OCR-сервис)\n//   text    — text/plain, .txt, .md, .log              (читаем как есть)\n//   csv     — .csv (отдельная ветка: авто-детект delimiter и encoding)\n//   xlsx    — .xlsx, .xls                              (Spreadsheet File node)\nconst item = $input.first();\nconst binary = item.binary;\n\nif (!binary || Object.keys(binary).length === 0) {\n  return [{ json: { valid: false, error: 'Файл не загружен. Прикрепите файл.', route: 'error' } }];\n}\n\nconst key = Object.keys(binary)[0];\nconst info = binary[key];\nconst fileName = info.fileName || 'unknown';\nconst mimeType = (info.mimeType || '').toLowerCase();\nconst fileSize = info.fileSize || 0;\n\nif (fileSize > 50 * 1024 * 1024) {\n  return [{ json: { valid: false, error: 'Файл слишком большой (макс. 50 МБ).', route: 'error' } }];\n}\n\nconst ext = (fileName.split('.').pop() || '').toLowerCase();\n\nlet route = 'ocr';\nif (mimeType.startsWith('text/plain') || ['txt','md','log'].includes(ext)) {\n  route = 'text';\n} else if (ext === 'csv' || mimeType.includes('csv')) {\n  route = 'csv';\n} else if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || ['xlsx','xls'].includes(ext)) {\n  route = 'xlsx';\n} else if (mimeType.startsWith('image/') || mimeType.includes('pdf') || mimeType.includes('msword') || mimeType.includes('wordprocessing') || mimeType.includes('officedocument.wordprocessing') || ['pdf','doc','docx','rtf','odt','jpg','jpeg','png','tiff','tif','bmp','webp','gif','heic'].includes(ext)) {\n  route = 'ocr';\n} else {\n  // По умолчанию пытаемся OCR — он покрывает большинство типовых документов.\n  route = 'ocr';\n}\n\nreturn [{\n  json: {\n    valid: true,\n    binaryKey: key,\n    fileName: fileName,\n    mimeType: mimeType,\n    fileSize: fileSize,\n    extension: ext,\n    route: route\n  },\n  binary: binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1430,
+        300
+      ],
+      "id": "te-0002-validate",
+      "name": "Валидация и тип"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-valid-te",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1710,
+        300
+      ],
+      "id": "te-0003-if-valid",
+      "name": "Файл валиден?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "ocr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-ocr"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-text"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "xlsx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-xlsx"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "csv",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-csv"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1990,
+        80
+      ],
+      "id": "te-0004-route",
+      "name": "Маршрут"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://130.100.94.119:8055/extract",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2270,
+        -140
+      ],
+      "id": "te-0005-ocr",
+      "name": "OCR Распознавание",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Извлекаем текст из ответа OCR (тот же парсер форматов что в document-loader).\ntry {\n  const data = $input.first().json;\n  if (data.error) {\n    const msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));\n    return [{ json: { ok: false, error: 'OCR ошибка: ' + msg } }];\n  }\n  let text = '';\n  if (typeof data === 'string') text = data;\n  else if (data.text && typeof data.text === 'string') text = data.text;\n  else if (data.result && typeof data.result === 'string') text = data.result;\n  else if (data.result && data.result.text) text = data.result.text;\n  else if (data.content && typeof data.content === 'string') text = data.content;\n  else if (data.data && typeof data.data === 'string') text = data.data;\n  else if (data.output && typeof data.output === 'string') text = data.output;\n  else text = JSON.stringify(data);\n\n  if (!text || text.trim().length < 1) {\n    return [{ json: { ok: false, error: 'OCR не смог распознать текст. Попробуйте другой файл.' } }];\n  }\n\n  const meta = $('Валидация и тип').first().json;\n  return [{ json: {\n    ok: true,\n    text: text,\n    fileName: meta.fileName,\n    mimeType: meta.mimeType,\n    source: 'ocr'\n  } }];\n} catch (e) {\n  return [{ json: { ok: false, error: 'Ошибка обработки OCR: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2550,
+        -140
+      ],
+      "id": "te-0006-ocr-extract",
+      "name": "Текст из OCR"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Декодируем текстовый файл (txt/md/log) в строку.\n// Получаем буфер через n8n helper — он сам разбирается, лежат данные в памяти\n// или на диске. Прямое чтение binary.data как base64 НЕ работает в filesystem-режиме.\ntry {\n  const meta = $('Валидация и тип').first().json;\n  const buf = await this.helpers.getBinaryDataBuffer(0, meta.binaryKey);\n\n  if (!buf || buf.length === 0) {\n    return [{ json: { ok: false, error: 'Файл пустой или не удалось прочитать содержимое.' } }];\n  }\n\n  function decodeUtf8(b) {\n    if (b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return b.slice(3).toString('utf8');\n    return b.toString('utf8');\n  }\n  function decodeUtf16le(b) {\n    if (b[0] === 0xFF && b[1] === 0xFE) return b.slice(2).toString('utf16le');\n    return b.toString('utf16le');\n  }\n  function countReplacement(s) {\n    let n = 0;\n    for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 0xFFFD) n++;\n    return n;\n  }\n  // CP1251 → Unicode: ручная таблица, в Node нет встроенного.\n  const CP1251_TO_UNICODE = (function () {\n    const map = new Array(256);\n    for (let i = 0; i < 128; i++) map[i] = i;\n    const high = 'ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏ'\n      + 'ђ‘’“”•–—?™љ›њќћџ'\n      + ' ЎўЈ¤Ґ¦§Ё©Є«¬­®Ї'\n      + '°±Ііґµ¶·ё№є»јЅѕї';\n    for (let i = 0; i < high.length; i++) map[128 + i] = high.charCodeAt(i);\n    for (let i = 0; i < 64; i++) map[0xC0 + i] = 0x0410 + i;\n    return map;\n  })();\n  function decodeCp1251(b) {\n    let s = '';\n    for (let i = 0; i < b.length; i++) s += String.fromCharCode(CP1251_TO_UNICODE[b[i]]);\n    return s;\n  }\n\n  let text;\n  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {\n    text = decodeUtf16le(buf);\n  } else {\n    const asUtf8 = decodeUtf8(buf);\n    const bad = countReplacement(asUtf8);\n    if (bad === 0) {\n      text = asUtf8;\n    } else {\n      const asCp = decodeCp1251(buf);\n      text = (countReplacement(asCp) < bad) ? asCp : asUtf8;\n    }\n  }\n\n  if (!text || text.trim().length < 1) {\n    return [{ json: { ok: false, error: 'Файл пустой (нет текста кроме пробелов/переносов).' } }];\n  }\n\n  return [{ json: {\n    ok: true,\n    text: text,\n    fileName: meta.fileName,\n    mimeType: meta.mimeType,\n    source: 'text'\n  } }];\n} catch (e) {\n  return [{ json: { ok: false, error: 'Ошибка чтения текстового файла: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2270,
+        200
+      ],
+      "id": "te-0007-text-read",
+      "name": "Прочитать текст"
+    },
+    {
+      "parameters": {
+        "operation": "fromFile",
+        "binaryPropertyName": "file",
+        "options": {
+          "sheetName": "",
+          "headerRow": false,
+          "rawData": true
+        }
+      },
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        2270,
+        520
+      ],
+      "id": "te-0008-spreadsheet",
+      "name": "Парсинг таблицы",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Форматирует результат Spreadsheet File node в выровненный текст.\n// Распознаёт два формата строк:\n//   1) rawData=true: { row: [cell1, cell2, ...] } — массив ячеек\n//   2) headers:      { ColA: v1, ColB: v2, ... }  — объект с именованными колонками\n// Подстраивается под неравномерные строки (разное число колонок).\ntry {\n  const meta = $('Валидация и тип').first().json;\n  const rows = $input.all().map(r => r.json);\n\n  if (rows.length === 0) {\n    return [{ json: { ok: false, error: 'В таблице нет данных.' } }];\n  }\n\n  // Форматирование одной ячейки в строку.\n  function fmtCell(v) {\n    if (v === null || v === undefined) return '';\n    if (typeof v === 'object') return JSON.stringify(v);\n    // Числа выводим как есть — без округления и потери точности.\n    // То что лежит в файле — то и показываем.\n    if (typeof v === 'number') return String(v);\n    return String(v);\n  }\n\n  // Детектируем формат и собираем массив массивов ячеек.\n  let header = null;\n  let cellRows;\n  const firstRow = rows[0];\n  const firstKeys = Object.keys(firstRow);\n  if (firstKeys.length === 1 && firstKeys[0] === 'row' && Array.isArray(firstRow.row)) {\n    // rawData mode\n    cellRows = rows.map(r => Array.isArray(r.row) ? r.row.map(fmtCell) : []);\n  } else {\n    // Header mode — собираем имена колонок в порядке появления\n    const colOrder = [];\n    const seen = new Set();\n    for (const r of rows) {\n      for (const k of Object.keys(r)) {\n        if (!seen.has(k)) { seen.add(k); colOrder.push(k); }\n      }\n    }\n    header = colOrder;\n    cellRows = rows.map(r => colOrder.map(c => fmtCell(r[c])));\n  }\n\n  // Определяем максимальное число колонок (учитываем неровные строки).\n  let maxCols = header ? header.length : 0;\n  for (const row of cellRows) {\n    if (row.length > maxCols) maxCols = row.length;\n  }\n  if (maxCols === 0) {\n    return [{ json: { ok: false, error: 'Все строки таблицы пусты.' } }];\n  }\n\n  // Считаем ширины колонок.\n  const widths = new Array(maxCols).fill(0);\n  if (header) {\n    for (let i = 0; i < header.length; i++) {\n      widths[i] = Math.max(widths[i], String(header[i]).length);\n    }\n  }\n  for (const row of cellRows) {\n    for (let i = 0; i < row.length; i++) {\n      widths[i] = Math.max(widths[i], row[i].length);\n    }\n  }\n  // Ограничиваем максимум ~60 символов на колонку.\n  for (let i = 0; i < widths.length; i++) {\n    widths[i] = Math.min(widths[i], 60);\n  }\n\n  function pad(s, w) {\n    s = (s.length > w) ? s.slice(0, w - 1) + '…' : s;\n    return s + ' '.repeat(Math.max(0, w - s.length));\n  }\n\n  const lines = [];\n  if (header) {\n    lines.push(header.map((c, i) => pad(String(c), widths[i])).join('  '));\n    lines.push(widths.map(w => '-'.repeat(w)).join('  '));\n  }\n  for (const row of cellRows) {\n    // Если в строке меньше колонок — добивать пустыми;\n    // но финальный trimEnd убирает хвостовые пробелы для коротких строк.\n    const padded = [];\n    for (let i = 0; i < maxCols; i++) {\n      padded.push(pad(row[i] !== undefined ? row[i] : '', widths[i]));\n    }\n    lines.push(padded.join('  ').replace(/\\s+$/, ''));\n  }\n\n  return [{ json: {\n    ok: true,\n    text: lines.join('\\n'),\n    fileName: meta.fileName,\n    mimeType: meta.mimeType,\n    source: 'table',\n    rowCount: cellRows.length,\n    colCount: maxCols\n  } }];\n} catch (e) {\n  return [{ json: { ok: false, error: 'Ошибка обработки таблицы: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2550,
+        520
+      ],
+      "id": "te-0009-table-format",
+      "name": "Форматировать таблицу"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Унифицированный финальный ответ для всех веток.\nconst data = $input.first().json;\nif (!data.ok) {\n  return [{ json: { response: data.error || 'Не удалось извлечь текст.', success: false } }];\n}\nreturn [{ json: {\n  response: data.text,\n  success: true,\n  fileName: data.fileName,\n  mimeType: data.mimeType,\n  source: data.source,\n  rowCount: data.rowCount,\n  colCount: data.colCount,\n  length: (data.text || '').length\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2830,
+        200
+      ],
+      "id": "te-0010-finalize",
+      "name": "Финализация"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3110,
+        200
+      ],
+      "id": "te-0011-respond-ok",
+      "name": "Ответ: успех"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.error || 'Файл не загружен.', success: false }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1990,
+        520
+      ],
+      "id": "te-0012-respond-err",
+      "name": "Ответ: ошибка"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Парсинг CSV с авто-детекцией кодировки и разделителя.\n// Поддержка: UTF-8 (с BOM/без), CP1251 (русская Excel-локаль), UTF-16 LE BOM.\n// Разделители: , ; \\t — выбираем максимально частый в первой строке.\n// Корректно обрабатываем поля в кавычках с разделителями/переносами внутри.\ntry {\n  const meta = $('Валидация и тип').first().json;\n  const buf = await this.helpers.getBinaryDataBuffer(0, meta.binaryKey);\n  if (!buf || buf.length === 0) {\n    return [{ json: { row: ['(пустой файл)'] } }];\n  }\n\n  // --- Декодирование байтов в строку ---\n  function decodeUtf8(b) {\n    if (b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return b.slice(3).toString('utf8');\n    return b.toString('utf8');\n  }\n  function countReplacement(s) {\n    let n = 0;\n    for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 0xFFFD) n++;\n    return n;\n  }\n  const CP1251 = (function () {\n    const m = new Array(256);\n    for (let i = 0; i < 128; i++) m[i] = i;\n    const h = 'ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏђ‘’“”•–—?™љ›њќћџ ЎўЈ¤Ґ¦§Ё©Є«¬­®Ї°±Ііґµ¶·ё№є»јЅѕї';\n    for (let i = 0; i < h.length; i++) m[128 + i] = h.charCodeAt(i);\n    for (let i = 0; i < 64; i++) m[0xC0 + i] = 0x0410 + i;\n    return m;\n  })();\n  function decodeCp1251(b) {\n    let s = '';\n    for (let i = 0; i < b.length; i++) s += String.fromCharCode(CP1251[b[i]]);\n    return s;\n  }\n\n  let text;\n  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {\n    text = buf.slice(2).toString('utf16le');\n  } else {\n    const u = decodeUtf8(buf);\n    const bad = countReplacement(u);\n    if (bad === 0) {\n      text = u;\n    } else {\n      const c = decodeCp1251(buf);\n      text = (countReplacement(c) < bad) ? c : u;\n    }\n  }\n\n  // --- Авто-детект разделителя по первой непустой строке ---\n  // Считаем количество кандидатов ; , \\t — выбираем самый частый.\n  let firstLine = '';\n  const m = text.match(/^[^\\n]*/);\n  if (m) firstLine = m[0].replace(/\\r$/, '');\n  const counts = {\n    ',': (firstLine.match(/,/g) || []).length,\n    ';': (firstLine.match(/;/g) || []).length,\n    '\\t': (firstLine.match(/\\t/g) || []).length,\n  };\n  let delim = ',';\n  let max = counts[','];\n  if (counts[';'] > max) { delim = ';'; max = counts[';']; }\n  if (counts['\\t'] > max) { delim = '\\t'; max = counts['\\t']; }\n\n  // --- Парсер CSV с поддержкой кавычек и многострочных полей ---\n  const rows = [];\n  let row = [];\n  let cur = '';\n  let inQ = false;\n  let i = 0;\n  while (i < text.length) {\n    const ch = text[i];\n    if (inQ) {\n      if (ch === '\"') {\n        if (text[i + 1] === '\"') { cur += '\"'; i += 2; }\n        else { inQ = false; i++; }\n      } else {\n        cur += ch; i++;\n      }\n    } else {\n      if (ch === '\"' && cur === '') { inQ = true; i++; }\n      else if (ch === delim) { row.push(cur); cur = ''; i++; }\n      else if (ch === '\\n') { row.push(cur); rows.push(row); row = []; cur = ''; i++; }\n      else if (ch === '\\r') { i++; }  // пропускаем, обработка по \\n\n      else { cur += ch; i++; }\n    }\n  }\n  // финальная ячейка/строка\n  if (cur.length > 0 || row.length > 0) {\n    row.push(cur);\n    rows.push(row);\n  }\n\n  if (rows.length === 0) {\n    return [{ json: { row: ['(нет строк в CSV)'] } }];\n  }\n\n  // Конвертим в формат items с {row: [strings]} — как у Spreadsheet File rawData=true\n  return rows.map(r => ({ json: { row: r.map(c => String(c)) } }));\n} catch (e) {\n  return [{ json: { row: ['Ошибка парсинга CSV: ' + e.message] } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2270,
+        800
+      ],
+      "id": "te-0013-csv-parse",
+      "name": "Парсинг CSV"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === SSO Phase 3: token presence check ===\n// Token может быть в body (JSON request) ИЛИ form-data (file upload).\n// Для form-data n8n кладёт поля в корень $json (не в .body).\nconst item = $input.first();\nconst j = item && item.json ? item.json : {};\nconst body = j.body || j;\nconst token = String((body && body.token) || j.token || '').trim();\nif (!token) {\n  return [{ json: { __auth_required: true } }];\n}\n// Прокидываем все исходные поля + binary data дальше (binary не теряется\n// автоматически при возврате json — n8n сохраняет binary поле item.binary\n// если мы возвращаем СОДЕРЖИМОЕ $json, но не если возвращаем новый объект.\n// Используем item.binary в выходе явно.\nreturn [{ json: { ...j, token: token, __auth_ok: true }, binary: item.binary || {} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "id": "text-extr-sso-auth-check-V1__SSO_AUTH_CHECK_V1",
+      "name": "SSO: Auth check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-sso-auth-ok",
+              "leftValue": "={{ !!$json.__auth_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        510,
+        300
+      ],
+      "id": "text-extr-sso-auth-ok-V1",
+      "name": "SSO: Auth OK?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: 'unauthorized', auth_required: true}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        510,
+        500
+      ],
+      "id": "text-extr-sso-auth-resp-V1",
+      "name": "SSO: Ответ auth_required"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        740,
+        300
+      ],
+      "id": "text-extr-sso-sql-verify-V1",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('SSO: Auth check').first().json;\nconst srcItem = $('SSO: Auth check').first();\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id }, binary: (srcItem && srcItem.binary) || {} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "id": "text-extr-sso-token-result-V1",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-text-extr-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "text-extr-sso-token-if-V1",
+      "name": "Token OK?"
+    }
+  ],
+  "connections": {
+    "Webhook Extract": {
+      "main": [
+        [
+          {
+            "node": "Ping?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация и тип": {
+      "main": [
+        [
+          {
+            "node": "Файл валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Файл валиден?": {
+      "main": [
+        [
+          {
+            "node": "Маршрут",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Маршрут": {
+      "main": [
+        [
+          {
+            "node": "OCR Распознавание",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Прочитать текст",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Парсинг таблицы",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Парсинг CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR Распознавание": {
+      "main": [
+        [
+          {
+            "node": "Текст из OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Текст из OCR": {
+      "main": [
+        [
+          {
+            "node": "Финализация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Прочитать текст": {
+      "main": [
+        [
+          {
+            "node": "Финализация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Парсинг таблицы": {
+      "main": [
+        [
+          {
+            "node": "Форматировать таблицу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Форматировать таблицу": {
+      "main": [
+        [
+          {
+            "node": "Финализация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Финализация": {
+      "main": [
+        [
+          {
+            "node": "Ответ: успех",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Парсинг CSV": {
+      "main": [
+        [
+          {
+            "node": "Форматировать таблицу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ping?": {
+      "main": [
+        [
+          {
+            "node": "Ответ: pong",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SSO: Auth check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSO: Auth check": {
+      "main": [
+        [
+          {
+            "node": "SSO: Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSO: Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SSO: Ответ auth_required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Валидация и тип",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SSO: Ответ auth_required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {}
+}

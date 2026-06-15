@@ -1,0 +1,842 @@
+{
+  "name": "Загрузчик документов. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-doc",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "dl-0001-0001-0001-000000000001",
+      "name": "Webhook Upload",
+      "webhookId": "a1b2c3d4-upload-doc-webhook-001"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-ping-dl",
+              "leftValue": "={{ $json.query?.ping || $json.body?.ping || ($json.body?.message === 'ping' ? '1' : '') }}",
+              "rightValue": "1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        100
+      ],
+      "id": "dl-ping-if-0001",
+      "name": "Ping?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: 'pong'}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        420,
+        100
+      ],
+      "id": "dl-ping-resp-0001",
+      "name": "Ответ: pong"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Определяем что пришло: уже извлечённый текст (от браузера) или бинарный файл.\n// n8n webhook кладёт JSON-body в $json.body, а form-data поля в корень.\n// Поэтому ищем text и в .body, и в корне для надёжности.\n\nconst item = $input.first();\nconst root = item.json || {};\nconst body = (root.body && typeof root.body === 'object') ? root.body : {};\nconst binary = item.binary || {};\nconst binaryKeys = Object.keys(binary);\n\nfunction pick(field) {\n  if (typeof body[field] === 'string' && body[field].length > 0) return body[field];\n  if (typeof root[field] === 'string' && root[field].length > 0) return root[field];\n  return null;\n}\n\nconst text = pick('text');\nconst fileName = pick('fileName') || 'document.txt';\nconst source = pick('source') || 'browser';\n\n// Браузерный путь: JSON с готовым текстом\nif (text && text.trim().length > 0) {\n  return [{\n    json: {\n      has_text: true,\n      text: text,\n      fileName: fileName,\n      source: source\n    }\n  }];\n}\n\n// Файловый путь: есть binary\nif (binaryKeys.length > 0) {\n  const key = binaryKeys[0];\n  const info = binary[key];\n  const realFileName = info.fileName || 'unknown';\n  const fileSize = info.fileSize || 0;\n\n  if (fileSize > 50 * 1024 * 1024) {\n    return [{ json: { has_text: false, has_file: false, error: 'Файл слишком большой (макс. 50 МБ).' } }];\n  }\n\n  return [{\n    json: {\n      has_text: false,\n      has_file: true,\n      binaryKey: key,\n      fileName: realFileName,\n      mimeType: info.mimeType || 'unknown'\n    },\n    binary: binary\n  }];\n}\n\n// Ничего не пришло — лог что было в root для отладки\nconst rootKeys = Object.keys(root).slice(0, 10).join(',');\nreturn [{ json: { has_text: false, has_file: false, error: 'Файл не загружен и текст не передан. (Получено: root=[' + rootKeys + '])' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1430,
+        300
+      ],
+      "id": "dl-0002-0002-0002-000000000002",
+      "name": "Определить вход"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-text",
+              "leftValue": "={{ $json.has_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1710,
+        300
+      ],
+      "id": "dl-0003-0003-0003-000000000003",
+      "name": "Текст готов?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-file",
+              "leftValue": "={{ $json.has_file }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1990,
+        500
+      ],
+      "id": "dl-0004-0004-0004-000000000004",
+      "name": "Файл есть?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://130.100.94.119:8055/extract",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "={{ $json.binaryKey }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2270,
+        400
+      ],
+      "id": "dl-0005-0005-0005-000000000005",
+      "name": "OCR Распознавание",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Извлекаем текст из ответа OCR (только если файл проходил через OCR ветку).\ntry {\n  const data = $input.first().json;\n\n  if (data.error) {\n    const msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));\n    return [{ json: { has_text: false, error: 'OCR ошибка: ' + msg } }];\n  }\n\n  let text = '';\n  if (typeof data === 'string') text = data;\n  else if (data.text && typeof data.text === 'string') text = data.text;\n  else if (data.result && typeof data.result === 'string') text = data.result;\n  else if (data.result && data.result.text) text = data.result.text;\n  else if (data.content && typeof data.content === 'string') text = data.content;\n  else if (data.data && typeof data.data === 'string') text = data.data;\n  else if (data.output && typeof data.output === 'string') text = data.output;\n  else text = JSON.stringify(data);\n\n  text = text.trim();\n\n  if (!text || text === '{}' || text === '[]' || text === 'null' || text.length < 3) {\n    return [{ json: { has_text: false, error: 'OCR не смог распознать текст. Попробуйте другой файл.' } }];\n  }\n\n  // fileName тянем из «Определить вход»\n  const fileName = $('Определить вход').first().json.fileName || 'unknown';\n  return [{ json: { has_text: true, text: text, fileName: fileName, source: 'ocr' } }];\n} catch (e) {\n  return [{ json: { has_text: false, error: 'Ошибка обработки OCR: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2550,
+        400
+      ],
+      "id": "dl-0006-0006-0006-000000000006",
+      "name": "Извлечь текст из OCR"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-ocr-text",
+              "leftValue": "={{ $json.has_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2830,
+        400
+      ],
+      "id": "dl-0007-0007-0007-000000000007",
+      "name": "OCR Текст есть?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Нарезаем текст на куски, сохраняя семантические границы абзацев.\n//\n// Старая версия делала split(/\\s+/) и теряла всё форматирование —\n// заголовки, абзацы сливались в один поток слов, эмбеддинги получались\n// размытыми, RAG-поиск промахивался.\n//\n// Новая логика:\n// 1) Бьём по двойным переносам (абзацы) или одиночным (если их нет).\n// 2) Аккумулируем абзацы в чанк до лимита CHUNK_WORDS.\n// 3) Если один абзац больше CHUNK_WORDS — разбиваем его на слова (старая логика).\n// 4) Перекрытие OVERLAP — последние N слов из предыдущего чанка добавляем в начало следующего.\n\nconst text = $json.text;\nconst fileName = $json.fileName;\nconst source = $json.source || 'unknown';\n\nconst CHUNK_WORDS = 500;\nconst OVERLAP = 50;\n\nconst raw = String(text || '');\nif (!raw.trim()) {\n  return [{ json: { error: 'Текст пустой после обработки.' } }];\n}\n\n// 1) Разбиваем на параграфы. Если двойных переносов нет — на одинарные.\nlet paragraphs = raw.split(/\\n\\n+/).map(p => p.trim()).filter(p => p.length > 0);\nif (paragraphs.length <= 1) {\n  paragraphs = raw.split(/\\n/).map(p => p.trim()).filter(p => p.length > 0);\n}\nif (paragraphs.length === 0) {\n  paragraphs = [raw];\n}\n\nfunction wordCount(s) { return s.split(/\\s+/).filter(w => w.length > 0).length; }\n\nconst chunks = [];\nlet buffer = [];\nlet bufferWords = 0;\n\nfunction flushBuffer() {\n  if (buffer.length === 0) return;\n  const text = buffer.join('\\n\\n');\n  chunks.push({\n    json: {\n      fileName: fileName,\n      chunk_index: chunks.length,\n      chunk_text: text,\n      total_chunks: 0,\n      source: source\n    }\n  });\n  // Перекрытие: оставляем хвост последнего абзаца (OVERLAP слов)\n  const lastWords = text.split(/\\s+/).filter(w => w.length > 0);\n  const tail = lastWords.slice(-OVERLAP).join(' ');\n  buffer = tail ? [tail] : [];\n  bufferWords = tail ? OVERLAP : 0;\n}\n\nfor (const p of paragraphs) {\n  const pw = wordCount(p);\n  if (pw === 0) continue;\n\n  // Большой абзац — режем его внутри по словам\n  if (pw > CHUNK_WORDS) {\n    if (buffer.length > 0) flushBuffer();\n    const words = p.split(/\\s+/).filter(w => w.length > 0);\n    let start = 0;\n    while (start < words.length) {\n      const end = Math.min(start + CHUNK_WORDS, words.length);\n      chunks.push({\n        json: {\n          fileName: fileName,\n          chunk_index: chunks.length,\n          chunk_text: words.slice(start, end).join(' '),\n          total_chunks: 0,\n          source: source\n        }\n      });\n      if (end >= words.length) break;\n      start += CHUNK_WORDS - OVERLAP;\n    }\n    continue;\n  }\n\n  // Обычный абзац — вместился бы в текущий буфер?\n  if (bufferWords + pw > CHUNK_WORDS && buffer.length > 0) {\n    flushBuffer();\n  }\n  buffer.push(p);\n  bufferWords += pw;\n}\n\nflushBuffer();\n\nif (chunks.length === 0) {\n  return [{ json: { error: 'Текст пустой после обработки.' } }];\n}\n\nfor (const c of chunks) c.json.total_chunks = chunks.length;\nreturn chunks;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3150,
+        200
+      ],
+      "id": "dl-0008-0008-0008-000000000008",
+      "name": "Нарезка на куски"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://130.100.94.119:8001/embed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: $json.chunk_text, type: 'passage' }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3430,
+        200
+      ],
+      "id": "dl-0009-0009-0009-000000000009",
+      "name": "Эмбеддинг",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Извлекаем вектор из ответа эмбеддинга. Параметры для INSERT кладём как\n// есть — Postgres-нода ниже использует queryReplacement (параметризация),\n// поэтому здесь НЕ нужно делать ручной escape кавычек или склейку SQL.\ntry {\n  const data = $input.first().json;\n  const prevData = $('Нарезка на куски').first().json;\n  const fileName = prevData.fileName;\n  const chunkIndex = prevData.chunk_index;\n  const chunkText = prevData.chunk_text;\n  const totalChunks = prevData.total_chunks;\n\n  if (data.error) {\n    return [{ json: { success: false, error: 'Ошибка эмбеддинга: ' + JSON.stringify(data.error) } }];\n  }\n\n  let vector = null;\n  if (data.data && Array.isArray(data.data) && data.data[0] && data.data[0].embedding) {\n    vector = data.data[0].embedding;\n  } else if (data.embedding && Array.isArray(data.embedding)) {\n    vector = data.embedding;\n  } else if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'number') {\n    vector = data;\n  }\n\n  if (!vector || vector.length === 0) {\n    return [{ json: { success: false, error: 'Эмбеддинг вернул пустой вектор.' } }];\n  }\n\n  // Defense-in-depth: убеждаемся что вектор — это массив конечных чисел.\n  if (!vector.every(v => typeof v === 'number' && Number.isFinite(v))) {\n    return [{ json: { success: false, error: 'Невалидный вектор от эмбеддера (не числа).' } }];\n  }\n\n  // pgvector принимает строку вида '[1.0,2.0,...]'. Передаём как параметр.\n  const vectorStr = '[' + vector.join(',') + ']';\n\n  return [{ json: {\n    success: true,\n    fileName: fileName,\n    chunk_index: chunkIndex,\n    chunk_text: chunkText,\n    vector_str: vectorStr,\n    total_chunks: totalChunks,\n    vector_size: vector.length\n  }}];\n} catch (e) {\n  return [{ json: { success: false, error: 'Ошибка обработки эмбеддинга: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3710,
+        200
+      ],
+      "id": "dl-0010-0010-0010-000000000010",
+      "name": "Подготовка SQL"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _del AS (DELETE FROM documents WHERE filename = $1 AND chunk_index >= $5) INSERT INTO documents (filename, chunk_index, chunk_text, embedding) VALUES ($1, $2, $3, $4::vector) ON CONFLICT (filename, chunk_index) DO UPDATE SET chunk_text = EXCLUDED.chunk_text, embedding = EXCLUDED.embedding, created_at = NOW()",
+        "options": {
+          "queryReplacement": "={{ [$json.fileName, $json.chunk_index, $json.chunk_text, $json.vector_str, $('Нарезка на куски').first().json.total_chunks] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3990,
+        200
+      ],
+      "id": "dl-0011-0011-0011-000000000011",
+      "name": "Записать в PGVector",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Агрегируем результаты записи всех кусков.\n// Сообщение для пользователя — короткое и без технических деталей\n// (OCR/browser, число кусков, доступно для поиска и т.д.).\n// Все технические поля — в data.details для логов и админки.\nfunction errToString(e) {\n  if (!e) return '';\n  if (typeof e === 'string') return e;\n  if (typeof e === 'object') {\n    if (e.message) return String(e.message);\n    if (e.detail) return String(e.detail);\n    try { return JSON.stringify(e); } catch (_) { return String(e); }\n  }\n  return String(e);\n}\n\nconst items = $input.all();\nlet success = 0;\nlet failed = 0;\nlet errors = [];\nlet fileName = '';\nlet totalChunks = 0;\nlet source = '';\n\nfor (const item of items) {\n  const prev = item.json || {};\n  if (!fileName && prev.fileName) fileName = prev.fileName;\n  if (!totalChunks && prev.total_chunks) totalChunks = prev.total_chunks;\n  if (!source && prev.source) source = prev.source;\n  if (prev.error) {\n    failed++;\n    errors.push(errToString(prev.error));\n  } else {\n    success++;\n  }\n}\n\nif (success === 0 && failed === 0) {\n  success = items.length;\n}\n\nif (!fileName) {\n  try { fileName = $('Нарезка на куски').first().json.fileName; } catch (_) {}\n}\nif (!source) {\n  try { source = $('Нарезка на куски').first().json.source; } catch (_) {}\n}\n\nlet message = '';\nif (failed === 0) {\n  message = 'Документ загружен';\n} else if (success > 0) {\n  // Частичный успех — единственный case когда юзеру нужно знать о проблеме.\n  message = 'Документ загружен с замечаниями. Часть фрагментов не удалось сохранить — попробуйте загрузить ещё раз.';\n} else {\n  const uniqErrors = Array.from(new Set(errors)).slice(0, 1);\n  message = 'Не удалось загрузить документ' + (uniqErrors[0] ? ': ' + uniqErrors[0] : '.');\n}\n\nreturn [{ json: {\n  response: message,\n  ok: failed === 0,\n  // Тех. детали — только для админки/логов, фронт их не показывает\n  details: { fileName: fileName, success: success, failed: failed, source: source }\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4270,
+        200
+      ],
+      "id": "dl-0012-0012-0012-000000000012",
+      "name": "Агрегация результатов"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.response }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4550,
+        200
+      ],
+      "id": "dl-0013-0013-0013-000000000013",
+      "name": "Ответ: Успех"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.error || 'Файл не загружен.' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2270,
+        700
+      ],
+      "id": "dl-0014-0014-0014-000000000014",
+      "name": "Ответ: Нет файла"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.error || 'OCR не распознал текст.' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3110,
+        600
+      ],
+      "id": "dl-0015-0015-0015-000000000015",
+      "name": "Ответ: OCR ошибка"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === SSO Phase 3: token presence check ===\n// Token может быть в body (JSON request) ИЛИ form-data (file upload).\n// Для form-data n8n кладёт поля в корень $json (не в .body).\nconst item = $input.first();\nconst j = item && item.json ? item.json : {};\nconst body = j.body || j;\nconst token = String((body && body.token) || j.token || '').trim();\nif (!token) {\n  return [{ json: { __auth_required: true } }];\n}\n// Прокидываем все исходные поля + binary data дальше (binary не теряется\n// автоматически при возврате json — n8n сохраняет binary поле item.binary\n// если мы возвращаем СОДЕРЖИМОЕ $json, но не если возвращаем новый объект.\n// Используем item.binary в выходе явно.\nreturn [{ json: { ...j, token: token, __auth_ok: true }, binary: item.binary || {} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "id": "doc-loader-sso-auth-check-V1__SSO_AUTH_CHECK_V1",
+      "name": "SSO: Auth check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-sso-auth-ok",
+              "leftValue": "={{ !!$json.__auth_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        510,
+        300
+      ],
+      "id": "doc-loader-sso-auth-ok-V1",
+      "name": "SSO: Auth OK?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: 'unauthorized', auth_required: true}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        510,
+        500
+      ],
+      "id": "doc-loader-sso-auth-resp-V1",
+      "name": "SSO: Ответ auth_required"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        740,
+        300
+      ],
+      "id": "doc-loader-sso-sql-verify-V1",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('SSO: Auth check').first().json;\nconst srcItem = $('SSO: Auth check').first();\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id }, binary: (srcItem && srcItem.binary) || {} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "id": "doc-loader-sso-token-result-V1",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-doc-loader-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "doc-loader-sso-token-if-V1",
+      "name": "Token OK?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Upload": {
+      "main": [
+        [
+          {
+            "node": "Ping?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Определить вход": {
+      "main": [
+        [
+          {
+            "node": "Текст готов?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Текст готов?": {
+      "main": [
+        [
+          {
+            "node": "Нарезка на куски",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Файл есть?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Файл есть?": {
+      "main": [
+        [
+          {
+            "node": "OCR Распознавание",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: Нет файла",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR Распознавание": {
+      "main": [
+        [
+          {
+            "node": "Извлечь текст из OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Извлечь текст из OCR": {
+      "main": [
+        [
+          {
+            "node": "OCR Текст есть?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR Текст есть?": {
+      "main": [
+        [
+          {
+            "node": "Нарезка на куски",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: OCR ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Нарезка на куски": {
+      "main": [
+        [
+          {
+            "node": "Эмбеддинг",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Эмбеддинг": {
+      "main": [
+        [
+          {
+            "node": "Подготовка SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовка SQL": {
+      "main": [
+        [
+          {
+            "node": "Записать в PGVector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Записать в PGVector": {
+      "main": [
+        [
+          {
+            "node": "Агрегация результатов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агрегация результатов": {
+      "main": [
+        [
+          {
+            "node": "Ответ: Успех",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ping?": {
+      "main": [
+        [
+          {
+            "node": "Ответ: pong",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SSO: Auth check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSO: Auth check": {
+      "main": [
+        [
+          {
+            "node": "SSO: Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSO: Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SSO: Ответ auth_required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Определить вход",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SSO: Ответ auth_required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "doc-loader-v2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ad16de428774283a74f2bef15a9b31f771c3828cae096d3c33aab7bd18058813"
+  },
+  "id": "doc-loader-001",
+  "tags": []
+}

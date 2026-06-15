@@ -1,0 +1,1484 @@
+{
+  "name": "RAG-Агент. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        1140
+      ],
+      "id": "rag-webhook-0001",
+      "name": "Webhook RAG",
+      "webhookId": "rag-agent-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst message = (body.message || '').trim();\nconst session_id = (body.session_id || 'rag-default').trim();\n\n// Health-check: отдаём pong без вызова LLM\nif (message === 'ping') {\n  return [{json: {valid: 0, error: 'pong'}}];\n}\n\n// __AUTH_PATCH_V1__\n// === SSO Phase 3: token presence check ===\n// Без токена → auth_required, фронт redirect на /login.html\nconst __token = String((body && body.token) || '').trim();\nconst __userName = String((body && body.user_name) || '').trim().slice(0, 80);\nif (!__token || !/^[a-f0-9]{64}$/.test(__token)) {\n  return [{json: {valid: 0, error: 'auth_required', auth_required: true}}];\n}\n\n\nif (!message || message.length < 2) {\n  return [{json: {valid: 0, error: 'Введите сообщение'}}];\n}\n\n// Защита от SQL-инъекций через session_id\nif (!/^[a-zA-Z0-9_-]{3,64}$/.test(session_id)) {\n  return [{json: {valid: 0, error: 'session_id содержит недопустимые символы'}}];\n}\n\nif (message.length > 100000) {\n  return [{json: {valid: 0, error: 'Слишком длинный запрос (максимум 100000 символов)'}}];\n}\n\nconst __docGet = String((body && body.doc_get) || '').trim();\nconst __focusDoc = String((body && body.focus_doc) || '').trim().slice(0, 400);\nreturn [{json: {valid: 1, message: message, session_id: session_id, token: __token, doc_get: __docGet, user_name: __userName, focus_doc: __focusDoc}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        1140
+      ],
+      "id": "rag-val-0001",
+      "name": "Валидация"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-valid-rag",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        1140
+      ],
+      "id": "rag-if-valid-0001",
+      "name": "Запрос валиден?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: $json.error, auth_required: !!$json.auth_required}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2160,
+        1320
+      ],
+      "id": "rag-err-val-0001",
+      "name": "Ответ: ошибка валидации"
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $('Агрегация').first().json.message;\nconst historyContext = $('Агрегация').first().json.historyContext || '';\nconst session_id = $('Агрегация').first().json.session_id || 'rag-default';\nconst lower = message.toLowerCase();\n\n// R8.82: клик по имени документа (фронт шлёт doc_get='source|id') — показать\n// ПОЛНЫЙ контент из БД, без LLM и без обычной классификации.\nconst __docGet = String(($('Агрегация').first().json.doc_get) || '').trim();\nif (__docGet) {\n  const __bar = __docGet.indexOf('|');\n  const __src = __bar >= 0 ? __docGet.slice(0, __bar) : 'internal';\n  const __did = __bar >= 0 ? __docGet.slice(__bar + 1) : __docGet;\n  return [{ json: { message, mode: 'get_document', doc_source: __src, doc_id: __did, historyContext, session_id } }];\n}\n\n// NEW-3: явное обнаружение «покажи / какие документы есть» — для таких\n// запросов embedding-поиск не работает (вопрос не содержит контента ни\n// одного конкретного документа). Используем SELECT DISTINCT filename.\nconst listIndicators = [\n  'какие документ', 'какие файл', 'список документ', 'список файл',\n  'покажи документ', 'покажи файл', 'покажи все документ', 'покажи все файл',\n  'что загружен', 'что есть в баз', 'что есть в документ', 'документы в базе', 'файлы в базе',\n  'перечисли документ', 'перечисли файл',\n  'имена документ', 'имена файл', 'названия документ', 'названия файл',\n  'все документ', 'все файл',\n  'сколько документ', 'сколько файл',\n  'количество документ', 'количество файл', 'кол-во документ', 'кол-во файл', 'число документ', 'число файл',\n  'все мои документ', 'все мои файл', 'покажи мои документ', 'мои документ', 'мои файл', 'есть документ', 'есть файл', 'что у меня в баз', 'что в баз', 'покажи всё', 'покажи все'\n];\nfor (const ind of listIndicators) {\n  if (lower.includes(ind)) {\n    return [{ json: { message, mode: 'list_documents', historyContext, session_id } }];\n  }\n}\n\n// R5 BUG-3 (RAG hallucinates docs in tables): просьба «представь документы\n// в виде таблицы» / «список документов в таблицу» / «таблица документов» —\n// это запрос про БД, не про содержание. Маршрутизируем в list_documents.\nconst tablePatterns = [\n  /в\\s+виде\\s+таблиц/,\n  /таблиц[ауеыйо]*\\s+(документ|файл|загруж)/,\n  /(документ|файл|загруж)\\w*\\s+\\w*\\s*(в\\s+таблиц|таблицей|списком)/,\n  /представ\\w*\\s+(документ|файл|базу)/,\n  /выведи\\s+(документ|файл|список)/,\n  /оформи\\s+(документ|файл)\\w*\\s+(в\\s+таблиц|таблицей)/\n];\nfor (const re of tablePatterns) {\n  if (re.test(lower)) {\n    return [{ json: { message, mode: 'list_documents', historyContext, session_id } }];\n  }\n}\n\nconst docKeywords = [\n  'документ', 'договор', 'акт', 'контракт', 'соглашени',\n  'коммерческ', 'предложени', 'кп ', 'доверенност',\n  'записк', 'протокол', 'приказ', 'заявлени',\n  'шаблон', 'бланк', 'образец', 'форм',\n  'найди в документ', 'что написано', 'что сказано',\n  'о чём документ', 'о чем документ', 'содержание документ',\n  'загруженн', 'файл', 'текст документ',\n  'пункт', 'параграф', 'раздел', 'глав',\n  'срок', 'оплат', 'условия', 'реквизит',\n  'составь', 'подготовь', 'создай документ', 'напиши документ',\n  'база знаний', 'база документ', 'найди информаци',\n  'процитируй', 'цитат', 'выдержк',\n  'регламент', 'инструкци', 'положени', 'устав',\n  'накладн', 'счёт', 'счет-фактур', 'акт выполненн'\n];\n\nlet isDoc = false;\n\nfor (const kw of docKeywords) {\n  if (lower.includes(kw)) { isDoc = true; break; }\n}\n\n// Дополнительная проверка: вопрос о содержимом\nif (!isDoc && message.length > 15) {\n  const contentIndicators = ['что написано', 'что сказано', 'о чём', 'о чем', 'найди в', 'процитируй'];\n  const contentEntities = ['документ', 'файл', 'договор', 'акт', 'контракт'];\n  const hasQuestion = contentIndicators.some(q => lower.includes(q));\n  const hasEntity = contentEntities.some(e => lower.includes(e));\n  if (hasQuestion && hasEntity) isDoc = true;\n}\n\n// R8.89: открыт документ (focus_doc) — сильный сигнал «вопрос по документу».\n// Роутим в document-режим (кроме явной болтовни/приветствий), чтобы поиск шёл\n// по последнему просмотренному документу.\nconst __m = String(message || '').trim().toLowerCase();\nconst __small = ['привет','здравствуй','здравствуйте','спасибо','пожалуйста','пока','как дела','ок','окей','ладно','ага','угу','да','нет','хай'];\nconst __isSmall = __small.some(w => __m === w || __m.startsWith(w + ' ') || __m.startsWith(w + ',') || __m.startsWith(w + '!'));\nconst __focus = String(($('Агрегация').first().json.focus_doc) || '').trim();\nif (__focus && !__isSmall) isDoc = true;\n\nif (!isDoc) {\n  return [{ json: { message, mode: 'general', historyContext, session_id } }];\n}\n\nreturn [{ json: { message, mode: 'document', historyContext, session_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3180,
+        560
+      ],
+      "id": "rag-cls-0001",
+      "name": "Классификатор"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-general"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "list_documents",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-list-docs"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "get_document",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-get-document"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3520,
+        560
+      ],
+      "id": "rag-switch-0001",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "КРИТИЧЕСКОЕ ПРАВИЛО (важнее всех остальных, нарушение = неправильный ответ):\nНИКОГДА не начинай ответ со слов «Привет», «Здравствуйте», «Здравствуй», «Доброго времени суток», «Добрый день», «Добрый вечер», «Доброе утро», «Приветствую», «Hi», «Hello». Запрещено приветствие в любой форме в начале любого ответа. Даже если пользователь сам поздоровался — отвечай сразу по сути, без приветствия. Не используй эмодзи-приветствия (👋 и т.п.).\nНачинай ответ сразу с сути: с глагола, существительного, вопроса или утверждения по теме.\n\nТы — помощник по документам GigaChat. Главная задача — искать информацию в загруженных документах и помогать составлять новые.\n\n==================================================\nR8.40: ОТВЕТ — ВСЕГДА ПОЛНОЕ ПРЕДЛОЖЕНИЕ\n==================================================\nКаждый ответ обязан содержать минимум одно полное предложение с подлежащим и сказуемым. Никогда не возвращай инфинитив, отдельное слово из вопроса, или короткий фрагмент.\n\nПримеры правильных ответов:\nЗапрос: Как тебя звать?\nОтвет: Меня зовут Помощник по документам GigaChat.\n\nЗапрос: Как твоё имя?\nОтвет: Моё имя — Помощник по документам GigaChat.\n\nЗапрос: Кто ты?\nОтвет: Я помощник по документам GigaChat, ищу информацию в загруженных файлах.\n\n==================================================\nR8.40: МЕСТОИМЕНИЯ — ЧАСТЫЙ ИСТОЧНИК ОШИБОК\n==================================================\n- «меня», «мне», «я», «мой», «моё», «моя», «мои» — относятся К ПОЛЬЗОВАТЕЛЮ.\n- «тебя», «тебе», «ты», «твой», «твоё», «твоя», «твои» — относятся К ТЕБЕ.\n\nКогда пользователь говорит «меня зовут X» — это ЕГО имя. Запомни X.\nКогда пользователь спрашивает «как меня зовут?» — назови ЕГО имя из истории, а не своё.\nКогда пользователь спрашивает «как тебя зовут?» — назови своё имя (Помощник по документам GigaChat).\n\nОБЯЗАТЕЛЬНО смотри блок «Известно о пользователе» ниже, если он есть — там имя пользователя уже извлечено из истории.\n\nПримеры правильных ответов:\nЗапрос: Как меня зовут?\nЕсли имя известно из контекста: Вас зовут Джо.\nЕсли имя неизвестно: Вы пока не представились — как к вам обращаться?\n\nЗапрос: Меня зовут Джо\nОтвет: Приятно познакомиться, Джо. Чем помочь?\n\nЗапрос (после «Меня зовут Джо»): А меня?\nОтвет: Вас зовут Джо.\n==================================================\n\nНо ты дружелюбный собеседник и можешь поддержать разговор на любую тему.\n\nПравила:\n1. Отвечай кратко — максимум 5-7 предложений\n2. Если пользователь поздоровался — НЕ отвечай «Привет», сразу представься: «Я помощник по документам...»\n3. Если спрашивают что ты умеешь — объясни: поиск по документам, ответы на вопросы по содержимому, составление документов по шаблонам\n4. Если вопрос на другую тему — ответь по-дружески, в конце плавно упомяни что можешь помочь с документами\n5. Если пользователь продолжает общаться не про документы — просто общайся\n6. Пиши на русском языке\n7. Не используй markdown-заголовки\n8. Будь живым, не роботичным\n9. Не повторяй одну и ту же фразу-шаблон в нескольких ответах подряд\n\nПример 1:\nЗапрос: Привет\nОтвет: Я помощник по документам — могу найти информацию в загруженных файлах, ответить на вопросы по содержимому или помочь составить документ. Спросите, например, «что написано в договоре с ООО Ромашка?» или «составь акт выполненных работ».\n\nПример 2:\nЗапрос: Что ты умеешь?\nОтвет: Я работаю с вашей базой документов. Могу найти информацию в загруженных файлах, ответить на вопросы по содержимому договоров, актов и других документов. Также могу помочь составить новый документ по образцу из базы.\n\nПример 3:\nЗапрос: Как дела?\nОтвет: Норм, готов искать по документам. Есть запрос или просто заглянули?\n\nАнтипример (НЕЛЬЗЯ так):\nЗапрос: Привет\nПлохой ответ: Здравствуйте! Я помощник по документам...\nХороший ответ: Я помощник по документам — найду нужное в ваших файлах.\n\nКРИТИЧНО — НИКОГДА НЕ ВЫДУМЫВАЙ ДОКУМЕНТЫ:\n- НЕ называй имена документов которых ты не видел во фрагментах. У тебя нет доступа к списку файлов.\n- Если юзер спрашивает «какие документы у меня есть» — отвечай: «Чтобы посмотреть список — напиши «покажи документы» или «список документов».» Это переключит на специальный поток.\n- НЕ говори «у вас есть договор X, акт Y» если не видел их фрагменты.\n- Если юзер спрашивает про конкретный документ который ты не видел — отвечай «не могу проверить без поиска, задайте конкретный вопрос по содержанию документа».\n"
+            },
+            {
+              "content": "={{ $('Агрегация').first().json.user_name ? ('Имя пользователя: ' + $('Агрегация').first().json.user_name + '. НЕ начинай ответ с его имени и не обращайся по имени в каждом ответе — это навязчиво; имя используй редко, только когда это правда уместно. Когда он спрашивает «как меня зовут?» — отвечай этим именем.' + String.fromCharCode(10) + String.fromCharCode(10)) : '' }}{{ $json.historyContext }}{{ $json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        3860,
+        140
+      ],
+      "id": "rag-gen-general-0001",
+      "name": "Ответ GENERAL",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n  if (raw.error) {\n    return [{ json: { response: 'GigaChat не отвечает. Проверьте подключение.' } }];\n  }\n  const text = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n  if (!text) {\n    return [{ json: { response: 'Пустой ответ от LLM. Попробуйте ещё раз.' } }];\n  }\n  return [{ json: { response: text.trim() } }];\n} catch(e) {\n  return [{ json: { response: 'Ошибка обработки.' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        180
+      ],
+      "id": "rag-check-gen-0001",
+      "name": "Проверка ответа GEN"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Проверка ответа GEN').first().json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4880,
+        220
+      ],
+      "id": "rag-resp-gen-0001",
+      "name": "Ответ: GENERAL"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://130.100.94.119:8001/embed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: $('Валидация').first().json.message, type: 'query' }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3860,
+        960
+      ],
+      "id": "rag-embed-0001",
+      "name": "Эмбеддинг вопроса",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Готовим вектор для поиска похожих документов в PGVector.\n// SQL формируется в Postgres-ноде через queryReplacement ($1::vector) —\n// здесь нужно только извлечь вектор и проверить его валидность.\ntry {\n  const data = $input.first().json;\n\n  if (data.error) {\n    return [{ json: { search_sql: null, fallback: 'Ошибка получения эмбеддинга. Поиск по документам недоступен.' } }];\n  }\n\n  let vector = null;\n  if (data.data && Array.isArray(data.data) && data.data[0] && data.data[0].embedding) {\n    vector = data.data[0].embedding;\n  } else if (data.embedding && Array.isArray(data.embedding)) {\n    vector = data.embedding;\n  } else if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'number') {\n    vector = data;\n  }\n\n  if (!vector || vector.length === 0) {\n    return [{ json: { search_sql: null, fallback: 'Не удалось получить вектор вопроса. Попробуйте переформулировать.' } }];\n  }\n\n  // Defense-in-depth: проверяем что вектор — массив конечных чисел.\n  if (!vector.every(v => typeof v === 'number' && Number.isFinite(v))) {\n    return [{ json: { search_sql: null, fallback: 'Невалидный вектор от эмбеддера.' } }];\n  }\n\n  // R8.89: «акцент на последний просмотренный документ». Фронт шлёт focus_doc=\n  // 'source|id'. Если он задан — поиск ограничиваем этим документом (тот источник,\n  // другой возвращает пусто). SQL строим тут (а не в выражении Postgres-ноды),\n  // чтобы избежать кошмара экранирования в {{ }}.\n  const __fd = String(($('Валидация').first().json.focus_doc) || '').trim();\n  const __fbar = __fd.indexOf('|');\n  const focus_source = __fd ? (__fbar >= 0 ? __fd.slice(0, __fbar) : 'internal') : '';\n  const focus_id = __fd ? (__fbar >= 0 ? __fd.slice(__fbar + 1) : __fd) : '';\n  const __vs = '[' + vector.join(',') + ']';\n  const EMPTY_INT = \"SELECT '' as chunk_text, '' as filename, 0 as similarity, 'наш' as source\";\n  const EMPTY_EXT = \"SELECT '' as chunk_text, '' as filename, 0 as similarity, 'внешний' as source\";\n  const BASE_INT = \"SELECT filename, chunk_index, chunk_text, 1 - (embedding <=> $1::vector) AS similarity, 'наш' AS source FROM documents\";\n  const BASE_EXT = 'SELECT file_name AS filename, chunk_index, \"text\" AS chunk_text, 1 - (\"vector\" <=> $1::vector) AS similarity, \\'внешний\\' AS source FROM _vectordocuments.v_general';\n  let internal_sql, internal_params, external_sql, external_params;\n  if (focus_source === 'internal') {\n    internal_sql = BASE_INT + ' WHERE filename = $2 ORDER BY embedding <=> $1::vector LIMIT 5';\n    internal_params = [__vs, focus_id];\n    external_sql = EMPTY_EXT; external_params = [];\n  } else if (focus_source === 'external') {\n    internal_sql = EMPTY_INT; internal_params = [];\n    external_sql = BASE_EXT + ' WHERE document_id::text = $2 ORDER BY \"vector\" <=> $1::vector LIMIT 5';\n    external_params = [__vs, focus_id];\n  } else {\n    internal_sql = BASE_INT + ' ORDER BY embedding <=> $1::vector LIMIT 5';\n    internal_params = [__vs];\n    external_sql = BASE_EXT + ' ORDER BY \"vector\" <=> $1::vector LIMIT 5';\n    external_params = [__vs];\n  }\n  return [{ json: { search_sql: true, vector_str: __vs, vector_size: vector.length, focus_source, focus_id, internal_sql, internal_params, external_sql, external_params } }];\n} catch (e) {\n  return [{ json: { search_sql: null, fallback: 'Ошибка обработки эмбеддинга: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        1020
+      ],
+      "id": "rag-build-search-0001",
+      "name": "Построить поиск"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.internal_sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.internal_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        4540,
+        960
+      ],
+      "id": "rag-search-0001",
+      "name": "Поиск в документах",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(item => item.json);\nconst buildSearch = $('Построить поиск').first().json;\n\n// Если эмбеддинг упал — fallback\nif (buildSearch.fallback) {\n  return [{json: {has_docs: false, documents: '', fallback_message: buildSearch.fallback}}];\n}\n\n// Если Postgres вернул ошибку (БД упала / SQL-syntax), нода с\n// onError:continueRegularOutput отдаёт {error: '...'} вместо рядов.\n// Без этой проверки фильтр ниже отсеет всё → пользователь увидит\n// «не нашли документов», хотя на самом деле упала БД. Отличаем явно.\nif (items.length > 0 && items[0] && items[0].error) {\n  console.log('[rag] ошибка запроса documents:', items[0].error); return [{json: {has_docs: false, documents: '', fallback_message: 'База документов временно недоступна. Повторите запрос через минуту.'}}];\n}\n\n// Жёсткий порог similarity 0.5 (раньше был 0.3 — пропускал мусорные\n// результаты, на которых LLM галлюцинировала и выдумывала «факты из файла»).\nconst MIN_SIMILARITY = 0.5;\n\nconst docs = items.filter(item =>\n  item && item.chunk_text && item.chunk_text.trim && item.chunk_text.trim().length > 0 &&\n  (item.similarity === undefined || item.similarity >= MIN_SIMILARITY)\n);\n\nif (docs.length === 0) {\n  return [{json: {has_docs: false, documents: '', fallback_message: 'В базе документов не найдено информации по вашему запросу. Загрузите нужные документы через страницу загрузки.'}}];\n}\n\n// R5 BUG-4 fix: убран spread-check (top.similarity - tail.similarity < 0.05).\n// Он отвергал валидные кейсы где все найденные чанки одинаково релевантны\n// (типично для xlsx-таблиц с похожими строками или серии шаблонов договоров).\n// Юзер просил «не отказывайся отвечать через эту отговорку».\n// MIN_SIMILARITY уже фильтрует мусор; дополнительный гейт лишний.\n\nvar maxSim = Math.max.apply(null, docs.map(function(d){ return typeof d.similarity === 'number' ? d.similarity : 1; })); var lowConfidence = maxSim < 0.6; const context = docs.map((d, i) => {\n  const src = ''; // R8.89: имя файла НЕ кладём в контекст — LLM не должна писать название документа\n  return (i + 1) + '.' + src + '\\n' + d.chunk_text;\n}).join('\\n\\n');\n\nvar finalContext = lowConfidence ? ('ВНИМАНИЕ: найденные фрагменты слабо релевантны — начни ответ с предупреждения «Документы могут быть недостаточно релевантны, проверьте оригинал» и отвечай осторожно. ' + context) : context; return [{json: {has_docs: true, documents: finalContext, doc_count: docs.length, low_confidence: lowConfidence, filenames: [...new Set(docs.map(d => d.filename).filter(Boolean))]}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5560,
+        1000
+      ],
+      "id": "rag-check-docs-0001",
+      "name": "Проверка документов"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.has_docs }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    },
+                    "id": "rule-has-docs"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        5900,
+        1000
+      ],
+      "id": "rag-docs-switch-0001",
+      "name": "Есть документы?"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Ты — помощник по документам. Тебе дан вопрос пользователя и фрагменты документа, который он сейчас просматривает.\n\nКРИТИЧЕСКИ ВАЖНО — НЕ ВЫДУМЫВАЙ ДАННЫЕ:\n- Отвечай ТОЛЬКО на основе предоставленных фрагментов. НЕ ПРИДУМЫВАЙ ничего.\n- Если фрагменты не содержат ответа — честно скажи «в документе этого нет», не дополняй из общих знаний.\n- Если запрос про конкретное имя/число/дату которого нет во фрагменте — НЕ догадывайся, скажи «не нашёл».\n- Сразу с факта: «Срок оплаты — 10 дней...», «В документе указано...», «Информации по этому вопросу в документе нет.»\n- НЕ начинай ответ с «Давайте проанализируем», «Конечно», «Согласно представленным фрагментам».\n\nНЕ ПИШИ НАЗВАНИЕ ДОКУМЕНТА (ОБЯЗАТЕЛЬНО):\n- НИКОГДА не упоминай и не пиши название файла/документа в ответе — ни в скобках вида «(файл: ...)», ни в тексте, ни в любом другом виде.\n- Пользователь уже видит, какой документ открыт. Просто отвечай по сути, без ссылок на имя файла или источник.\n\nТАБЛИЧНЫЕ ДАННЫЕ (xlsx/csv — фрагменты со столбцами и строками):\n- Воспроизводи ЯЧЕЙКИ ТОЛЬКО так, как они во фрагменте. Каждое имя, число, дата, должность — буквально.\n- НЕ добавляй строк/ячеек/полей которых нет в исходнике.\n- НЕ «округляй» и не «уточняй» числа («120 000» НЕ становится «120 тысяч ≈ 125 000»).\n- Если фрагмент обрезан в середине строки — приведи только ту часть что есть, не «допиши» окончание.\n- Если в ячейке пусто/null — пиши «—» или «(пусто)», не подставляй типичное значение.\n- Если пользователь спрашивает «есть ли в таблице X» а X во фрагменте отсутствует — ответ «в найденных строках X нет», даже если X похож на типичную запись.\n\nПравила:\n1. Пиши на русском\n2. Максимум 10 предложений\n3. Если данные в нескольких фрагментах — объедини их в один связный ответ (БЕЗ упоминания имён файлов)\n4. Если вопрос — составить документ, используй фрагменты как образец и помечай место подстановки [подставь сюда]\n5. НЕ копируй фрагменты целиком, выделяй суть\n6. НЕ используй markdown-заголовки (##), только обычный текст\n\nПРИМЕР 1 — нашёл точный ответ:\nВопрос: Какие сроки оплаты?\nФрагмент: Оплата производится в течение 10 рабочих дней с момента подписания акта выполненных работ.\nОтвет: Оплата производится в течение 10 рабочих дней с момента подписания акта выполненных работ.\n\nПРИМЕР 2 — ничего не нашёл:\nВопрос: Какая ставка по кредиту?\nФрагмент: Стороны заключили договор о поставке товаров...\nОтвет: В документе информации о ставке по кредиту нет — это договор о поставке товаров, не кредитный. Уточните вопрос.\n\nПРИМЕР 3 — табличный запрос, ответ ТОЛЬКО по строкам во фрагменте:\nВопрос: Сколько менеджеров в отделе продаж?\nФрагмент: Иван Иванов | Менеджер по продажам | Продажи | 60000; Мария Петрова | Менеджер по продажам | Продажи | 65000; Алексей Сидоров | Бухгалтер | Бухгалтерия | 55000\nОтвет: В найденных строках 2 менеджера по продажам: Иван Иванов (60000) и Мария Петрова (65000). Других менеджеров в выдаче нет — если есть ещё, уточните запрос.\n\nПРИМЕР 4 — запрашивают строку которой НЕТ во фрагменте:\nВопрос: Какая зарплата у Кузнецова?\nФрагмент: Иван Иванов | Менеджер | 60000; Мария Петрова | Бухгалтер | 55000\nОтвет: В найденных строках Кузнецова нет — попадаются только Иван Иванов и Мария Петрова. Возможно, нужная строка не попала в поиск — уточните запрос.\n\nНЕПРАВИЛЬНО (так НЕ делай):\n- Писать название файла/документа в ответе — ни в скобках, ни в тексте.\n- «Давайте детально проанализируем представленные фрагменты...»\n- Придумывать данные, которых нет во фрагментах.\n- Дополнять обрезанную ячейку «Анал...» до «Аналитик» без оговорки."
+            },
+            {
+              "content": "=Запрос: {{ $('Валидация').first().json.message }}\n\nНайденные фрагменты ({{ $('Проверка документов').first().json.doc_count }} шт.):\n\n{{ $('Проверка документов').first().json.documents }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        6240,
+        880
+      ],
+      "id": "rag-gen-doc-0001",
+      "name": "Генерация ответа",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n  if (raw.error) {\n    return [{ json: { response: 'Не удалось обработать запрос к документам. Попробуйте переформулировать.' } }];\n  }\n  const text = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n  if (!text) {\n    return [{ json: { response: 'Пустой ответ от LLM. Попробуйте ещё раз.' } }];\n  }\n  return [{ json: { response: text.trim() } }];\n} catch(e) {\n  return [{ json: { response: 'Ошибка генерации ответа.' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6580,
+        880
+      ],
+      "id": "rag-check-doc-0001",
+      "name": "Проверка ответа DOC"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Проверка ответа DOC').first().json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        7260,
+        880
+      ],
+      "id": "rag-resp-doc-0001",
+      "name": "Ответ: DOC"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: $('Проверка документов').first().json.fallback_message}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        6580,
+        1100
+      ],
+      "id": "rag-resp-fallback-0001",
+      "name": "Ответ: нет документов"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, SUBSTRING(content, 1, 2000) AS content FROM chat_memory WHERE session_id = $1 AND user_id = $2::integer ORDER BY created_at DESC, id DESC LIMIT 30",
+        "options": {
+          "queryReplacement": "={{ [$('Валидация').first().json.session_id, $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2160,
+        560
+      ],
+      "id": "rag-load-history-0001",
+      "name": "Загрузить историю",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const historyRows = $input.all().reverse();\nlet historyContext = '';\nif (historyRows.length > 0) {\n  const lines = historyRows.map(item => {\n    const role = item.json.role === 'user' ? 'Пользователь' : 'Ассистент';\n    return role + ': ' + (item.json.content || '');\n  });\n  historyContext = 'История диалога:\\n' + lines.join('\\n') + '\\n\\n';\n}\nconst v = $('Валидация').first().json;\nreturn [{json: {message: v.message, session_id: v.session_id, historyContext: historyContext, doc_get: (v.doc_get || ''), user_name: (v.user_name || ''), focus_doc: (v.focus_doc || '')}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        560
+      ],
+      "id": "rag-aggregate-0001",
+      "name": "Агрегация"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, user_id) VALUES ($1, 'user', $2, $3::integer) RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$json.session_id, ($json.message || '').replace(/\\[ВЛОЖЕНИЕ:[^\\]]+\\][\\s\\S]*?\\[\\/ВЛОЖЕНИЕ\\]\\s*/g, '[прикреплён файл] ').replace(/\\[не удалось обработать файл:[^\\]]+\\]\\s*/g, '[ошибка вложения] '), $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2840,
+        560
+      ],
+      "id": "rag-save-question-0001",
+      "name": "Сохранить вопрос",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, user_id) SELECT $1, 'assistant', $2, $3::integer WHERE LENGTH(TRIM($2)) > 0 AND $2 NOT IN ('GigaChat не отвечает. Проверьте подключение.','Ошибка обработки.','Ошибка генерации ответа.','GigaChat не отвечает. Проверьте подключение.','Пустой ответ от LLM. Попробуйте ещё раз.','Не удалось обработать запрос к документам. Попробуйте переформулировать.') RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $json.response || '', $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        4540,
+        180
+      ],
+      "id": "rag-save-resp-gen-0001",
+      "name": "Сохранить ответ GEN",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, user_id) SELECT $1, 'assistant', $2, $3::integer WHERE LENGTH(TRIM($2)) > 0 AND $2 NOT IN ('GigaChat не отвечает. Проверьте подключение.','Ошибка обработки.','Ошибка генерации ответа.','GigaChat не отвечает. Проверьте подключение.','Пустой ответ от LLM. Попробуйте ещё раз.','Не удалось обработать запрос к документам. Попробуйте переформулировать.') RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $json.response || '', $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        6920,
+        880
+      ],
+      "id": "rag-save-resp-doc-0001",
+      "name": "Сохранить ответ DOC",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l, $2::text AS msg) SELECT 0 AS id FROM _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $('Проверка документов').first().json.fallback_message || ''] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        6240,
+        1100
+      ],
+      "id": "rag-save-resp-nodocs-0001",
+      "name": "Сохранить ответ NO-DOCS",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1140,
+        940
+      ],
+      "id": "rag-sso-sql-verify-V1",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\n// PostgreSQL сбой: data может быть null или содержать .error поле — НЕ\n// помечаем как unauthorized, иначе юзер видит ложный auth_required редирект.\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        940
+      ],
+      "id": "rag-sso-token-result-V1",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-rag-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1820,
+        940
+      ],
+      "id": "rag-sso-token-if-V1",
+      "name": "Token OK?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT filename, COUNT(*) AS chunks, MIN(created_at) AS uploaded_at, 'internal' AS source, filename AS doc_id FROM documents WHERE filename IS NOT NULL AND filename <> '' GROUP BY filename ORDER BY uploaded_at DESC LIMIT 1000;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3860,
+        360
+      ],
+      "id": "rag-list-docs-sql-V1",
+      "name": "SELECT DISTINCT documents",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// v_general хранит ЧАНКИ; «Список внешний» группирует их по document_id (GROUP BY).\n// Наша documents — чанки, уже сгруппированные по filename в SQL.\n// Поэтому НЕ дедупим по filename здесь: дедуп схлопнул бы внешние\n// документы с пустыми/одинаковыми именами. Просто фильтруем\n// error-строки; каждая входная строка = ОДИН документ (чанки уже сгруппированы в SQL).\nconst all = $input.all().map(i => i.json);\nconst rows = all.filter(r => r && !r.error && r.filename && String(r.filename).trim());\n\n// R8.81: чистим кривые имена из БД (особенно офисная rel_db). В file_name лежат\n// полные пути: /app/site/uploads/.../docx/Пояснительная.docx или\n// D:\\project\\...\\docx\\Шаблон_ответа_13.docx. Берём только имя файла (после\n// последнего / или обратного слэша) и меняем '_' на пробел (там '_' вместо пробела).\nfunction cleanName(raw) {\n  var s = String(raw).trim();\n  var cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\\\'));\n  if (cut >= 0) s = s.slice(cut + 1);\n  s = s.split('_').join(' ');\n  while (s.indexOf('  ') !== -1) s = s.split('  ').join(' ');\n  return s.trim() || String(raw).trim();\n}\nlet response;\nif (!rows.length) {\n  response = 'В базе документов пока ничего нет. Загрузите файлы через «Загрузка документов» на дашборде.';\n} else {\n  const NL = String.fromCharCode(10);\n  const total = rows.length;\n  const showLimit = 10000;\n  const lines = rows.slice(0, showLimit).map((r, idx) => {\n    const n = (r.chunks && r.chunks > 1) ? (' (' + r.chunks + ' фрагм.)') : '';\n    const __num = (idx + 1) + '. ';\n    const __label = cleanName(r.filename) + n;\n    const __src = r.source || 'internal';\n    const __did = (r.doc_id != null) ? String(r.doc_id) : '';\n    // R8.83: номер «N. » — ВНЕ маркера (остаётся белым); кликабельна только\n    // имя-метка (внутри [[DOC|...]] → ссылка).\n    return __did ? (__num + '[[DOC|' + __src + '|' + encodeURIComponent(__did) + '|' + __label + ']]') : (__num + __label);\n  });\n  response = 'Загружено документов: ' + total + '.' + NL + lines.join(NL);\n  if (total > showLimit) response += NL + '...и ещё ' + (total - showLimit) + '.';\n}\n// R8.84: псевдо-стриминг списка (cps 300). Скрытые маркеры [[DOC|…]] typewriter\n// перепрыгивает (skip в тике) → длинный encoded id не создаёт пауз при печати.\nreturn [{ json: { response, cps: 300 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4540,
+        400
+      ],
+      "id": "rag-list-docs-fmt-V1",
+      "name": "Формат списка документов"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.response, cps: $json.cps }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4880,
+        440
+      ],
+      "id": "rag-resp-list-docs-V1",
+      "name": "Ответ: список документов"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.external_sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.external_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        4540,
+        1160
+      ],
+      "id": "rag-external-search-r835",
+      "name": "Поиск внешний",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "notes": "Поиск во ВНЕШНЕЙ таблице rel_db._vectordocuments.v_general. Маппинг: file_name→filename, text→chunk_text, vector→embedding. Чтобы заработало: создай в Credentials Postgres-credential с database=rel_db (имя 'Postgres rel_db') и выбери его здесь. Без этого нод тихо вернёт ошибку, поиск пойдёт только по нашей documents.",
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Postgres rel_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4880,
+        1000
+      ],
+      "id": "rag-merge-r835",
+      "name": "Merge внешний+наш"
+    },
+    {
+      "parameters": {
+        "jsCode": "// R8.35: объединяем результаты от двух Поисков (через Merge append).\n// Каждый item имеет поле source ('наш'|'внешний'). Чистим ошибки/пустоты,\n// сортируем по similarity DESC, оставляем top 5.\nconst all = $input.all().map(i => i.json);\nconst clean = all.filter(r => r && !r.error && r.chunk_text && r.chunk_text.trim && r.chunk_text.trim().length > 0);\nclean.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));\nconst __pass = clean.filter(function (x) { return x.similarity === undefined || x.similarity >= 0.5; }); const top = (__pass.length ? __pass : clean).slice(0, 5);\nreturn top.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5220,
+        1000
+      ],
+      "id": "rag-combine-r835",
+      "name": "Объединить документы"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COALESCE(NULLIF(MAX(file_name), ''), 'Документ #' || document_id::text) AS filename, COUNT(*) AS chunks, MIN(uploaded_at) AS uploaded_at, 'external' AS source, document_id::text AS doc_id FROM _vectordocuments.v_general GROUP BY document_id ORDER BY MIN(uploaded_at) DESC NULLS LAST LIMIT 1000",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3860,
+        560
+      ],
+      "id": "rag-ext-list-r842",
+      "name": "Список внешний",
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Postgres rel_db"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "notes": "Список документов из внешней rel_db._vectordocuments.v_general. Тот же credential 'Postgres rel_db' что и Поиск внешний."
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4200,
+        400
+      ],
+      "id": "rag-merge-list-r842",
+      "name": "Merge списки"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.doc_source }}",
+                    "rightValue": "external",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cond-src-ext"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3860,
+        760
+      ],
+      "id": "rag-doc-src-sw-V1",
+      "name": "Источник контента?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT string_agg(\"text\", chr(10) || chr(10) ORDER BY chunk_index) AS content, COUNT(*) AS chunks, COALESCE(NULLIF(MAX(file_name), ''), '') AS filename FROM _vectordocuments.v_general WHERE document_id::text = $1",
+        "options": {
+          "queryReplacement": "={{ [$json.doc_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        4200,
+        620
+      ],
+      "id": "rag-doc-content-ext-V1",
+      "name": "Контент: внешний",
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Postgres rel_db"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "notes": "Список документов из внешней rel_db._vectordocuments.v_general. Тот же credential 'Postgres rel_db' что и Поиск внешний."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT string_agg(chunk_text, chr(10) || chr(10) ORDER BY chunk_index) AS content, COUNT(*) AS chunks, $1 AS filename FROM documents WHERE filename = $1",
+        "options": {
+          "queryReplacement": "={{ [$json.doc_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        4200,
+        820
+      ],
+      "id": "rag-doc-content-int-V1",
+      "name": "Контент: наш",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function cleanName(raw){var s=String(raw||'').trim();var c=Math.max(s.lastIndexOf('/'),s.lastIndexOf('\\\\'));if(c>=0)s=s.slice(c+1);return s.split('_').join(' ').replace(/\\s+/g,' ').trim();}\nconst row = ($input.first() && $input.first().json) || {};\nconst content = String(row.content || '').trim();\nlet response;\nif (!content) {\n  response = 'Не удалось загрузить содержимое документа — возможно, текст не был проиндексирован.';\n} else {\n  const fn = cleanName(row.filename) || 'Документ';\n  const CAP = 1000000;\n  let body = content, note = '';\n  if (body.length > CAP) { body = body.slice(0, CAP); note = '\\n\\n…(показано ' + CAP + ' символов из ' + content.length + ')'; }\n  response = '[[DOCHEAD|' + fn + ']]\\n\\n' + body + note;\n}\n// R8.95: пословный стриминг (wordMode) + адаптивная скорость — чтобы и маленький\n// документ шёл «по словам» читаемо, и большой (до 1 млн символов) не полз минутами.\n// cps ≈ длина/8 (≈8 сек на показ), в рамках [400, 100000].\nconst __cps = Math.max(400, Math.min(100000, Math.ceil(response.length / 8)));\nreturn [{ json: { response, cps: __cps, wordMode: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4540,
+        620
+      ],
+      "id": "rag-doc-content-fmt-V1",
+      "name": "Формат контента"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.response, cps: $json.cps, lineMode: $json.lineMode }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4880,
+        660
+      ],
+      "id": "rag-doc-content-resp-V1",
+      "name": "Ответ: контент"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook RAG": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Запрос валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Запрос валиден?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка валидации",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Классификатор": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Ответ GENERAL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SELECT DISTINCT documents",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Список внешний",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Источник контента?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Эмбеддинг вопроса",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SELECT DISTINCT documents": {
+      "main": [
+        [
+          {
+            "node": "Merge списки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат списка документов": {
+      "main": [
+        [
+          {
+            "node": "Ответ: список документов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ответ GENERAL": {
+      "main": [
+        [
+          {
+            "node": "Проверка ответа GEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка ответа GEN": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ GEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Эмбеддинг вопроса": {
+      "main": [
+        [
+          {
+            "node": "Построить поиск",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Построить поиск": {
+      "main": [
+        [
+          {
+            "node": "Поиск в документах",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Поиск внешний",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Поиск в документах": {
+      "main": [
+        [
+          {
+            "node": "Merge внешний+наш",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка документов": {
+      "main": [
+        [
+          {
+            "node": "Есть документы?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Есть документы?": {
+      "main": [
+        [
+          {
+            "node": "Генерация ответа",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Сохранить ответ NO-DOCS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Генерация ответа": {
+      "main": [
+        [
+          {
+            "node": "Проверка ответа DOC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка ответа DOC": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ DOC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить историю": {
+      "main": [
+        [
+          {
+            "node": "Агрегация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агрегация": {
+      "main": [
+        [
+          {
+            "node": "Сохранить вопрос",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить вопрос": {
+      "main": [
+        [
+          {
+            "node": "Классификатор",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ GEN": {
+      "main": [
+        [
+          {
+            "node": "Ответ: GENERAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ DOC": {
+      "main": [
+        [
+          {
+            "node": "Ответ: DOC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ NO-DOCS": {
+      "main": [
+        [
+          {
+            "node": "Ответ: нет документов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Загрузить историю",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка валидации",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Поиск внешний": {
+      "main": [
+        [
+          {
+            "node": "Merge внешний+наш",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge внешний+наш": {
+      "main": [
+        [
+          {
+            "node": "Объединить документы",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Объединить документы": {
+      "main": [
+        [
+          {
+            "node": "Проверка документов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Список внешний": {
+      "main": [
+        [
+          {
+            "node": "Merge списки",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge списки": {
+      "main": [
+        [
+          {
+            "node": "Формат списка документов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Источник контента?": {
+      "main": [
+        [
+          {
+            "node": "Контент: внешний",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Контент: наш",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Контент: внешний": {
+      "main": [
+        [
+          {
+            "node": "Формат контента",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Контент: наш": {
+      "main": [
+        [
+          {
+            "node": "Формат контента",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат контента": {
+      "main": [
+        [
+          {
+            "node": "Ответ: контент",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 70
+  },
+  "versionId": "rag-agent-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ad16de428774283a74f2bef15a9b31f771c3828cae096d3c33aab7bd18058813"
+  },
+  "id": "rag-agent-001",
+  "tags": []
+}

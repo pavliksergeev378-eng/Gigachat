@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Извлечение текста — GigaChat</title>
+<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+<style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
+<style>
+:root {
+    --bg-primary: #1f1f1e;
+    --bg-secondary: #1f1e1c;
+    --bg-input: #2c2c2a;
+    --bg-card: #1f1e1c;
+    --border: #363432;
+    --text-primary: #d4d4d4;
+    --text-secondary: #8a8a8a;
+    --text-muted: #5a5a5a;
+    --accent: #d4a574;
+    --accent-hover: #c08a5a;
+    --accent-light: rgba(212, 165, 116, 0.12);
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+:root[data-theme="light"] {
+    --bg-primary: #fdfdfc;
+    --bg-secondary: #f3f1ec;
+    --bg-input: #fffffe;
+    --bg-card: #fffffe;
+    --border: #e3dfd5;
+    --text-primary: #1f1f1e;
+    --text-secondary: #6b6b68;
+    --text-muted: #a8a59f;
+    --accent: #b8895d;
+    --accent-hover: #a0764d;
+    --accent-light: rgba(184, 137, 93, 0.15);
+}
+/* Общие стили tool-страницы (body, btn-home, header, main, intro, drop-zone,
+   btn-primary, loading, progress-bar, error-box, result-box, status-bar и
+   статус-точка) — в _shared.js через GigaChat.injectToolCss(). Здесь —
+   только per-page правила. */
+#fileInput { display: none; }
+#resultText {
+    width: 100%;
+    min-height: 380px;
+    max-height: 70vh;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 14px 18px;
+    font-family: Consolas, 'Cascadia Code', monospace;
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: hidden;
+    overflow-y: auto;
+    resize: vertical;
+    outline: none;
+    tab-size: 4;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+#resultText::-webkit-scrollbar { width: 8px; }
+#resultText::-webkit-scrollbar-track { background: transparent; }
+#resultText::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+#resultText::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+</style>
+<script src="_config.js"></script>
+<script src="_shared-guard.js"></script>
+<script src="_shared.js"></script>
+<script src="lib/jszip.min.js"></script>
+</head>
+<body>
+
+<header>
+    <div class="header-left"><a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a><h1>Извлечение текста</h1></div>
+    <div class="header-right">
+        <div class="status-bar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
+    </div>
+</header>
+
+<main>
+    <div class="intro">
+        <h2>Что делает инструмент</h2>
+        <p>Загружаете файл — получаете <b>чистый текст</b> с сохранёнными отступами. Изображения и PDF проходят через OCR, Word/Excel/CSV — читаются напрямую.</p>
+        <p>Принимаются <code>.pdf</code>, <code>.doc</code>, <code>.docx</code>, <code>.xls</code>, <code>.xlsx</code>, <code>.csv</code>, <code>.txt</code>, <code>.md</code>, <code>.log</code>, <code>.rtf</code>, <code>.odt</code>, а также изображения. Максимум — 50 МБ.</p>
+    </div>
+
+    <label class="drop-zone" id="uploadArea" for="fileInput">
+        <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg></div>
+        <div class="title">Перетащите файл сюда или нажмите для выбора</div>
+        <div class="hint">PDF, Word, Excel, CSV, изображения (макс. 50 МБ)</div>
+        <div class="filename" id="fileName"></div>
+        <div class="filesize" id="fileSize"></div>
+    </label>
+
+    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.log,.rtf,.odt,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp,.gif,.heic" onchange="fileSelected(this)">
+
+    <button id="sendBtn" class="btn-primary" onclick="sendFile()" disabled>Извлечь текст</button>
+
+    <div class="loading" id="loading">
+        <div>Обрабатываю файл...</div>
+        <div class="timer" id="timer">0 сек</div>
+        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="result-box" id="resultBox">
+        <div class="result-header">
+            <div class="result-meta" id="resultMeta"></div>
+            <div class="result-actions">
+                <button class="btn-action" onclick="copyResult()" id="btnCopy">Копировать</button>
+                <button class="btn-action" onclick="downloadResult()">Скачать</button>
+            </div>
+        </div>
+        <textarea id="resultText" readonly></textarea>
+    </div>
+
+    <div class="reset-btn" id="resetBtn">
+        <button onclick="resetForm()">Извлечь из другого файла</button>
+    </div>
+</main>
+
+<script>
+    // Auth-gate: без токена → /login.html. После успеха UI становится visible.
+    GigaChat.auth.requireAuth({ onOk: function () {
+        document.documentElement.classList.remove('gc-pending-auth');
+    }});
+    GigaChat.injectToolCss(); // общие стили tool-страниц
+    var WEBHOOK_URL = GigaChat.webhookUrl('extract-text');
+    var FETCH_TIMEOUT_MS = 300000;
+    var selectedFile = null;
+    var isProcessing = false;
+    var timerInterval = null;
+    var startTime = 0;
+    var lastResultText = '';
+    // LOW-аудит: для отображения таблицы выравниваем пробелами (padTabularText),
+    // но при скачивании это теряет табы (TSV не парсится обратно). Храним исходный
+    // текст с табами отдельно и скачиваем именно его.
+    var lastResultRaw = '';
+    var lastFileName = '';
+
+    var ALLOWED_EXTENSIONS = ['pdf','doc','docx','xls','xlsx','csv','txt','md','log','rtf','odt','jpg','jpeg','png','tiff','tif','bmp','webp','gif','heic'];
+
+    var uploadArea = document.getElementById('uploadArea');
+    var sendBtn = document.getElementById('sendBtn');
+    var loading = document.getElementById('loading');
+    var resultBox = document.getElementById('resultBox');
+    var errorBox = document.getElementById('errorBox');
+    var resetBtnDiv = document.getElementById('resetBtn');
+    var progressBar = document.getElementById('progressBar');
+    var progressFill = document.getElementById('progressFill');
+    var resultText = document.getElementById('resultText');
+    var resultMeta = document.getElementById('resultMeta');
+
+    var statusDot = document.getElementById('statusDot');
+    var statusText = document.getElementById('statusText');
+    GigaChat.startHealthCheck(WEBHOOK_URL, statusDot, statusText);
+
+    function hasFiles(e) {
+        var t = e.dataTransfer && e.dataTransfer.types;
+        if (!t) return false;
+        for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
+        return false;
+    }
+    uploadArea.addEventListener('dragover', function(e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        uploadArea.classList.add('dragging');
+    });
+    uploadArea.addEventListener('dragleave', function(e) {
+        if (e.relatedTarget && uploadArea.contains(e.relatedTarget)) return;
+        uploadArea.classList.remove('dragging');
+    });
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragging');
+        if (e.dataTransfer.files.length > 0) {
+            var file = e.dataTransfer.files[0];
+            var ext = (file.name || '').split('.').pop().toLowerCase();
+            if (ALLOWED_EXTENSIONS.indexOf(ext) === -1) {
+                alert('Неподдерживаемый формат: .' + ext);
+                return;
+            }
+            selectedFile = file;
+            showFileInfo(selectedFile);
+        }
+    });
+
+    function fileSelected(input) {
+        if (input.files.length > 0) {
+            selectedFile = input.files[0];
+            showFileInfo(selectedFile);
+        }
+    }
+
+    function showFileInfo(file) {
+        document.getElementById('fileName').textContent = file.name;
+        var sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        document.getElementById('fileSize').textContent = sizeMB + ' МБ';
+        sendBtn.disabled = false;
+        if (file.size > 50 * 1024 * 1024) {
+            document.getElementById('fileSize').textContent = sizeMB + ' МБ — слишком большой (макс. 50 МБ)';
+            document.getElementById('fileSize').style.color = 'var(--error)';
+            sendBtn.disabled = true;
+        } else {
+            document.getElementById('fileSize').style.color = '';
+        }
+    }
+
+    function startTimer() {
+        startTime = Date.now();
+        var timerEl = document.getElementById('timer');
+        timerInterval = setInterval(function() {
+            var elapsed = Math.floor((Date.now() - startTime) / 1000);
+            var min = Math.floor(elapsed / 60);
+            var sec = elapsed % 60;
+            timerEl.textContent = min > 0 ? (min + ' мин ' + sec + ' сек') : (sec + ' сек');
+            var pct = Math.min(95, (elapsed / 60) * 100);
+            progressFill.style.width = pct + '%';
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        progressFill.style.width = '100%';
+    }
+
+    async function sendFile() {
+        if (!selectedFile || isProcessing) return;
+        isProcessing = true;
+        sendBtn.disabled = true;
+        loading.classList.add('show');
+        progressBar.classList.add('show');
+        progressFill.style.width = '0%';
+        resultBox.style.display = 'none';
+        errorBox.style.display = 'none';
+        resetBtnDiv.classList.remove('show');
+        startTimer();
+
+        // timeoutId объявляем сверху: чтобы finally видел его независимо от того,
+        // прошли мы через OCR-ветку или нет (для browser-extraction timeout не нужен,
+        // но finally всё равно сработает с null).
+        var timeoutId = null;
+
+        try {
+            // Развилка: docx/xlsx/txt/csv парсим в браузере (мгновенно, без OCR).
+            // PDF/изображения отправляем на n8n + OCR.
+            if (GigaChat.canExtractInBrowser(selectedFile.name)) {
+                var loadingTextEl = loading.querySelector('div');
+                if (loadingTextEl) loadingTextEl.textContent = 'Извлекаю текст в браузере...';
+
+                var extractedText;
+                try {
+                    extractedText = await GigaChat.extractBrowserText(selectedFile);
+                } catch (extractErr) {
+                    stopTimer();
+                    loading.classList.remove('show');
+                    errorBox.textContent = 'Не удалось извлечь текст: ' + (extractErr.message || extractErr);
+                    errorBox.style.display = 'block';
+                    isProcessing = false;
+                    resetBtnDiv.classList.add('show');
+                    return;
+                }
+
+                stopTimer();
+                loading.classList.remove('show');
+
+                if (!extractedText || !extractedText.trim()) {
+                    errorBox.textContent = 'Из файла не удалось извлечь текст (пустой).';
+                    errorBox.style.display = 'block';
+                } else {
+                    var ext = GigaChat.fileExt(selectedFile.name);
+                    // Для xlsx/xlsm/csv и docx (если внутри есть таблицы) выравниваем
+                    // колонки моноширинно. TSV технически правилен, но визуально жмётся.
+                    // padTabularText не трогает текст без табов — безопасно для всех.
+                    var displayText = extractedText;
+                    if (ext === 'xlsx' || ext === 'xlsm' || ext === 'csv' || ext === 'docx') {
+                        displayText = GigaChat.padTabularText(extractedText);
+                    }
+                    lastResultText = displayText;
+                    lastResultRaw = extractedText; // исходник с табами — для скачивания
+                    lastFileName = selectedFile.name;
+                    resultText.value = displayText;
+                    var elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    var sourceLabel = (ext === 'docx') ? 'Word'
+                                    : (ext === 'xlsx' || ext === 'xlsm') ? 'Excel'
+                                    : (ext === 'csv') ? 'CSV'
+                                    : 'Текстовый файл';
+                    var lengthLabel = displayText.length.toLocaleString('ru-RU') + ' символов';
+                    resultMeta.innerHTML = '<b>' + escapeHtml(selectedFile.name) + '</b> · ' + sourceLabel + ' · ' + lengthLabel + ' · ' + elapsed + ' сек';
+                    resultBox.style.display = 'block';
+                }
+
+                isProcessing = false;
+                resetBtnDiv.classList.add('show');
+                return;
+            }
+
+            // PDF / изображения / прочее — через OCR на n8n.
+            var controller = new AbortController();
+            timeoutId = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT_MS);
+
+            var loadingTextEl2 = loading.querySelector('div');
+            if (loadingTextEl2) loadingTextEl2.textContent = 'Обрабатываю через OCR...';
+
+            var formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('token', GigaChat.auth.getToken());  // per-user auth
+
+            var res = await fetch(WEBHOOK_URL, {
+                method: 'POST',
+                body: formData,
+                signal: controller.signal
+            });
+
+            // Auth_required от сервера — токен протух, чистим и редиректим
+            if (res.status === 401 || res.status === 403) {
+                GigaChat.auth.clearAuth();
+                GigaChat.auth.redirectToLogin();
+                return;
+            }
+
+            stopTimer();
+            loading.classList.remove('show');
+
+            if (!res.ok) throw new Error('Сервер вернул ошибку: ' + res.status);
+
+            // Безопасный JSON-парсинг: сервер мог вернуть HTML-страницу ошибки
+            // (прокси, n8n test-mode без активного webhook'а и т.п.).
+            var data;
+            try {
+                data = await res.json();
+            } catch (parseErr) {
+                throw new Error('Сервер вернул некорректный ответ (не JSON).');
+            }
+
+            // n8n часто возвращает 200 OK + {auth_required:true} в body — обработать
+            if (data && data.auth_required) {
+                GigaChat.auth.clearAuth();
+                GigaChat.auth.redirectToLogin();
+                return;
+            }
+
+            if (data.success && data.response) {
+                lastResultText = data.response;
+                lastResultRaw = data.response; // OCR-путь без паддинга — исходник = ответ
+                lastFileName = selectedFile.name;
+                resultText.value = data.response;
+
+                var elapsed2 = Math.floor((Date.now() - startTime) / 1000);
+                var sourceMap = { ocr: 'OCR', text: 'Текстовый файл', table: 'Таблица' };
+                var sourceLabel2 = escapeHtml(sourceMap[data.source] || String(data.source || '—')); // D-6: всегда экранируем
+                var lengthLabel2 = data.response.length.toLocaleString('ru-RU') + ' символов';
+                var tableMeta = '';
+                if (data.source === 'table' && data.rowCount) {
+                    tableMeta = ' · ' + escapeHtml(String(data.rowCount)) + ' строк · ' + escapeHtml(String(data.colCount || '?')) + ' колонок';
+                }
+                resultMeta.innerHTML = '<b>' + escapeHtml(selectedFile.name) + '</b> · ' + sourceLabel2 + ' · ' + lengthLabel2 + tableMeta + ' · ' + elapsed2 + ' сек';
+                resultBox.style.display = 'block';
+            } else {
+                errorBox.textContent = data.response || 'Не удалось извлечь текст.';
+                errorBox.style.display = 'block';
+            }
+        } catch(e) {
+            stopTimer();
+            loading.classList.remove('show');
+            errorBox.textContent = (e.name === 'AbortError')
+                ? 'Сервер не ответил за 5 минут. Возможно, файл слишком сложный.'
+                : 'Ошибка: ' + e.message;
+            errorBox.style.display = 'block';
+        } finally {
+            // Гарантированная очистка таймера (был leak на throw/catch).
+            if (timeoutId) clearTimeout(timeoutId);
+        }
+
+        isProcessing = false;
+        resetBtnDiv.classList.add('show');
+    }
+
+    function copyResult() {
+        if (!lastResultText) return;
+        GigaChat.copyToClipboard(lastResultText).then(function (ok) {
+            var btn = document.getElementById('btnCopy');
+            var old = btn.textContent;
+            btn.textContent = ok ? 'Скопировано' : 'Не удалось';
+            setTimeout(function() { btn.textContent = old; }, 1500);
+        });
+    }
+
+    function downloadResult() {
+        // LOW-аудит: скачиваем ИСХОДНЫЙ текст (с табами), а не выровненный
+        // пробелами displayText — иначе TSV-таблица не парсится обратно.
+        var out = lastResultRaw || lastResultText;
+        if (!out) return;
+        var baseName = (lastFileName || 'extracted').replace(/\.[^.]+$/, '');
+        // Есть табы → это TSV: имя .tsv, чтобы Excel/Sheets корректно разобрали колонки.
+        var ext = (out.indexOf('\t') !== -1) ? '.tsv' : '.txt';
+        var mime = (ext === '.tsv') ? 'text/tab-separated-values;charset=utf-8' : 'text/plain;charset=utf-8';
+        var blob = new Blob([out], { type: mime });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = baseName + ext;
+        a.click();
+        // Револьвируем URL с задержкой — иначе Firefox/медленные машины могут
+        // не успеть начать скачивание до того, как blob уйдёт.
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    }
+
+    function resetForm() {
+        selectedFile = null;
+        document.getElementById('fileInput').value = '';
+        document.getElementById('fileName').textContent = '';
+        document.getElementById('fileSize').textContent = '';
+        sendBtn.disabled = true;
+        resultBox.style.display = 'none';
+        errorBox.style.display = 'none';
+        resetBtnDiv.classList.remove('show');
+        progressBar.classList.remove('show');
+        lastResultText = '';
+        lastResultRaw = '';
+        lastFileName = '';
+    }
+
+    var escapeHtml = GigaChat.escapeHtml;
+</script>
+</body>
+</html>

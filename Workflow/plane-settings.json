@@ -1,0 +1,387 @@
+{
+  "name": "Plane Settings. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "plane-settings",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "plane-settings-webhook-0001",
+      "name": "Webhook Plane Settings",
+      "webhookId": "plane-settings-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Plane settings: серверное хранение настроек Plane по аккаунту (user_id).\n// Body: { action, token, plane_url?, workspace_slug?, plane_token?, plane_user_id? }\n//   action = 'load' (вернуть настройки) | 'save' (сохранить).\nconst body = $input.first().json.body || {};\nconst action = String(body.action || 'load').trim();\nif (!['load','save'].includes(action)) {\n  return [{ json: { valid: 0, error: 'Неизвестный action' } }];\n}\nconst token = String(body.token || '').trim();\nif (!/^[a-f0-9]{64}$/.test(token)) {\n  return [{ json: { valid: 0, error: 'unauthorized', auth_required: true } }];\n}\nconst out = { valid: 1, action, token };\nif (action === 'save') {\n  const url = String(body.plane_url || '').trim().slice(0, 500);\n  const slug = String(body.workspace_slug || '').trim().slice(0, 128);\n  const tk = String(body.plane_token || '').trim().slice(0, 500);\n  const uid = String(body.plane_user_id || '').trim().slice(0, 128);\n  if (!url || !slug || !tk) return [{ json: { valid: 0, error: 'Заполните Plane URL, пространство и токен' } }];\n  if (!/^https?:\\/\\//.test(url)) return [{ json: { valid: 0, error: 'URL должен начинаться с http:// или https://' } }];\n  if (!/^[a-z0-9_-]{1,64}$/i.test(slug)) return [{ json: { valid: 0, error: 'Недопустимый workspace slug' } }];\n  out.s_url = url; out.s_slug = slug; out.s_token = tk; out.s_userId = uid;\n}\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "id": "plane-settings-validate-0002",
+      "name": "Валидация"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ],
+      "id": "plane-settings-if-valid-0003",
+      "name": "Валидно?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        840,
+        300
+      ],
+      "id": "plane-settings-verify-sql-0004",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ],
+      "id": "plane-settings-token-result-0005",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1400,
+        300
+      ],
+      "id": "plane-settings-if-token-ok-0006",
+      "name": "Token OK?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS plane_settings (\n  user_id integer PRIMARY KEY,\n  plane_url text NOT NULL DEFAULT '',\n  workspace_slug text NOT NULL DEFAULT '',\n  plane_token text NOT NULL DEFAULT '',\n  plane_user_id text NOT NULL DEFAULT '',\n  updated_at timestamptz NOT NULL DEFAULT NOW()\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1680,
+        180
+      ],
+      "id": "plane-settings-ensure-0007",
+      "name": "SQL: Ensure table",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $('Token result').first().json.action === 'save' ? \"INSERT INTO plane_settings (user_id, plane_url, workspace_slug, plane_token, plane_user_id, updated_at) VALUES ($1::integer, $2, $3, $4, $5, NOW()) ON CONFLICT (user_id) DO UPDATE SET plane_url=$2, workspace_slug=$3, plane_token=$4, plane_user_id=$5, updated_at=NOW() RETURNING 'saved'::text AS status\" : \"SELECT plane_url, workspace_slug, plane_token, plane_user_id FROM plane_settings WHERE user_id = $1::integer\" }}",
+        "options": {
+          "queryReplacement": "={{ $('Token result').first().json.action === 'save' ? [$('Token result').first().json.user_id, $('Token result').first().json.s_url, $('Token result').first().json.s_slug, $('Token result').first().json.s_token, $('Token result').first().json.s_userId] : [$('Token result').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        180
+      ],
+      "id": "plane-settings-op-0008",
+      "name": "SQL: settings op",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => (i && i.json) || {});\nconst first = items[0] || {};\nconst action = $('Token result').first().json.action;\nif (first.error) {\n  return [{ json: { response: 'error', error: String(first.error.message || first.error) } }];\n}\nif (action === 'save') {\n  return [{ json: { response: 'ok', saved: true } }];\n}\nconst row = items.find(i => i && i.plane_url !== undefined) || {};\nconst has = !!(row.plane_url || row.workspace_slug || row.plane_token);\nreturn [{ json: { response: 'ok', settings: has ? { url: row.plane_url || '', slug: row.workspace_slug || '', token: row.plane_token || '', userId: row.plane_user_id || '' } : null } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        180
+      ],
+      "id": "plane-settings-format-0009",
+      "name": "Формат"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2520,
+        180
+      ],
+      "id": "plane-settings-resp-ok-0010",
+      "name": "Ответ: OK"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: 'error', error: $json.error || 'Ошибка', auth_required: $json.auth_required || false }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1680,
+        500
+      ],
+      "id": "plane-settings-resp-err-0011",
+      "name": "Ответ: ошибка"
+    }
+  ],
+  "connections": {
+    "Webhook Plane Settings": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Валидно?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидно?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Ensure table",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Ensure table": {
+      "main": [
+        [
+          {
+            "node": "SQL: settings op",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: settings op": {
+      "main": [
+        [
+          {
+            "node": "Формат",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "plane-settings-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "plane-settings-workflow",
+  "tags": []
+}

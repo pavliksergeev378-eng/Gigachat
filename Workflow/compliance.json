@@ -1,0 +1,805 @@
+{
+  "name": "Compliance-агент. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "compliance",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        300
+      ],
+      "id": "comp-webhook",
+      "name": "Webhook Compliance",
+      "webhookId": "compliance-agent-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst message = String(body.message || '').trim();\nif (message === 'ping' || body.ping) { return [{ json: { valid: 0, error: 'pong' } }]; }\nconst token = String(body.token || '').trim().toLowerCase();\nif (!token || !/^[a-fA-F0-9]{64}$/.test(token)) { return [{ json: { valid: 0, error: 'auth_required', auth_required: true } }]; }\nconst action = String(body.action || 'analyze').trim();\nconst violation = String(body.violation || '').trim().slice(0, 500);\nif (action === 'analyze' && !violation) { return [{ json: { valid: 0, error: 'Укажите нарушение' } }]; }\nreturn [{ json: {\n  valid: 1, token, action, violation,\n  description: String(body.description || '').slice(0, 5000),\n  control_object: String(body.control_object || '').slice(0, 300),\n  criticality: String(body.criticality || 'medium'),\n  risk_level: String(body.risk_level || 'medium'),\n  check_results: String(body.check_results || '').slice(0, 5000),\n  result: body.result || null,\n  incident_id: String(body.incident_id || '')\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        300
+      ],
+      "id": "comp-validate",
+      "name": "Валидация"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "comp-if-valid-c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ],
+      "id": "comp-if-valid",
+      "name": "Запрос валиден?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.error, auth_required: !!$json.auth_required }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        780,
+        480
+      ],
+      "id": "comp-resp-err",
+      "name": "Ответ: ошибка"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (UPDATE auth_sessions SET last_used_at = NOW() WHERE token = $1 AND expires_at > NOW() RETURNING user_id) SELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        780,
+        300
+      ],
+      "id": "comp-verify",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\nif (data && data.error) { return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }]; }\nif (!data || !data.user_id) { return [{ json: { token_valid: false, response: 'unauthorized', error: 'unauthorized', auth_required: true } }]; }\nreturn [{ json: Object.assign({}, src, { token_valid: true, user_id: data.user_id }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "id": "comp-tokres",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "comp-if-tok-c",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1220,
+        300
+      ],
+      "id": "comp-if-tok",
+      "name": "Token OK?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "comp-if-act-c",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        300
+      ],
+      "id": "comp-if-act",
+      "name": "Действие approve?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, category, processes, description, criticality,\n  CASE WHEN $1::vector IS NULL OR embedding IS NULL THEN NULL ELSE 1 - (embedding <=> $1::vector) END AS sim\nFROM kb_violations\nORDER BY (CASE WHEN $1::vector IS NULL OR embedding IS NULL THEN 2 ELSE (embedding <=> $1::vector) END) ASC\nLIMIT 50;",
+        "options": {
+          "queryReplacement": "={{ [$json._qvec_str] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1660,
+        300
+      ],
+      "id": "comp-load-vio",
+      "name": "Загрузить нарушения",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(r => r && r.id);\nconst ctx = $('Token result').first().json;\nfunction toks(s){ return (String(s||'').toLowerCase().match(/[а-яёa-z0-9]{4,}/g) || []); }\nconst qt = new Set(toks(ctx.violation + ' ' + ctx.description + ' ' + (ctx.check_results || '')));\nlet best = null, bestScore = 0, bestSim = 0;\nfor (const r of rows) {\n  const rt = toks(r.title + ' ' + r.category + ' ' + (r.description || ''));\n  let hit = 0; for (const t of rt) if (qt.has(t)) hit++;\n  const tokenNorm = qt.size ? hit / Math.sqrt(qt.size) : 0;\n  const sim = (r.sim != null && !isNaN(r.sim)) ? Number(r.sim) : 0;\n  const semNorm = sim > 0.75 ? (sim - 0.75) / 0.25 : 0;   // 0.75..1.0 → 0..1\n  const combined = Math.max(tokenNorm, semNorm * 1.05);\n  if (combined > bestScore) { bestScore = combined; best = r; bestSim = sim; }\n}\nconst semanticHit = !!(best && bestSim >= 0.80);\nconst matched = !!(best && (semanticHit || bestScore >= 1.0));\nreturn [{ json: Object.assign({}, ctx, {\n  matched: matched,\n  violation_id: matched ? best.id : null,\n  matched_category: matched ? best.category : null,\n  matched_processes: matched ? best.processes : null,\n  matched_criticality: matched ? best.criticality : null,\n  match_score: Math.round(bestScore * 100) / 100,\n  match_sim: Math.round(bestSim * 100) / 100,\n  match_method: matched ? (semanticHit ? 'semantic' : 'keyword') : 'none'\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1880,
+        300
+      ],
+      "id": "comp-match",
+      "name": "Сопоставить"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT v.title, v.category, v.processes, v.criticality, (SELECT json_agg(json_build_object('type', m.type, 'name', m.name, 'description', m.description, 'effect', m.expected_effect)) FROM kb_violation_measure vm JOIN kb_measures m ON m.id = vm.measure_id WHERE vm.violation_id = $1) AS measures, (SELECT json_agg(json_build_object('text', r.text, 'source', r.norm_ref)) FROM kb_violation_requirement vr JOIN kb_requirements r ON r.id = vr.requirement_id WHERE vr.violation_id = $1) AS requirements, (SELECT json_agg(json_build_object('title', rk.title, 'criticality', rk.criticality)) FROM kb_violation_risk vrk JOIN kb_risks rk ON rk.id = vrk.risk_id WHERE vrk.violation_id = $1) AS risks FROM (SELECT 1) d LEFT JOIN kb_violations v ON v.id = $1;",
+        "options": {
+          "queryReplacement": "={{ [$json.violation_id || -1] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2100,
+        300
+      ],
+      "id": "comp-load-links",
+      "name": "Загрузить связи",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Сопоставить').first().json;\nconst row = $('Загрузить связи').first().json || {};\nlet enrich = null; try { enrich = $('LLM-обогащение').first().json._enrich; } catch (e) {}\nlet ragRows = []; try { ragRows = $('RAG: нормы').all().map(i => i.json).filter(r => r && r.chunk_text && (r.sim == null || r.sim >= 0.5)); } catch (e) {}\nconst CRIT = ['low','medium','high','critical'];\nfunction lower(l){ const i = CRIT.indexOf(l); return i > 0 ? CRIT[i-1] : 'low'; }\nconst measures = { organizational: [], technical: [], administrative: [], controlling: [] };\nconst just = {};\nif (enrich && Array.isArray(enrich.justifications)) for (const j of enrich.justifications) if (j && j.name) just[String(j.name).trim().toLowerCase()] = String(j.text || '');\nconst rawM = Array.isArray(row.measures) ? row.measures : [];\nfor (const m of rawM) {\n  const t = measures[m.type] ? m.type : 'organizational';\n  const lj = just[String(m.name).trim().toLowerCase()];\n  measures[t].push({ name: m.name, description: m.description || '', effect: m.effect || '',\n    justification: lj || ('Мера относится к категории «' + (row.category || 'нарушение') + '» и снижает связанный риск; рекомендована на основе базы знаний.'), source: 'kb' });\n}\nlet total = rawM.length;\nif (enrich && Array.isArray(enrich.suggested)) {\n  for (const s of enrich.suggested.slice(0, 3)) {\n    if (!s || !s.name) continue;\n    const t = measures[s.type] ? s.type : 'organizational';\n    if (measures[t].some(x => x.name === s.name)) continue;\n    measures[t].push({ name: s.name, description: s.description || '', effect: s.effect || '', justification: 'Предложено ИИ на основе базы знаний и нормативного контекста.', source: 'ai' });\n    total++;\n  }\n}\nconst BASE = [\n  { type:'administrative', name:'Назначить ответственного за устранение нарушения', description:'Закрепить приказом ответственного и срок устранения.', effect:'Персональная ответственность и контроль.' },\n  { type:'controlling', name:'Включить нарушение в план контрольных проверок', description:'Добавить пункт в регламент периодических проверок.', effect:'Своевременный контроль устранения.' },\n  { type:'organizational', name:'Разработать/обновить регламент по выявленной области', description:'Зафиксировать порядок действий и требования.', effect:'Снижение вероятности повторения.' }\n];\nlet bi = 0;\nwhile (total < 3 && bi < BASE.length) {\n  const b = BASE[bi++];\n  if (!measures[b.type].some(x => x.name === b.name)) { measures[b.type].push({ name:b.name, description:b.description, effect:b.effect, justification:'Базовая мера устранения и контроля нарушения.', source:'base' }); total++; }\n}\nconst requirements = [];\nif (Array.isArray(row.requirements)) for (const r of row.requirements) if (r) requirements.push({ text: r.text, source: r.source });\nfor (const r of ragRows.slice(0, 3)) requirements.push({ text: String(r.chunk_text).slice(0, 400), source: (((r.doc_name || '') + (r.section ? (', ' + r.section) : '')).trim()) || 'нормативный документ' });\nconst criticality = ctx.matched_criticality || ctx.criticality || 'medium';\nconst risk_level = ctx.risk_level || criticality || 'medium';\nconst residual = lower(risk_level);\nconst processes = String(row.processes || ctx.matched_processes || '').split(';').map(s => s.trim()).filter(Boolean);\nconst DL = { critical: ['7 дней','14 дней','30 дней'], high: ['14 дней','30 дней'], medium: ['30 дней'], low: ['45 дней'] };\nconst deadlines = [];\n['technical','organizational','administrative','controlling'].forEach(function(t){ measures[t].forEach(function(m, i){ var d = DL[risk_level] || DL.medium; deadlines.push({ measure: m.name, term: d[Math.min(i, d.length-1)] }); }); });\nconst summary = (enrich && enrich.summary) ? String(enrich.summary).slice(0, 500) : '';\nconst result = {\n  violation: ctx.violation, category: row.category || ctx.matched_category || 'Не определена',\n  criticality: criticality, processes: processes, risk_level: risk_level, residual_risk: residual,\n  requirements: requirements, measures: measures, deadlines: deadlines, matched: !!ctx.matched,\n  match_method: ctx.match_method || 'none', summary: summary, ai_used: !!enrich,\n  note: ctx.matched ? '' : 'Типовое нарушение не найдено в базе знаний — сформированы базовые меры. Рекомендуется уточнить через эксперта или пополнить базу знаний.'\n};\nreturn [{ json: { result: result, _save: {\n  user_id: ctx.user_id, violation: ctx.violation, description: ctx.description, control_object: ctx.control_object,\n  criticality: criticality, risk_level: risk_level, category: result.category, residual_risk: residual, check_results: ctx.check_results || '',\n  measures_json: JSON.stringify(measures), report: JSON.stringify(result)\n} } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        300
+      ],
+      "id": "comp-build",
+      "name": "Сборка результата"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO compliance_incidents (user_id, violation, description, control_object, criticality, risk_level, category, measures_json, report, residual_risk, check_results, status) VALUES ($1::integer, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, 'draft') RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$json._save.user_id, $json._save.violation, $json._save.description, $json._save.control_object, $json._save.criticality, $json._save.risk_level, $json._save.category, $json._save.measures_json, $json._save.report, $json._save.residual_risk, $json._save.check_results] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2540,
+        300
+      ],
+      "id": "comp-save-inc",
+      "name": "Сохранить инцидент",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify(Object.assign({}, $('Сборка результата').first().json.result, { incident_id: ($json && $json.id) || null })) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2760,
+        300
+      ],
+      "id": "comp-resp-ok",
+      "name": "Ответ: результат"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (INSERT INTO kb_cases (violation_text, category, measures_json, justification, approved_by) VALUES ($1, $2, $3::jsonb, $4, $5::integer) RETURNING id), upd AS (UPDATE compliance_incidents SET status = 'approved' WHERE id = NULLIF($6, '')::integer AND user_id = $5::integer RETURNING id) SELECT (SELECT id FROM ins) AS id, (SELECT id FROM upd) AS incident_id;",
+        "options": {
+          "queryReplacement": "={{ [ String(($('Token result').first().json.result && $('Token result').first().json.result.violation) || ''), String(($('Token result').first().json.result && $('Token result').first().json.result.category) || ''), JSON.stringify(($('Token result').first().json.result && $('Token result').first().json.result.measures) || {}), 'Утверждено пользователем', $('Token result').first().json.user_id, String($('Token result').first().json.incident_id || '') ] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1660,
+        480
+      ],
+      "id": "comp-save-case",
+      "name": "Сохранить кейс",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, response: 'Кейс добавлен в базу знаний' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1880,
+        480
+      ],
+      "id": "comp-resp-appr",
+      "name": "Ответ: approve"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Векторизуем входящее нарушение (офлайн-безопасно: при сбое эмбеддера qvec=null,\n// и весь поток откатывается на текстовое сопоставление). АДРЕС эмбеддера здесь:\nconst EMBED_URL = 'http://130.100.94.119:8001/embed';\nconst ctx = $('Token result').first().json;\nconst text = [ctx.violation, ctx.description, ctx.control_object, ctx.check_results].filter(Boolean).join('. ').slice(0, 2000);\nlet qvec = null;\ntry {\n  const resp = await this.helpers.httpRequest({ method: 'POST', url: EMBED_URL, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: text, type: 'query' }), timeout: 8000, json: false });\n  const j = (typeof resp === 'string') ? JSON.parse(resp) : resp;\n  if (j && Array.isArray(j.embedding) && j.embedding.length) qvec = j.embedding;\n} catch (e) { qvec = null; }\nreturn [{ json: Object.assign({}, ctx, { _qvec_str: qvec ? ('[' + qvec.join(',') + ']') : null }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        140
+      ],
+      "id": "comp-embed-q",
+      "name": "Эмбеддинг нарушения",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT doc_name, section, doc_version, chunk_text,\n  1 - (embedding <=> $1::vector) AS sim\nFROM kb_norms\nWHERE $1::vector IS NOT NULL AND embedding IS NOT NULL\nORDER BY embedding <=> $1::vector\nLIMIT 3;",
+        "options": {
+          "queryReplacement": "={{ [$('Эмбеддинг нарушения').first().json._qvec_str] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2200,
+        140
+      ],
+      "id": "comp-rag-norms",
+      "name": "RAG: нормы",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM обогащает обоснования и предлагает доп. меры СТРОГО на основе данных из БЗ\n// и RAG-норм (не выдумывает источники). Офлайн-безопасно: сбой → enrich=null,\n// детерминированный результат остаётся. АДРЕС LLM здесь:\nconst LLM_URL = 'http://130.100.95.104:8810/v1/chat/completions';\nconst ctx = $('Сопоставить').first().json;\nconst links = $('Загрузить связи').first().json || {};\nlet ragRows = [];\ntry { ragRows = $('RAG: нормы').all().map(i => i.json).filter(r => r && r.chunk_text && (r.sim == null || r.sim >= 0.5)); } catch (e) {}\nconst kbMeasures = Array.isArray(links.measures) ? links.measures : [];\nlet enrich = null;\ntry {\n  const sys = 'Ты эксперт по информационной безопасности. На основе ПРЕДОСТАВЛЕННЫХ данных из базы знаний и нормативных выдержек сформируй обоснования к мерам и при нехватке предложи дополнительные. СТРОГО: опирайся только на данные ниже, НЕ выдумывай источники нормативных требований. Ответ — ТОЛЬКО валидный JSON, без markdown.';\n  const payload = {\n    violation: ctx.violation, description: ctx.description || '', category: ctx.matched_category || '',\n    kb_measures: kbMeasures.map(m => ({ type: m.type, name: m.name, description: m.description })),\n    norms: ragRows.map(r => ({ source: ((r.doc_name || '') + ' ' + (r.section || '')).trim(), text: String(r.chunk_text).slice(0, 500) }))\n  };\n  const user = 'Данные:\\n' + JSON.stringify(payload) + '\\n\\nВерни JSON вида: {\"summary\":\"1-2 предложения о сути и приоритете устранения\",\"justifications\":[{\"name\":\"<точное имя меры из kb_measures>\",\"text\":\"обоснование почему мера нужна\"}],\"suggested\":[{\"type\":\"organizational|technical|administrative|controlling\",\"name\":\"короткое имя\",\"description\":\"что сделать\",\"effect\":\"что даст\"}]}. Если данных мало — suggested может быть пустым.';\n  const resp = await this.helpers.httpRequest({ method: 'POST', url: LLM_URL, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer no-auth' }, body: JSON.stringify({ model: '.', temperature: 0.2, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }), timeout: 20000, json: false });\n  const j = (typeof resp === 'string') ? JSON.parse(resp) : resp;\n  const content = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;\n  if (content) { const mm = String(content).match(/\\{[\\s\\S]*\\}/); if (mm) enrich = JSON.parse(mm[0]); }\n} catch (e) { enrich = null; }\nreturn [{ json: { _enrich: enrich } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        300
+      ],
+      "id": "comp-llm-enrich",
+      "name": "LLM-обогащение",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "comp-if-hist-c",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "history",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        120
+      ],
+      "id": "comp-if-hist",
+      "name": "Действие history?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, violation, category, criticality, risk_level, residual_risk, status, to_char(created_at,'DD.MM.YYYY HH24:MI') AS created, report FROM compliance_incidents WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50;",
+        "options": {
+          "queryReplacement": "={{ [$json.user_id] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1660,
+        120
+      ],
+      "id": "comp-sql-hist",
+      "name": "SQL: история",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i=>i.json).filter(r=>r&&r.id);\nreturn [{ json: { ok:true, response:'ok', incidents: rows.map(r=>({ id:r.id, violation:r.violation, category:r.category, criticality:r.criticality, risk_level:r.risk_level, residual_risk:r.residual_risk, status:r.status, created:r.created, report:r.report })) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1880,
+        120
+      ],
+      "id": "comp-fmt-hist",
+      "name": "Формат история",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2100,
+        120
+      ],
+      "id": "comp-resp-hist",
+      "name": "Ответ: история"
+    }
+  ],
+  "connections": {
+    "Webhook Compliance": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Запрос валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Запрос валиден?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Действие history?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Действие approve?": {
+      "main": [
+        [
+          {
+            "node": "Сохранить кейс",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Эмбеддинг нарушения",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить кейс": {
+      "main": [
+        [
+          {
+            "node": "Ответ: approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить нарушения": {
+      "main": [
+        [
+          {
+            "node": "Сопоставить",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сопоставить": {
+      "main": [
+        [
+          {
+            "node": "Загрузить связи",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить связи": {
+      "main": [
+        [
+          {
+            "node": "RAG: нормы",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сборка результата": {
+      "main": [
+        [
+          {
+            "node": "Сохранить инцидент",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить инцидент": {
+      "main": [
+        [
+          {
+            "node": "Ответ: результат",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Эмбеддинг нарушения": {
+      "main": [
+        [
+          {
+            "node": "Загрузить нарушения",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG: нормы": {
+      "main": [
+        [
+          {
+            "node": "LLM-обогащение",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM-обогащение": {
+      "main": [
+        [
+          {
+            "node": "Сборка результата",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Действие history?": {
+      "main": [
+        [
+          {
+            "node": "SQL: история",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Действие approve?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: история": {
+      "main": [
+        [
+          {
+            "node": "Формат история",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат история": {
+      "main": [
+        [
+          {
+            "node": "Ответ: история",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

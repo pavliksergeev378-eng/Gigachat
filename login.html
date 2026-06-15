@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GigaChat — Вход</title>
+    <style>
+        /* Pre-paint фон + color-scheme — чтобы первый paint был уже в правильных
+           цветах, без серифного фолбэка. Дублирует логику из planner.html, чтобы
+           переход «дашборд → login» не моргал. */
+        html { color-scheme: light; background: #fdfdfc; }
+        html[data-theme="dark"] { color-scheme: dark; background: #1f1f1e; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: #1f1f1e;
+            background: #fdfdfc;
+        }
+        html[data-theme="dark"] body {
+            color: #d4d4d4;
+            background: #1f1f1e;
+        }
+    </style>
+    <script>(function(){var t='light';try{t=localStorage.getItem('giga_theme')||'light'}catch(e){}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1f1f1e':'#fdfdfc','important');})();</script>
+    <style>
+        :root {
+            --bg-primary: #1f1f1e;
+            --bg-secondary: #1f1e1c;
+            --bg-input: #2c2c2a;
+            --border: #363432;
+            --text-primary: #d4d4d4;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #d4a574;
+            --accent-hover: #c08a5a;
+            --priority-high: #d97757;
+            --bg-hover: rgba(255,255,255,0.06);
+        }
+        :root[data-theme="light"] {
+            --bg-primary: #fdfdfc;
+            --bg-secondary: #f3f1ec;
+            --bg-input: #fffffe;
+            --border: #e3dfd5;
+            --text-primary: #1f1f1e;
+            --text-secondary: #6b6b68;
+            --text-muted: #a8a59f;
+            --accent: #b8895d;
+            --accent-hover: #a0764d;
+            --priority-high: #c05a3a;
+            --bg-hover: rgba(0,0,0,0.05);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            min-height: 100vh;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        /* Анти-FOUC заставка — снимается после готовности UI (см. script внизу). */
+        #__gc-bootloader {
+            position: fixed; top:0;right:0;bottom:0;left:0;
+            background: var(--bg-primary);
+            z-index: 99999;
+            pointer-events: none;
+            transition: opacity 0.22s ease;
+        }
+        #__gc-bootloader.gc-hide { opacity: 0; }
+
+        /* Точечный фон — лифтнут из GigaChat-Platform.html, чтобы login
+           визуально был частью платформы (а не отдельной чужой страницей). */
+        .bg-dots {
+            position: fixed; top:0;right:0;bottom:0;left:0; z-index: 0;
+            pointer-events: none;
+            background-image:
+                radial-gradient(circle, rgba(212,165,116,0.22) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(212,165,116,0.12) 1px, transparent 1.5px);
+            background-size: 60px 60px, 30px 30px;
+            background-position: 0 0, 15px 15px;
+        }
+        :root[data-theme="light"] .bg-dots {
+            background-image:
+                radial-gradient(circle, rgba(120,85,45,0.32) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(120,85,45,0.18) 1px, transparent 1.5px);
+        }
+
+        /* Центральная компоновка — заголовок + модалка прибиты к верху.
+           flex-start + padding-top (не center) — чтобы при смене вкладок
+           ВЕРХ модалки не двигался. Низ модалки ездит через height-transition,
+           footer прижат margin-top:auto → кнопка движется синхронно с нижним краем. */
+        .gc-login-page {
+            position: relative; z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 12vh 20px 40px;
+            gap: 32px;
+        }
+
+        /* Заголовок «GigaChat / ПЛАТФОРМА» — лифт из дашборда (.header) */
+        .gc-login-brand { text-align: center; }
+        .gc-login-brand h1 {
+            margin: 0;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: 6px;
+            background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        :root[data-theme="light"] .gc-login-brand h1 {
+            background: linear-gradient(135deg, #1f1f1e 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+        }
+        .gc-login-brand .gc-login-sub {
+            color: var(--text-secondary);
+            font-size: 14px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+        .gc-login-brand .gc-login-line {
+            width: 120px;
+            height: 2px;
+            margin: 20px auto 0;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            border-radius: 1px;
+        }
+        @media (max-width: 500px) {
+            .gc-login-brand h1 { font-size: 26px; letter-spacing: 3px; }
+        }
+
+        /* Кнопка переключения тем — fixed в правом верхнем углу.
+           На login.html НЕ используем стандартный #gc-theme-toggle из _shared.js,
+           потому что хотим контроль над иконкой/положением. */
+        .gc-login-theme {
+            position: fixed; top: 10px; right: 14px; z-index: 50;
+            width: 32px; height: 32px;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 50%; color: var(--text-secondary);
+            cursor: pointer; padding: 0; font-family: inherit;
+            transition: background .15s, color .15s, border-color .15s, transform .15s;
+        }
+        .gc-login-theme:hover {
+            background: var(--bg-hover);
+            color: var(--accent); border-color: var(--accent);
+            transform: rotate(15deg);
+        }
+        .gc-login-theme svg {
+            width: 16px; height: 16px;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+
+        /* Модалка — flex column, footer прижат снизу (margin-top:auto),
+           height transition для плавной смены вкладок */
+        .gc-login-modal {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 12px;
+            width: min(420px, 92vw);
+            flex-shrink: 0;
+            /* НЕ flex-column с margin-top:auto на footer и НЕ height transition
+               на самой модалке — это давало рассинхрон (footer прыгал к финальной
+               позиции мгновенно через margin-auto, низ модалки догонял 180мс).
+               Теперь анимируем только form-area; footer естественно идёт сразу
+               за ней; модалка ресайзится автоматически. */
+            display: block;
+            animation: gcModalSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        /* Контейнер форм: единственное что анимируется. Старая форма исчезает
+           через display:none (классом .hidden), новая занимает её место. Height
+           transition даёт плавное «сжатие/расширение» только этой области.
+           overflow:hidden — чтобы при переключении содержимое скрытой формы
+           не торчало в момент полу-открытой высоты. */
+        .gc-login-form-area {
+            overflow: hidden;
+            transition: height 0.18s ease;
+        }
+        @keyframes gcModalSlide {
+            from { opacity: 0; transform: translateY(8px) scale(0.985); }
+            to   { opacity: 1; transform: translateY(0)  scale(1);     }
+        }
+
+        .gc-login-tabs {
+            display: flex; gap: 4px;
+            margin: 18px 22px 14px;  /* top увеличен — заголовок «Вход в GigaChat» убран */
+            padding: 4px;
+            background: var(--bg-input); border-radius: 8px;
+        }
+        .gc-login-tab {
+            flex: 1; background: transparent; border: none; cursor: pointer;
+            padding: 8px 12px; border-radius: 6px;
+            font-family: inherit; font-size: 13px; font-weight: 500;
+            color: var(--text-secondary);
+            transition: background 0.18s ease, color 0.18s ease;
+        }
+        .gc-login-tab:hover { color: var(--text-primary); }
+        .gc-login-tab.active { background: var(--accent); color: #fff; }
+
+        /* Fade форм при смене вкладки */
+        .gc-login-form {
+            padding: 0 22px; display: flex; flex-direction: column; gap: 10px;
+            transition: opacity 0.09s ease;
+        }
+        .gc-login-form.hidden { display: none; }
+        .gc-login-form label {
+            display: flex; flex-direction: column; gap: 4px;
+            font-size: 12px; color: var(--text-secondary); font-weight: 500;
+        }
+        .gc-login-form input[type="text"],
+        .gc-login-form input[type="password"] {
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 6px; padding: 10px 14px; color: var(--text-primary);
+            font-family: inherit; font-size: 14px; outline: none;
+            transition: border-color 0.18s ease, background 0.18s ease;
+        }
+        .gc-login-form input:hover { border-color: var(--text-secondary); }
+        .gc-login-form input:focus {
+            border-color: var(--accent); background: var(--bg-secondary);
+        }
+
+        /* Wrapper + кнопка глазка для password-полей. Input оставляет ту же
+           ширину что у поля Имя (width:100% потому что в span не растягивается
+           автоматически, в отличие от flex-item в label). Глаз позиционируется
+           absolute поверх input по правому краю — ВНУТРИ поля. Padding на input
+           не меняем — текст пароля (••••) под глазом нормально, видно курсор. */
+        .gc-pw-wrap { position: relative; display: block; }
+        .gc-pw-wrap input { width: 100% !important; }
+        .gc-pw-toggle {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent; border: none;
+            cursor: pointer; padding: 6px;
+            display: inline-flex; align-items: center; justify-content: center;
+            color: var(--text-secondary);
+            border-radius: 4px;
+            transition: color .15s ease, background .15s ease;
+        }
+        .gc-pw-toggle:hover {
+            color: var(--accent);
+            background: var(--bg-hover);
+        }
+        .gc-pw-toggle:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+        .gc-pw-toggle svg {
+            width: 18px; height: 18px;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+
+        /* Кастомный чекбокс «Запомнить меня» — лифт из planner.html.
+           !important нужен потому что .gc-login-form label выше задаёт
+           flex-direction:column — без override чекбокс ушёл бы в столбец. */
+        .gc-checkbox-row {
+            display: flex !important; flex-direction: row !important;
+            align-items: center !important;
+            gap: 10px !important; user-select: none; padding: 2px 0;
+        }
+        .gc-checkbox-row input[type="checkbox"] {
+            position: absolute; opacity: 0; pointer-events: none;
+            width: 1px; height: 1px; margin: -1px;
+            clip: rect(0 0 0 0); clip-path: inset(50%);
+            overflow: hidden; white-space: nowrap;
+        }
+        .gc-checkbox-box {
+            flex-shrink: 0;
+            width: 18px; height: 18px;
+            border: 1.5px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-input);
+            display: inline-flex; align-items: center; justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: border-color 0.18s ease, background 0.18s ease;
+        }
+        .gc-checkbox-box:hover { border-color: var(--accent); }
+        .gc-checkbox-row input[type="checkbox"]:focus-visible + .gc-checkbox-box {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .gc-checkbox-row input[type="checkbox"]:checked + .gc-checkbox-box {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        .gc-checkbox-row input[type="checkbox"]:checked + .gc-checkbox-box::after {
+            content: '';
+            width: 5px; height: 9px;
+            border: solid #fff;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg) translate(-1px, -1px);
+        }
+        .gc-checkbox-row .gc-checkbox-label {
+            font-size: 14px; color: var(--text-primary); font-weight: 500;
+            letter-spacing: 0.2px; line-height: 1;
+            cursor: default;
+        }
+
+        .gc-login-error {
+            min-height: 16px; font-size: 12px; color: var(--priority-high);
+            text-align: center; margin-top: 4px;
+        }
+        .gc-login-error.gc-success {
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px;
+            color: var(--text-primary); font-size: 13px;
+        }
+        .gc-success-badge {
+            flex-shrink: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 18px; height: 18px;
+            background: #4caf50; border-radius: 50%;
+            position: relative;
+        }
+        .gc-success-badge::before {
+            content: '';
+            width: 5px; height: 9px;
+            border: solid #fff;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg) translate(-1px, -1px);
+        }
+
+        .gc-login-footer { padding: 14px 22px 22px; }
+        .gc-login-footer button {
+            width: 100%; padding: 10px 18px; border-radius: 6px;
+            background: var(--accent); color: #fff; border: none; cursor: pointer;
+            font-family: inherit; font-size: 14px; font-weight: 600;
+            transition: background 0.18s ease, transform 0.1s ease, opacity 0.18s ease;
+        }
+        .gc-login-footer button:hover { background: var(--accent-hover); }
+        .gc-login-footer button:active { transform: scale(0.98); }
+        .gc-login-footer button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+    <script src="Agents/_config.js"></script>
+    <script src="Agents/_shared-guard.js"></script>
+    <script src="Agents/_shared.js"></script>
+</head>
+<body>
+    <!-- Анти-FOUC заставка — снимается JS-кодом в конце <body>. -->
+    <div id="__gc-bootloader"></div>
+
+    <!-- Точечный фон — визуально объединяет login с дашбордом -->
+    <div class="bg-dots"></div>
+
+    <button class="gc-login-theme" id="loginThemeToggle" type="button" onclick="loginToggleTheme()" aria-label="Переключить тему"></button>
+
+    <div class="gc-login-page">
+        <!-- Заголовок «GigaChat / ПЛАТФОРМА» — один-в-один как на дашборде. -->
+        <div class="gc-login-brand">
+            <h1>GigaChat</h1>
+            <div class="gc-login-sub">ПЛАТФОРМА</div>
+            <div class="gc-login-line"></div>
+        </div>
+
+        <div class="gc-login-modal">
+            <div class="gc-login-tabs">
+                <button class="gc-login-tab active" data-tab="login" type="button" onclick="switchLoginTab('login')">Вход</button>
+                <button class="gc-login-tab" data-tab="register" type="button" onclick="switchLoginTab('register')">Регистрация</button>
+            </div>
+
+            <div class="gc-login-form-area" id="gcLoginFormArea">
+            <form class="gc-login-form" data-form="login" autocomplete="off" translate="no" onsubmit="event.preventDefault(); submitLogin()">
+                <label>Имя
+                    <input type="text" id="loginUsername" maxlength="100" autocomplete="off"
+                           autocorrect="off" autocapitalize="off" spellcheck="false"
+                           data-form-type="other" data-lpignore="true" data-1p-ignore="true"
+                           placeholder="Иванов" data-next="loginPassword">
+                </label>
+                <label>Пароль
+                    <span class="gc-pw-wrap">
+                        <input type="password" id="loginPassword" maxlength="200" autocomplete="off"
+                               autocorrect="off" autocapitalize="off" spellcheck="false"
+                               data-form-type="other" data-lpignore="true" data-1p-ignore="true"
+                               placeholder="••••••••" data-next="loginSubmitBtn">
+                        <button type="button" class="gc-pw-toggle" aria-label="Показать пароль" onclick="togglePassword(this)"></button>
+                    </span>
+                </label>
+                <div class="gc-checkbox-row">
+                    <input type="checkbox" id="loginRemember" checked>
+                    <span class="gc-checkbox-box" aria-hidden="true" onclick="document.getElementById('loginRemember').click()"></span>
+                    <span class="gc-checkbox-label">Запомнить меня</span>
+                </div>
+                <div class="gc-login-error" id="loginError"></div>
+            </form>
+
+            <form class="gc-login-form hidden" data-form="register" autocomplete="off" translate="no" onsubmit="event.preventDefault(); submitRegister()">
+                <label>Имя
+                    <input type="text" id="regUsername" maxlength="100" autocomplete="off"
+                           autocorrect="off" autocapitalize="off" spellcheck="false"
+                           data-form-type="other" data-lpignore="true" data-1p-ignore="true"
+                           placeholder="Иванов" data-next="regPassword">
+                </label>
+                <label>Пароль
+                    <span class="gc-pw-wrap">
+                        <input type="password" id="regPassword" maxlength="200" autocomplete="off"
+                               autocorrect="off" autocapitalize="off" spellcheck="false"
+                               data-form-type="other" data-lpignore="true" data-1p-ignore="true"
+                               placeholder="••••••••" data-next="regPassword2">
+                        <button type="button" class="gc-pw-toggle" aria-label="Показать пароль" onclick="togglePassword(this)"></button>
+                    </span>
+                </label>
+                <label>Повтор пароля
+                    <span class="gc-pw-wrap">
+                        <input type="password" id="regPassword2" maxlength="200" autocomplete="off"
+                               autocorrect="off" autocapitalize="off" spellcheck="false"
+                               data-form-type="other" data-lpignore="true" data-1p-ignore="true"
+                               placeholder="ещё раз" data-next="loginSubmitBtn">
+                        <button type="button" class="gc-pw-toggle" aria-label="Показать пароль" onclick="togglePassword(this)"></button>
+                    </span>
+                </label>
+                <div class="gc-login-error" id="regError"></div>
+            </form>
+            </div><!-- /.gc-login-form-area -->
+
+            <div class="gc-login-footer">
+                <button id="loginSubmitBtn" type="button" onclick="document.querySelector('.gc-login-form:not(.hidden)').requestSubmit()">Войти</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === Theme toggle ===
+        var LOGIN_SUN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></svg>';
+        var LOGIN_MOON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
+        // === Eye / Eye-off для кнопки показа пароля (Feather icons) ===
+        var EYE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+        var EYE_OFF_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+        // Переключает type password ↔ text + иконку eye ↔ eye-off.
+        // Пароль скрыт (type=password) → показываем EYE (тыкни — увидишь).
+        // Пароль виден (type=text)      → показываем EYE_OFF (тыкни — скроется).
+        function togglePassword(btn) {
+            var inp = btn.parentNode.querySelector('input[type="password"], input[type="text"]');
+            if (!inp) return;
+            if (inp.type === 'password') {
+                inp.type = 'text';
+                btn.innerHTML = EYE_OFF_SVG;
+                btn.setAttribute('aria-label', 'Скрыть пароль');
+            } else {
+                inp.type = 'password';
+                btn.innerHTML = EYE_SVG;
+                btn.setAttribute('aria-label', 'Показать пароль');
+            }
+        }
+        // Начальные иконки на всех кнопках глазков
+        (function initEyeIcons() {
+            var btns = document.querySelectorAll('.gc-pw-toggle');
+            for (var i = 0; i < btns.length; i++) btns[i].innerHTML = EYE_SVG;
+        })();
+
+        function updateLoginThemeIcon() {
+            var btn = document.getElementById('loginThemeToggle');
+            if (!btn) return;
+            var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+            btn.innerHTML = dark ? LOGIN_SUN_SVG : LOGIN_MOON_SVG;
+            btn.setAttribute('aria-label', dark ? 'Светлая тема' : 'Тёмная тема');
+        }
+        function loginToggleTheme() {
+            if (window.GigaChat && typeof window.GigaChat.toggleTheme === 'function') {
+                window.GigaChat.toggleTheme();
+            } else {
+                var html = document.documentElement;
+                var cur = html.getAttribute('data-theme') || 'light';
+                var next = cur === 'dark' ? 'light' : 'dark';
+                html.setAttribute('data-theme', next);
+                try { localStorage.setItem('giga_theme', next); } catch (e) {}
+            }
+            updateLoginThemeIcon();
+            // Скрыть стандартный gc-theme-toggle из _shared.js (он попадает в body
+            // через initThemeToggle), он нам тут не нужен — есть свой.
+            var stdToggle = document.getElementById('gc-theme-toggle');
+            if (stdToggle) stdToggle.style.display = 'none';
+        }
+        // Cross-tab синхронизация темы (юзер сменил тему в другой вкладке)
+        window.addEventListener('storage', function (e) {
+            if (e.key === 'giga_theme') updateLoginThemeIcon();
+        });
+
+        // === Tab switching (login ↔ register) с плавной анимацией ===
+        function switchLoginTab(tab, options) {
+            options = options || {};
+            // A7 fix: ВСЕГДА чистим pending switch-timers ДО проверки isSameTab.
+            // Иначе rapid-click (Register→Login→Register) оставляет timer'ы
+            // первого вызова — они срабатывают после isSameTab=true ветки и
+            // переключают tabs «за спиной» обратно, рассинхронивая DOM.
+            var area = document.getElementById('gcLoginFormArea');
+            if (area && area._switchTimers) {
+                area._switchTimers.forEach(clearTimeout);
+                area._switchTimers = [];
+            }
+            var currentActive = document.querySelector('.gc-login-tab.active');
+            var isSameTab = currentActive && currentActive.dataset.tab === tab;
+            var modal = document.querySelector('.gc-login-modal');
+
+            function applySwap() {
+                var tabs = document.querySelectorAll('.gc-login-tab');
+                var forms = document.querySelectorAll('.gc-login-form');
+                for (var i = 0; i < tabs.length; i++) {
+                    tabs[i].classList.toggle('active', tabs[i].dataset.tab === tab);
+                }
+                for (var i = 0; i < forms.length; i++) {
+                    forms[i].classList.toggle('hidden', forms[i].dataset.form !== tab);
+                }
+                var btn = document.getElementById('loginSubmitBtn');
+                if (btn) btn.textContent = tab === 'register' ? 'Зарегистрироваться' : 'Войти';
+                setLoginError('loginError', '');
+                setLoginError('regError', '');
+            }
+
+            function focusTarget() {
+                var target = options.focusFieldId
+                    ? document.getElementById(options.focusFieldId)
+                    : document.querySelector('.gc-login-form:not(.hidden) input');
+                if (target) target.focus();
+            }
+
+            var area = document.getElementById('gcLoginFormArea');
+            if (!isSameTab && area && currentActive) {
+                if (area._switchTimers) area._switchTimers.forEach(clearTimeout);
+                area._switchTimers = [];
+
+                var oldForm = document.querySelector('.gc-login-form:not(.hidden)');
+                if (oldForm) oldForm.style.opacity = '0';
+
+                area._switchTimers.push(setTimeout(function () {
+                    // 1) Зафиксировать текущую высоту form-area (со старой формой)
+                    var fromHeight = area.offsetHeight;
+                    area.style.height = fromHeight + 'px';
+                    area.offsetHeight; // reflow
+
+                    // 2) Подменить контент (новая форма становится visible)
+                    applySwap();
+                    var newForm = document.querySelector('.gc-login-form:not(.hidden)');
+                    if (newForm) newForm.style.opacity = '0';
+
+                    // 3) Измерить целевую высоту с новой формой
+                    area.style.height = 'auto';
+                    var toHeight = area.offsetHeight;
+                    area.style.height = fromHeight + 'px';
+                    area.offsetHeight; // reflow
+
+                    // 4) Запустить transition height на form-area; footer и низ
+                    //    модалки естественно следуют за её нижней границей.
+                    area.style.height = toHeight + 'px';
+
+                    area._switchTimers.push(setTimeout(function () {
+                        area.style.height = '';  // вернуть auto
+                        if (oldForm) oldForm.style.opacity = '';
+                        if (newForm) newForm.style.opacity = '1';
+                        area._switchTimers.push(setTimeout(function () {
+                            if (newForm) newForm.style.opacity = '';
+                            area._switchTimers = [];
+                            focusTarget();
+                        }, 100));
+                    }, 210));
+                }, 100));
+            } else {
+                applySwap();
+                setTimeout(focusTarget, 50);
+            }
+        }
+
+        // === Inline error: auto-clear через 5 сек ===
+        function setLoginError(elId, text) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            if (el._clearTimer) {
+                clearTimeout(el._clearTimer);
+                el._clearTimer = null;
+            }
+            el.classList.remove('gc-success');
+            el.textContent = text || '';
+            if (text) {
+                el._clearTimer = setTimeout(function () {
+                    el.textContent = '';
+                    el._clearTimer = null;
+                }, 5000);
+            }
+        }
+        function showSuccessBadge(elId, text) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            if (el._clearTimer) { clearTimeout(el._clearTimer); el._clearTimer = null; }
+            el.classList.add('gc-success');
+            el.innerHTML = '<span class="gc-success-badge" aria-hidden="true"></span><span></span>';
+            el.lastElementChild.textContent = text;
+        }
+
+        // === Enter-цепочка: Enter в поле → следующее поле (data-next) ===
+        function handleLoginEnterChain(e) {
+            if (e.key !== 'Enter') return;
+            var inp = e.target;
+            if (!inp || inp.tagName !== 'INPUT') return;
+            if (inp.type === 'checkbox') return;
+            var nextId = inp.getAttribute('data-next');
+            if (!nextId) return;
+            var nextEl = document.getElementById(nextId);
+            if (!nextEl) return;
+            e.preventDefault();
+            if (nextEl.tagName === 'BUTTON') nextEl.click();
+            else nextEl.focus();
+        }
+        (function bindEnterChain() {
+            var inputs = document.querySelectorAll('.gc-login-form input');
+            for (var i = 0; i < inputs.length; i++) {
+                inputs[i].addEventListener('keydown', handleLoginEnterChain);
+            }
+        })();
+
+        // === Submit login/register ===
+        // Серверный data.error НЕ показывается юзеру (только в console).
+        // Список допустимых inline-сообщений фиксирован.
+        async function submitLogin() {
+            var btn = document.getElementById('loginSubmitBtn');
+            var username = document.getElementById('loginUsername').value.trim();
+            var password = document.getElementById('loginPassword').value;
+            var remember = document.getElementById('loginRemember').checked;
+            setLoginError('loginError', '');
+            if (!username) { setLoginError('loginError', 'Введите имя'); return; }
+            if (!password) { setLoginError('loginError', 'Введите пароль'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Вход…';
+            try {
+                var data = await GigaChat.auth.apiCall({ action: 'login', username: username, password: password, remember: remember });
+                if (data.response !== 'ok') {
+                    // Показываем точную причину от бэкенда (вкл. «сервис аутентификации
+                    // недоступен» — чтобы доменный юзер не думал, что неверный пароль).
+                    setLoginError('loginError', data.network ? 'Сеть недоступна' : (data.error || 'Не удалось войти'));
+                    return;
+                }
+                // display_name — ФИО из домена (для показа в шапке)
+                GigaChat.auth.setAuth(data.token, data.username, data.display_name);
+                // Успешный логин → редирект на ?return=... (или дашборд)
+                var target = GigaChat.auth.parseReturnUrl('GigaChat-Platform.html');
+                location.replace(target);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Войти';
+            }
+        }
+        var _regInflight = false; // [18]: защита от двойной регистрации (двойной клик/Enter)
+        async function submitRegister() {
+            if (_regInflight) return;
+            var btn = document.getElementById('loginSubmitBtn');
+            var username = document.getElementById('regUsername').value.trim();
+            var password = document.getElementById('regPassword').value;
+            var password2 = document.getElementById('regPassword2').value;
+            setLoginError('regError', '');
+            if (!username) { setLoginError('regError', 'Введите имя'); return; }
+            if (password.length < 6) { setLoginError('regError', 'Пароль не короче 6 символов'); return; }
+            if (password !== password2) { setLoginError('regError', 'Пароли не совпадают'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Регистрация…';
+            _regInflight = true;
+            var data;
+            // [16]: как submitLogin — защищаемся от исключения apiCall, иначе кнопка
+            // осталась бы заблокированной навсегда (висит «Регистрация…»).
+            try {
+                data = await GigaChat.auth.apiCall({ action: 'register', username: username, password: password });
+            } catch (e) {
+                setLoginError('regError', 'Сеть недоступна');
+                btn.disabled = false;
+                btn.textContent = 'Зарегистрироваться';
+                _regInflight = false;
+                return;
+            }
+            if (!data || data.response !== 'ok') {
+                setLoginError('regError', 'Не удалось зарегистрироваться');
+                btn.disabled = false;
+                btn.textContent = 'Зарегистрироваться';
+                _regInflight = false;
+                return;
+            }
+            showSuccessBadge('regError', 'Вы зарегистрированы');
+            btn.textContent = 'Готово';
+            setTimeout(function () {
+                document.getElementById('loginUsername').value = username;
+                document.getElementById('loginPassword').value = '';
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regPassword').value = '';
+                document.getElementById('regPassword2').value = '';
+                switchLoginTab('login', { focusFieldId: 'loginPassword' });
+                btn.disabled = false;
+                _regInflight = false;
+            }, 2000);
+        }
+
+        // === Bootstrap: если уже залогинен — сразу редиректим на return-url ===
+        // Иначе показываем форму. Тема и иконка инициализируются всегда.
+        (async function bootstrap() {
+            updateLoginThemeIcon();
+            // Скрыть стандартный gc-theme-toggle из _shared.js (свой есть)
+            var hideStd = function () {
+                var el = document.getElementById('gc-theme-toggle');
+                if (el) el.style.display = 'none';
+            };
+            hideStd();
+            setTimeout(hideStd, 50);  // _shared.js может ещё не успеть добавить
+
+            // Проверяем токен. Если валиден — сразу редиректим, не показывая форму.
+            var token = GigaChat.auth.getToken();
+            if (token) {
+                var res = await GigaChat.auth.verifyToken();
+                if (res.ok) {
+                    var target = GigaChat.auth.parseReturnUrl('GigaChat-Platform.html');
+                    location.replace(target);
+                    return;
+                }
+                // Токен битый — чистим, юзер увидит форму
+                GigaChat.auth.clearAuth();
+            }
+
+            // Снимаем bootloader, фокус на поле имени
+            var bl = document.getElementById('__gc-bootloader');
+            if (bl) {
+                bl.classList.add('gc-hide');
+                setTimeout(function () { if (bl.parentNode) bl.parentNode.removeChild(bl); }, 240);
+            }
+            setTimeout(function () {
+                var inp = document.getElementById('loginUsername');
+                if (inp) inp.focus();
+            }, 100);
+        })();
+    </script>
+</body>
+</html>

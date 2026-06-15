@@ -1,0 +1,776 @@
+{
+  "name": "Чат-Агент. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "chat-webhook-0001",
+      "name": "Webhook Chat",
+      "webhookId": "chat-agent-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst message = (body.message || '').trim();\nconst session_id = (body.session_id || '').trim();\nconst user_name = String(body.user_name || '').trim().slice(0, 80);\n\n// Health-check: отдаём pong без вызова LLM\nif (message === 'ping') {\n  return [{json: {valid: 0, error: 'pong'}}];\n}\n\n// __AUTH_PATCH_V1__\n// === SSO Phase 3: token presence check ===\n// Без токена → auth_required, фронт redirect на /login.html\nconst __token = String((body && body.token) || '').trim();\nif (!__token || !/^[a-f0-9]{64}$/.test(__token)) {\n  return [{json: {valid: 0, error: 'auth_required', auth_required: true}}];\n}\n\n\nif (!message || message.length < 2) {\n  return [{json: {valid: 0, error: 'Введите сообщение (минимум 2 символа)'}}];\n}\n\nif (!session_id) {\n  return [{json: {valid: 0, error: 'Поле session_id обязательно'}}];\n}\n\n// Защита от SQL-инъекций через session_id\nif (!/^[a-zA-Z0-9_-]{3,64}$/.test(session_id)) {\n  return [{json: {valid: 0, error: 'session_id содержит недопустимые символы'}}];\n}\n\nif (message.length > 100000) {\n  return [{json: {valid: 0, error: 'Слишком длинный запрос (максимум 100000 символов)'}}];\n}\n\nreturn [{json: {valid: 1, message: message, session_id: session_id, token: __token, user_name: user_name}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "id": "chat-val-0001",
+      "name": "Валидация"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-valid-chat",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ],
+      "id": "chat-if-valid-0001",
+      "name": "Запрос валиден?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: $json.error, auth_required: !!$json.auth_required}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        840,
+        520
+      ],
+      "id": "chat-err-val-0001",
+      "name": "Ответ: ошибка"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT summary_text, messages_summarized FROM chat_summaries WHERE session_id = $1 LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$('Валидация').first().json.session_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1530,
+        80
+      ],
+      "id": "chat-load-summary-0001",
+      "name": "Загрузить резюме",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _history AS (SELECT role, SUBSTRING(content, 1, 500) AS content, created_at FROM chat_memory WHERE session_id = $1 AND user_id = $3::integer ORDER BY created_at DESC LIMIT 10), _save AS (INSERT INTO chat_memory (session_id, role, content, user_id) VALUES ($1, 'user', $2, $3::integer) RETURNING id) SELECT h.role, h.content FROM _history h CROSS JOIN _lock CROSS JOIN _save ORDER BY h.created_at DESC",
+        "options": {
+          "queryReplacement": "={{ [$('Валидация').first().json.session_id, $('Валидация').first().json.message.replace(/\\[ВЛОЖЕНИЕ:[^\\]]+\\][\\s\\S]*?\\[\\/ВЛОЖЕНИЕ\\]\\s*/g, '[прикреплён файл] ').replace(/\\[не удалось обработать файл:[^\\]]+\\]\\s*/g, '[ошибка вложения] '), $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1810,
+        80
+      ],
+      "id": "chat-load-history-0001",
+      "name": "Загрузить историю",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Резюме из chat_summaries\nconst summaryRows = $('Загрузить резюме').all();\nlet summary = '';\nlet messagesSummarized = 0;\nif (summaryRows.length > 0 && summaryRows[0].json.summary_text) {\n  summary = summaryRows[0].json.summary_text;\n  messagesSummarized = summaryRows[0].json.messages_summarized || 0;\n}\n\n// Последние 30 сообщений (загружены в обратном порядке, переворачиваем)\nconst historyRows = $('Загрузить историю').all().reverse();\nlet historyContext = '';\nif (historyRows.length > 0) {\n  const lines = historyRows.map(item => {\n    const role = item.json.role === 'user' ? 'Пользователь' : 'Ассистент';\n    return role + ': ' + (item.json.content || '');\n  });\n  historyContext = lines.join('\\n');\n}\n\n// ============ Детектирование фактов о пользователе ============\n// GigaChat путает «меня» / «тебя» и забывает имя пользователя. Извлекаем имя из истории\n// детерминированно (regex), потом отдельным блоком передаём в системный промпт.\n// Идём от свежих сообщений к старым — берём последнее упоминание (если пользователь\n// переименовался).\nconst namePatterns = [\n  /меня\\s+зовут\\s+([А-ЯЁA-Z][а-яёa-zA-ZёЁ\\-]+)/i,\n  /мо[её]\\s+имя\\s*[—\\-:]?\\s*([А-ЯЁA-Z][а-яёa-zA-ZёЁ\\-]+)/i,\n  /я\\s*[—\\-]\\s*([А-ЯЁA-Z][а-яёa-zA-ZёЁ\\-]+)\\b/i,\n  /зовите\\s+меня\\s+([А-ЯЁA-Z][а-яёa-zA-ZёЁ\\-]+)/i,\n  /я\\s+([А-ЯЁA-Z][а-яёa-zA-ZёЁ\\-]+)[,.\\s!?]/i,\n];\n\nlet userName = null;\nconst userMsgsNewestFirst = [];\nfor (let i = historyRows.length - 1; i >= 0; i--) {\n  if (historyRows[i].json.role === 'user') userMsgsNewestFirst.push(historyRows[i].json.content || '');\n}\n// Также проверим текущее сообщение\nconst currentMessage = $('Валидация').first().json.message || '';\nuserMsgsNewestFirst.unshift(currentMessage);\n\nfor (const text of userMsgsNewestFirst) {\n  for (const re of namePatterns) {\n    const m = text.match(re);\n    if (m && m[1] && m[1].length >= 2 && m[1].length <= 30) {\n      // Отсекаем стоп-слова, которые случайно матчатся (например, «я думаю», «я хочу»)\n      const stopwords = ['думаю', 'хочу', 'знаю', 'считаю', 'уверен', 'тоже', 'тут', 'там', 'так', 'это', 'просто', 'видел', 'видела', 'слышал', 'слышала', 'спросил', 'сказал', 'понял', 'поняла'];\n      if (stopwords.includes(m[1].toLowerCase())) continue;\n      userName = m[1];\n      break;\n    }\n  }\n  if (userName) break;\n}\n\n// Резюме тоже может содержать имя (если оно было давно)\nif (!userName && summary) {\n  const m = summary.match(/Пользовател[яеи]\\s+зовут\\s+([А-ЯЁA-Z][а-яёa-zA-Z\\-]+)/i);\n  if (m) userName = m[1];\n}\n\n// R8.86: имя аккаунта (фронт шлёт user_name) — авторитетный источник. Имя из\n// памяти/истории — лишь fallback для анонимов. Так старое имя, осевшее в памяти\n// сессии, НЕ перебивает текущее имя аккаунта.\nconst accountName = String($('Валидация').first().json.user_name || '').trim();\nconst knownName = accountName || userName;\nlet userFacts = '';\nif (knownName) {\n  userFacts = 'Имя пользователя: ' + knownName + '. Обращайся к нему по имени, когда это уместно и естественно. Когда он спрашивает «как меня зовут?» — отвечай «' + knownName + '».';\n}\n\nreturn [{json: {\n  summary: summary,\n  messagesSummarized: messagesSummarized,\n  historyContext: historyContext,\n  historyCount: historyRows.length,\n  userFacts: userFacts,\n  userName: knownName || '',\n  message: currentMessage,\n  session_id: $('Валидация').first().json.session_id\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2090,
+        80
+      ],
+      "id": "chat-aggregate-0001",
+      "name": "Агрегация"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total FROM chat_memory WHERE session_id = $1 AND user_id = $2::integer",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2650,
+        80
+      ],
+      "id": "chat-count-0001",
+      "name": "Считать сообщения",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const totalRow = $input.first().json;\nconst total = parseInt(totalRow.total || '0', 10);\nconst summarized = $('Агрегация').first().json.messagesSummarized || 0;\n\n// Если всего сообщений > 30 И есть несжатые старые сообщения\nconst unsummarized = total - 30 - summarized;\n\nif (unsummarized > 0) {\n  // Нужно сжать: загрузить сообщения с offset summarized, limit unsummarized\n  return [{json: {needsCompression: true, total: total, summarized: summarized, toCompress: unsummarized}}];\n}\n\nreturn [{json: {needsCompression: false, total: total}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2930,
+        80
+      ],
+      "id": "chat-check-compress-0001",
+      "name": "Нужно сжатие?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.needsCompression }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    },
+                    "id": "rule-compress"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3210,
+        80
+      ],
+      "id": "chat-switch-compress-0001",
+      "name": "Switch сжатие"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, SUBSTRING(content, 1, 500) AS content FROM chat_memory WHERE session_id = $1 AND user_id = $4::integer ORDER BY created_at ASC OFFSET $2 LIMIT $3",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $('Нужно сжатие?').first().json.summarized, $('Нужно сжатие?').first().json.toCompress, $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3490,
+        -140
+      ],
+      "id": "chat-load-old-0001",
+      "name": "Загрузить старые",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Ты — сжиматель диалогов. Тебе дано предыдущее резюме и новые сообщения.\n\nТвоя задача: объединить предыдущее резюме с новыми сообщениями в ОДНО короткое резюме.\n\nПравила:\n1. Максимум 10 предложений\n2. Сохрани ВСЕ ключевые факты, имена, числа, договорённости\n3. Если пользователь представился (написал «меня зовут X», «я X», «зовите меня X» и т.п.) — ОБЯЗАТЕЛЬНО сохрани в резюме фразой «Пользователя зовут X»\n4. Удали приветствия, благодарности, пустую болтовню\n5. Пиши в прошедшем времени: «Пользователь спросил...», «Ассистент объяснил...»\n6. НЕ добавляй ничего от себя, никаких выводов или интерпретаций\n7. Если предыдущего резюме нет — просто сожми сообщения\n8. Не пиши «Пользователь сказал привет» — это шум, такие реплики выкидывай\n\nПример 1:\nПредыдущее резюме: Пользователь спросил про клиентов из Москвы. Найдено 3 клиента.\nНовые сообщения:\nПользователь: А из Питера?\nАссистент: В Санкт-Петербурге 2 клиента: ООО Нева и ИП Петров.\nПользователь: Спасибо\nАссистент: Пожалуйста!\n\nРезюме: Пользователь искал клиентов по городам. В Москве найдено 3 клиента. В Санкт-Петербурге — 2: ООО Нева и ИП Петров.\n\nПример 2 (важно — имя пользователя):\nПредыдущее резюме: нет\nНовые сообщения:\nПользователь: Меня зовут Джо\nАссистент: Приятно познакомиться, Джо. Чем помочь?\nПользователь: Расскажи про Python\nАссистент: Python — это язык программирования общего назначения...\n\nРезюме: Пользователя зовут Джо. Джо спросил про Python — ассистент рассказал, что это язык программирования общего назначения.\n\nАнтипример (НЕ ДЕЛАЙ так):\nНовые сообщения:\nПользователь: Привет\nАссистент: Чем могу помочь?\nПользователь: Спасибо\nАссистент: Пожалуйста!\n\nПлохое резюме: Пользователь сказал привет, ассистент предложил помощь, пользователь поблагодарил, ассистент ответил «пожалуйста».\nХорошее резюме: (диалог не содержал содержательных фактов — резюме можно оставить пустым или вернуть предыдущее без изменений)."
+            },
+            {
+              "content": "=Предыдущее резюме:\n{{ $('Агрегация').first().json.summary || 'нет' }}\n\nНовые сообщения для сжатия:\n{{ $input.all().map(item => (item.json.role === 'user' ? 'Пользователь' : 'Ассистент') + ': ' + item.json.content).join(String.fromCharCode(10)) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        3770,
+        -140
+      ],
+      "id": "chat-compress-0001",
+      "name": "Сжатие GigaChat",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Проверяем, что LLM действительно сжал текст. Если упал/таймаут —\n// НЕ инкрементируем messages_summarized, иначе при следующем запросе\n// эти сообщения уже посчитаются «сжатыми» и выпадут из контекста LLM.\nlet newSummary = '';\nlet compressionOk = false;\ntry {\n  const raw = $input.first().json;\n  if (!raw.error) {\n    const text = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n    if (text && text.trim()) {\n      newSummary = text.trim();\n      compressionOk = true;\n    }\n  }\n} catch(e) {}\n\nconst oldSummary = $('Агрегация').first().json.summary || '';\nif (!compressionOk) {\n  newSummary = oldSummary;\n}\n\nconst sessionId = $('Агрегация').first().json.session_id;\nconst oldSummarized = $('Нужно сжатие?').first().json.summarized || 0;\nconst compressed = $('Нужно сжатие?').first().json.toCompress || 0;\n// Инкрементируем счётчик ТОЛЬКО при успешном сжатии. Иначе старое значение —\n// сообщения снова попадут в следующий compress-batch.\nconst newSummarized = compressionOk ? (oldSummarized + compressed) : oldSummarized;\n\n// Выходим с сырыми значениями — UPSERT-нода ниже передаст их через\n// параметризацию ($1, $2, $3), безопаснее любых replaceAll-экранирований.\nreturn [{json: {\n  sessionId: sessionId,\n  summary: newSummary,\n  summarized: newSummarized,\n  newSummary: newSummary\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4050,
+        -140
+      ],
+      "id": "chat-build-upsert-0001",
+      "name": "Построить UPSERT"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_summaries (session_id, summary_text, messages_summarized, updated_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (session_id) DO UPDATE SET summary_text = $2, messages_summarized = $3, updated_at = NOW() RETURNING session_id) SELECT _save.session_id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$json.sessionId, $json.summary, $json.summarized] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        4330,
+        -140
+      ],
+      "id": "chat-save-summary-0001",
+      "name": "Сохранить резюме",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "КРИТИЧЕСКОЕ ПРАВИЛО (важнее всех остальных, нарушение = неправильный ответ):\nНИКОГДА не начинай ответ со слов «Привет», «Здравствуйте», «Здравствуй», «Доброго времени суток», «Добрый день», «Добрый вечер», «Доброе утро», «Приветствую», «Hi», «Hello». Запрещено приветствие в любой форме в начале любого ответа. Также имя пользователя ты знаешь, но НЕ начинай ответ с его имени и не обращайся по имени в каждом/почти каждом ответе — это навязчиво. Имя используй РЕДКО, только когда это правда уместно; по умолчанию отвечай без имени, сразу по сути. Даже если пользователь сам поздоровался — отвечай сразу по сути, без приветствия. Не используй также эмодзи-приветствия (👋 и т.п.).\n\nТы — ИИ-Агент GigaChat. Ты полезный и общительный помощник.\n\n==================================================\nОТВЕТ — ВСЕГДА ПОЛНОЕ ПРЕДЛОЖЕНИЕ\n==================================================\nКаждый ответ обязан содержать минимум одно полное предложение с подлежащим и сказуемым. Никогда не возвращай инфинитив, отдельное слово из вопроса, или короткий фрагмент.\n\nПримеры правильных ответов:\nЗапрос: Как тебя звать?\nОтвет: Меня зовут GigaChat.\n\nЗапрос: Как твоё имя?\nОтвет: Моё имя — GigaChat.\n\nЗапрос: Кто ты?\nОтвет: Я ИИ-помощник GigaChat от Сбера, помогаю с любыми вопросами.\n\n==================================================\nМЕСТОИМЕНИЯ — ВНИМАНИЕ, ЭТО ЧАСТЫЙ ИСТОЧНИК ОШИБОК\n==================================================\n- «меня», «мне», «я», «мой», «моё», «моя», «мои» — относятся К ПОЛЬЗОВАТЕЛЮ.\n- «тебя», «тебе», «ты», «твой», «твоё», «твоя», «твои» — относятся К ТЕБЕ (к GigaChat).\n\nКогда пользователь говорит «меня зовут X» — это его имя. Запомни X.\nКогда пользователь спрашивает «как меня зовут?» — назови ЕГО имя из истории, а не своё.\nКогда пользователь спрашивает «как тебя зовут?» — назови своё имя (GigaChat).\n\nОБЯЗАТЕЛЬНО смотри блок «Известно о пользователе» ниже, если он есть — там имя пользователя уже извлечено.\n\nПримеры правильных ответов:\nЗапрос: Как меня зовут?\nЕсли имя известно из контекста: Вас зовут Джо.\nЕсли имя неизвестно: Вы пока не представились — как к вам обращаться?\n\nЗапрос: Меня зовут Джо\nОтвет: Приятно познакомиться, Джо. Чем помочь?\n\nЗапрос (после «Меня зовут Джо»): А меня?\nОтвет: Вас зовут Джо.\n\n==================================================\nНЕ ЗАЦИКЛИВАЙСЯ НА СТАНДАРТНЫХ ФРАЗАХ\n==================================================\n- Не повторяй одну и ту же фразу в нескольких ответах подряд («Чем сегодня займёмся?», «Чем могу помочь?» и т.п.).\n- На вопрос «Как дела?» — ответь по существу: «Готов помогать», «Всё ОК, продолжаем работу», «Норм. Что нужно?» и т.п.\n- На вопрос «Что делаешь?» — отвечай в контексте: «Жду ваш запрос», «Готов отвечать на вопросы», «Помогаю с задачами».\n- Если уже спрашивал «чем могу помочь?» — больше не предлагай это пользователю на каждый ответ, он сам спросит когда надо.\n\nПример правильного диалога:\nПользователь: Как дела?\nАссистент: Норм, работаю. Чем могу помочь?\nПользователь: Что делаешь?\nАссистент: Жду ваши вопросы.\nПользователь: Расскажи что-нибудь\nАссистент: Могу рассказать про любую тему — спросите конкретно, что интересно: технологии, наука, история?\n\n==================================================\nОСНОВНЫЕ ПРАВИЛА\n==================================================\n1. Отвечай на русском языке\n2. Длина ответа под вопрос: на короткий или болтовенный («как дела?», «привет», «что делаешь?») — отвечай в 1–2 предложения. На содержательный вопрос — развёрнуто, но без воды. Не лей объём ради объёма.\n3. Если дано резюме прошлых разговоров — учитывай его, не переспрашивай о том что уже обсуждали\n4. Если есть история диалога — отвечай в контексте\n5. Будь живым и естественным, но БЕЗ приветствий в начале ответа\n6. Если спрашивают что ты умеешь — скажи что ты универсальный помощник для общения, вопросов, обсуждений\n7. Помни и ссылайся на факты из прошлых сообщений когда уместно. Запоминай не только имя пользователя, но и: его профессию/должность («я разработчик», «работаю в маркетинге»), технологии/инструменты с которыми работает («использую PostgreSQL», «пишу на Python»), текущий проект/задачу, личные предпочтения (любимый язык программирования, формат ответов). При уместном случае ссылайся: «вы говорили что работаете с Python, поэтому...»\n8. Не используй markdown-заголовки без необходимости\n9. Если пользователь пишет «подробнее», «ещё», «продолжай», «расскажи больше», «детальнее» — он просит РАЗВЕРНУТЬ и ДОПОЛНИТЬ твой предыдущий ответ. Возьми тему из последнего ответа и объясни глубже, добавь примеры, факты, нюансы. НЕ переспрашивай «о чём именно?»\n10. Начинай ответ сразу с сути: с глагола, существительного, вопроса или утверждения по теме\n\nПримеры правильных стартов ответа:\n- «Конечно, расскажу...»\n- «Нейросети — это...»\n- «Да, это возможно...»\n- «Хороший вопрос. ...»\n- «Чем могу помочь?» (только если запрос реально пустой/непонятный, не повторяй чаще одного раза за диалог)\n\nПримеры правильных ответов:\nЗапрос: Привет!\nОтвет: Чем могу помочь сегодня?\n\nЗапрос: Расскажи про нейросети\nОтвет: Нейросети — это вычислительные модели, вдохновлённые работой биологических нейронов..."
+            },
+            {
+              "content": "={{ $('Агрегация').first().json.userFacts ? 'Известно о пользователе:\\n' + $('Агрегация').first().json.userFacts + '\\n\\n' : '' }}{{ $('Агрегация').first().json.summary ? 'Резюме прошлых разговоров:\\n' + $('Агрегация').first().json.summary + '\\n\\n' : '' }}{{ $('Агрегация').first().json.historyContext ? 'Последние сообщения:\\n' + $('Агрегация').first().json.historyContext + '\\n\\n' : '' }}Текущий вопрос: {{ $('Агрегация').first().json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "temperature": 0.7,
+          "maxTokens": 800,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        4610,
+        300
+      ],
+      "id": "chat-gigachat-0001",
+      "name": "Ответ GigaChat",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n  if (raw.error) {\n    return [{ json: { response: 'GigaChat не отвечает. Проверьте подключение.' } }];\n  }\n  const text = raw.output[0].content[0].text;\n  return [{ json: { response: text.trim() } }];\n} catch(e) {\n  return [{ json: { response: 'Ошибка обработки ответа.' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4890,
+        300
+      ],
+      "id": "chat-check-response-0001",
+      "name": "Проверка ответа"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_memory (session_id, role, content, user_id) SELECT $1, 'assistant', $2, $3::integer WHERE LENGTH(TRIM($2)) > 0",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $json.response || '', $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        5170,
+        300
+      ],
+      "id": "chat-save-response-0001",
+      "name": "Сохранить ответ",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Проверка ответа').first().json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5450,
+        300
+      ],
+      "id": "chat-respond-0001",
+      "name": "Ответ: чат"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        790,
+        300
+      ],
+      "id": "chat-sso-sql-verify-V1",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\n// PostgreSQL сбой: data может быть null или содержать .error поле — НЕ\n// помечаем как unauthorized, иначе юзер видит ложный auth_required редирект.\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        300
+      ],
+      "id": "chat-sso-token-result-V1",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-chat-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1250,
+        300
+      ],
+      "id": "chat-sso-token-if-V1",
+      "name": "Token OK?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Chat": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Запрос валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Запрос валиден?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить резюме": {
+      "main": [
+        [
+          {
+            "node": "Загрузить историю",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить историю": {
+      "main": [
+        [
+          {
+            "node": "Агрегация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агрегация": {
+      "main": [
+        [
+          {
+            "node": "Считать сообщения",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Считать сообщения": {
+      "main": [
+        [
+          {
+            "node": "Нужно сжатие?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Нужно сжатие?": {
+      "main": [
+        [
+          {
+            "node": "Switch сжатие",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch сжатие": {
+      "main": [
+        [
+          {
+            "node": "Загрузить старые",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ GigaChat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить старые": {
+      "main": [
+        [
+          {
+            "node": "Сжатие GigaChat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сжатие GigaChat": {
+      "main": [
+        [
+          {
+            "node": "Построить UPSERT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Построить UPSERT": {
+      "main": [
+        [
+          {
+            "node": "Сохранить резюме",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить резюме": {
+      "main": [
+        [
+          {
+            "node": "Ответ GigaChat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ответ GigaChat": {
+      "main": [
+        [
+          {
+            "node": "Проверка ответа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка ответа": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ": {
+      "main": [
+        [
+          {
+            "node": "Ответ: чат",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Загрузить резюме",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 70
+  },
+  "versionId": "chat-agent-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ad16de428774283a74f2bef15a9b31f771c3828cae096d3c33aab7bd18058813"
+  },
+  "id": "chat-agent-001",
+  "tags": []
+}

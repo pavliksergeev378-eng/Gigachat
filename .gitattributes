@@ -1,0 +1,6 @@
+﻿Agents/lib/vosk/vosk.js -text
+Agents/lib/vosk/*.tar.gz binary
+# .reg в UTF-16 LE — не трогать кодировку/переводы строк
+*.reg binary
+wheels/torch-*.whl filter=lfs diff=lfs merge=lfs -text
+easyocr_models/*.pth filter=lfs diff=lfs merge=lfs -text

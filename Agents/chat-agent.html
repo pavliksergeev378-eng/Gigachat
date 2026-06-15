@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>GigaChat Talk</title>
+    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+    <style>html{background:#1f1f1e}html[data-theme="light"]{background:#fdfdfc}html.gc-pending-auth .sidebar,html.gc-pending-auth .main{display:none !important}</style>
+    <style>
+        :root {
+            --bg-primary: #1f1f1e;
+            --bg-secondary: #1f1e1c;
+            --bg-sidebar: #262626;
+            --bg-input: #2c2c2a;
+            --bg-user: rgba(212, 165, 116, 0.10);
+            --bg-bot: #1f1e1c;
+            --border: #363432;
+            --text-primary: #d4d4d4;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #d4a574;
+            --accent-hover: #c08a5a;
+            --sidebar-width: 270px;
+        }
+        :root[data-theme="light"] {
+            --bg-primary: #fdfdfc;
+            --bg-secondary: #f3f1ec;
+            --bg-sidebar: #fdfdfc;
+            --bg-input: #fffffe;
+            --bg-user: rgba(184, 137, 93, 0.12);
+            --bg-bot: #f3f1ec;
+            --border: #e3dfd5;
+            --text-primary: #1f1f1e;
+            --text-secondary: #6b6b68;
+            --text-muted: #a8a59f;
+            --accent: #b8895d;
+            --accent-hover: #a0764d;
+        }
+        /* Общие стили чат-агента (sidebar, session-item, header, .msg, .bot,
+           .loading, .error, status-dot, keyframes) — в _shared.js через
+           GigaChat.injectAgentCss(). Здесь только per-page правила. */
+        #chat { flex: 1; overflow-y: auto; padding: 20px 40px 45px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        #chat::-webkit-scrollbar { width: 5px; }
+        #chat::-webkit-scrollbar-track { background: transparent; }
+        #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        .bottom-area { padding: 0 20px 20px 44px; flex-shrink: 0; }
+        /* Поле ввода: textarea + иконка-отправки (внутри) + скрепка (снаружи).
+           Базовая раскладка задаётся классом .gc-input-row в _shared.js. */
+        #input-area { display: flex; gap: 8px; align-items: flex-end; }
+        #msg {
+            flex: 1; padding: 10px 16px; word-break: break-word; overflow-wrap: anywhere; border-radius: 10px; border: 1px solid var(--border);
+            background: var(--bg-input); color: var(--text-primary);
+            font-family: Segoe UI, Tahoma, sans-serif; font-size: 15px; outline: none; transition: border-color 0.2s;
+            resize: none; min-height: 36px; max-height: 130px; line-height: 1.5;
+            /* R7.40: overflow-y: hidden — JS в _shared.js переключает на auto,
+               когда контент превышает autosizeMax (нет ложного скроллбара на 1-й строке). */
+            overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+        }
+        #msg::-webkit-scrollbar { width: 4px; }
+        #msg::-webkit-scrollbar-track { background: transparent; }
+        #msg::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        #msg:focus { border-color: var(--accent); }
+        #msg:disabled { opacity: 0.4; }
+        #msg::placeholder { color: var(--text-muted); }
+        /* .empty-chat — базовое правило в _shared.js, тут только специфика chat. */
+        .empty-chat .memory-note { font-size: 12px; color: var(--text-secondary); opacity: 0.6; }
+        /* .history-loading вынесен в _shared.js */
+    </style>
+    <script src="_config.js"></script>
+    <link rel="stylesheet" href="lib/hljs-dark.min.css" id="hljs-theme-dark">
+    <link rel="stylesheet" href="lib/hljs-light.min.css" id="hljs-theme-light" disabled>
+    <script src="lib/highlight.min.js"></script>
+    <script src="_shared-guard.js"></script>
+    <script src="_shared.js"></script>
+    <script src="lib/jszip.min.js"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a>
+        <div class="sidebar-header"><h3>Сессии</h3></div>
+        <div class="sidebar-add"><button onclick="createNewSession()">Новая сессия</button></div>
+        <div class="session-list" id="sessionList"></div>
+    </div>
+    <div class="main">
+        <header>
+            <div class="header-left">
+                <h1>GigaChat Talk</h1>
+
+            </div>
+            <div class="header-right">
+                <div class="status" id="statusBar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
+            </div>
+        </header>
+        <div id="chat"><div class="empty-chat"><span>Создайте новую сессию для начала работы</span></div></div>
+        <div class="bottom-area">
+            <div class="gc-attach-chips" id="attachChips"></div>
+            <div id="input-area" class="gc-input-row">
+                <div class="gc-input-wrap">
+                    <textarea id="msg" rows="1" placeholder="Напишите сообщение..." disabled></textarea>
+                    <button id="send" class="gc-send-icon" onclick="sendMsg()" disabled aria-label="Отправить">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+                    </button>
+                </div>
+                <span id="attachBtn"></span>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Auth-gate: без токена → редирект на /login.html. После успеха снимаем
+        // gc-pending-auth → UI visible. userScoped:true изолирует сессии/history.
+        GigaChat.auth.requireAuth({ onOk: function () {
+            document.documentElement.classList.remove('gc-pending-auth');
+            GigaChat.createChatAgent({
+                userScoped: true,
+                webhookPath: 'chat',
+                historyPath: 'history',
+                prefix: 'chat',
+                idPrefix: 'chat_',
+                namePrefix: 'Talk-',
+                inflightLabel: 'Думаю',
+                exportAgentName: 'GigaChat Talk',
+                historyErrorHtml: '<div class="empty-chat"><span>Не удалось загрузить историю.</span><span class="memory-note">Можно продолжить общение — новые сообщения сохранятся</span></div>'
+            });
+        }});
+    </script>
+</body>
+</html>

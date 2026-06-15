@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>GigaChat Math</title>
+    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+    <style>html{background:#1f1f1e}html[data-theme="light"]{background:#fdfdfc}html.gc-pending-auth .sidebar,html.gc-pending-auth .main{display:none !important}</style>
+    <style>
+        :root {
+            --bg-primary: #1f1f1e;
+            --bg-secondary: #1f1e1c;
+            --bg-sidebar: #262626;
+            --bg-input: #2c2c2a;
+            --bg-user: rgba(212, 165, 116, 0.10);
+            --bg-bot: #1f1e1c;
+            --border: #363432;
+            --text-primary: #d4d4d4;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #d4a574;
+            --accent-hover: #c08a5a;
+            --code-bg: #1f1e1c;
+            --code-text: #d4d4d4;
+            --sidebar-width: 270px;
+        }
+        :root[data-theme="light"] {
+            --bg-primary: #fdfdfc;
+            --bg-secondary: #f3f1ec;
+            --bg-sidebar: #fdfdfc;
+            --bg-input: #fffffe;
+            --bg-user: rgba(184, 137, 93, 0.12);
+            --bg-bot: #f3f1ec;
+            --border: #e3dfd5;
+            --text-primary: #1f1f1e;
+            --text-secondary: #6b6b68;
+            --text-muted: #a8a59f;
+            --accent: #b8895d;
+            --accent-hover: #a0764d;
+            --code-bg: #f3f1ec;
+            --code-text: #1f1f1e;
+        }
+        /* Общие стили чат-агента — в _shared.js через GigaChat.injectAgentCss().
+           Здесь только per-page правила. */
+        #chat { flex: 1; overflow-y: auto; padding: 20px 40px 45px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        #chat::-webkit-scrollbar { width: 5px; }
+        #chat::-webkit-scrollbar-track { background: transparent; }
+        #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        /* Math: активная сессия с border (в shared — без), переопределяем тут. */
+        .session-item.active { color: var(--accent); border: 1px solid var(--border); }
+        .bottom-area { padding: 0 20px 20px 44px; flex-shrink: 0; }
+        /* Поле ввода: textarea + иконка-отправки (внутри) + скрепка (снаружи).
+           Базовая раскладка задаётся классом .gc-input-row в _shared.js. */
+        #input-area { display: flex; gap: 8px; align-items: flex-end; }
+        #msg {
+            flex: 1; padding: 10px 16px; word-break: break-word; overflow-wrap: anywhere;
+            border-radius: 10px; border: 1px solid var(--border);
+            background: var(--bg-input); color: var(--text-primary);
+            font-family: Segoe UI, Tahoma, sans-serif;
+            font-size: 15px; outline: none;
+            transition: border-color 0.2s;
+            resize: none; min-height: 36px; max-height: 130px; line-height: 1.5;
+            /* R7.40: overflow-y: hidden — JS в _shared.js переключает на auto,
+               когда контент превышает autosizeMax (нет ложного скроллбара на 1-й строке). */
+            overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+        }
+        #msg::-webkit-scrollbar { width: 4px; }
+        #msg::-webkit-scrollbar-track { background: transparent; }
+        #msg::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        #msg:focus { border-color: var(--accent); }
+        #msg:disabled { opacity: 0.4; }
+        #msg::placeholder { color: var(--text-muted); }
+        /* .empty-chat — базовое правило в _shared.js (injectAgentCss). */
+    </style>
+    <script src="_config.js"></script>
+    <link rel="stylesheet" href="lib/hljs-dark.min.css" id="hljs-theme-dark">
+    <link rel="stylesheet" href="lib/hljs-light.min.css" id="hljs-theme-light" disabled>
+    <script src="lib/highlight.min.js"></script>
+    <script src="_shared-guard.js"></script>
+    <script src="_shared.js"></script>
+    <script src="lib/jszip.min.js"></script>
+    <script src="lib/pyodide-client.js"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a>
+        <div class="sidebar-header"><h3>Сессии</h3></div>
+        <div class="sidebar-add">
+            <button onclick="createNewSession()">Новая сессия</button>
+        </div>
+        <div class="session-list" id="sessionList"></div>
+    </div>
+    <div class="main">
+        <header>
+            <div class="header-left">
+                <h1>GigaChat Math</h1>
+            </div>
+            <div class="header-right">
+                <div class="status" id="statusBar">
+                    <span class="dot checking" id="statusDot"></span>
+                    <span id="statusText">проверка...</span>
+                </div>
+            </div>
+        </header>
+        <div id="chat">
+            <div class="empty-chat">Создайте новую сессию для начала работы</div>
+        </div>
+        <div class="bottom-area">
+            <div class="gc-attach-chips" id="attachChips"></div>
+            <div id="input-area" class="gc-input-row">
+                <div class="gc-input-wrap">
+                    <textarea id="msg" rows="1" placeholder="Введите математическую задачу..." disabled></textarea>
+                    <button id="send" class="gc-send-icon" onclick="sendMsg()" disabled aria-label="Решить">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+                    </button>
+                </div>
+                <span id="attachBtn"></span>
+            </div>
+        </div>
+    </div>
+    <script>
+        var escapeHtml = GigaChat.escapeHtml;
+
+        // ============ PYODIDE (исполнение Python в Web Worker) ============
+        // GigaChat — «тупой» LLM, поэтому полагаться на его арифметику нельзя.
+        // Решение: LLM пишет Python-код, фронт исполняет в Pyodide
+        // (Python → WebAssembly), забирает реальный результат и просит
+        // LLM написать только пояснение. Число всегда из настоящего Python.
+        //
+        // Pyodide живёт в Web Worker'е (см. lib/pyodide-client.js +
+        // lib/math-pyodide-worker.js). Это даёт ДВА критичных преимущества
+        // перед inline-Pyodide:
+        //   1) Главный поток никогда не замораживается — даже на while True
+        //      из LLM-кода UI остаётся отзывчивым
+        //   2) По таймауту worker.terminate() мгновенно убивает зависший
+        //      интерпретатор, и новый запрос работает после ~1-2 сек на
+        //      переинициализацию (без перезагрузки страницы)
+        //
+        // Все параметры (PYODIDE_URL / INDEX_URL / TIMEOUT_MS / WORKER_URL)
+        // настраиваются через window.GIGACHAT_CONFIG в _config.js.
+
+        // Логика выбора финальной строки идентична серверной версии (была в
+        // «Выполнить код» workflow). GigaChat иногда ставит маркер ОТВЕТ: не
+        // на последний print, либо вовсе забывает — нужно угадать «настоящий»
+        // итог по контексту соседних строк.
+        function extractFinalLine(lines) {
+            var trimmed = (lines || [])
+                .map(function (l) { return String(l).trim(); })
+                .filter(function (l) { return l.length > 0; });
+            if (!trimmed.length) return '';
+            // GigaChat пишет маркер ОТВЕТ криво — часто опечатывается:
+            // ОТВИД, ОТВЕД, ОТВЕТТ, ОТВЕРД, ОТВЕЖД, ОТВЕТЫ. Сужено:
+            // префикс «ОТВ» + 0-3 буквы (раньше было «ОТ» + 2-8 — ловило
+            // «ОТКАЗ:», «ОТМЕТКА:», «ОТПРАВЛЕНИЕ:» как маркер; в print-выхлопе
+            // эти слова маловероятны, но если LLM в коде их выведет — итог
+            // парсился бы неверно).
+            var markerRe = /^(?:ОТВ[А-Яа-яЁё]{0,3}|АНСВЕР|ИТОГ|РЕЗУЛЬТАТ|ANSWER|FINAL|RESULT)\s*[:：]/i;
+            var stripRe = /^(?:ОТВ[А-Яа-яЁё]{0,3}|АНСВЕР|ИТОГ|РЕЗУЛЬТАТ|ANSWER|FINAL|RESULT)\s*[:：]\s*(.+)$/i;
+            var hasMarker = function (s) { return markerRe.test(s); };
+            // Loop strip: LLM иногда печатает «ОТВЕТ: ОТВЕТ: 42» (двойной маркер).
+            // Раньше один проход возвращал «ОТВЕТ: 42» — мусор в выводе.
+            var stripMarker = function (s) {
+                var prev = null;
+                while (s !== prev) {
+                    prev = s;
+                    var m = s.match(stripRe);
+                    if (m) s = m[1].trim();
+                }
+                return s;
+            };
+            var isDiagnostic = function (s) {
+                return /^(шаг|step|контроль|проверк|итераци|debug|test|i\s*=|j\s*=|k\s*=)/i.test(s);
+            };
+            var markerIdx = -1;
+            for (var i = trimmed.length - 1; i >= 0; i--) {
+                if (hasMarker(trimmed[i])) { markerIdx = i; break; }
+            }
+            if (markerIdx >= 0) {
+                var markerLine = trimmed[markerIdx];
+                // Если маркер с содержимым — ВСЕГДА предпочитаем его. Раньше при
+                // наличии не-диагностической строки после маркера логика
+                // возвращала последнюю строку без strip («ОТВЕТ: 42» + «Доп: x=3»
+                // давало «Доп: x=3» вместо «42»).
+                if (stripRe.test(markerLine)) {
+                    return stripMarker(markerLine);
+                }
+                // Маркер пустой («ОТВЕТ:» без значения) — ищем следующую
+                // не-диагностическую строку, либо берём последнюю как fallback.
+                var after = trimmed.slice(markerIdx + 1);
+                var nonDiag = after.filter(function (s) { return !isDiagnostic(s); });
+                if (nonDiag.length > 0) return stripMarker(nonDiag[nonDiag.length - 1]);
+                if (after.length > 0) return stripMarker(after[after.length - 1]);
+                return '';
+            }
+            return trimmed[trimmed.length - 1];
+        }
+
+        // ============ РЕНДЕР bot-сообщения ============
+        // Упрощённый markdown для math: только bold/italic/br. Markdown-блоки
+        // кода идут отдельно через extras.code (внутри .code-block).
+        function formatText(text) {
+            if (!text) return '';
+            var html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // GigaChat иногда оборачивает числа/формулы в LaTeX-разметку
+            // ($...$, \(...\), \[...\]). В нашем плейн-рендере остаётся
+            // буквальный «$» перед числами — мусор. Снимаем обёртки,
+            // содержимое оставляем как есть.
+            html = html.replace(/\$([^$\n]+)\$/g, '$1');
+            html = html.replace(/\\\(([^)]+?)\\\)/g, '$1');
+            html = html.replace(/\\\[([^\]]+?)\\\]/g, '$1');
+            // Простейшие LaTeX-команды без обёрток (одиночные \times, \cdot,
+            // \approx, \ne и т.п.) — заменяем на читаемые символы.
+            html = html.replace(/\\times\b/g, '×')
+                       .replace(/\\cdot\b/g, '·')
+                       .replace(/\\div\b/g, '÷')
+                       .replace(/\\approx\b/g, '≈')
+                       .replace(/\\ne\b|\\neq\b/g, '≠')
+                       .replace(/\\le\b|\\leq\b/g, '≤')
+                       .replace(/\\ge\b|\\geq\b/g, '≥')
+                       .replace(/\\pi\b/g, 'π')
+                       .replace(/\\sqrt\b/g, '√');
+            // Чистка артефактов sympy/LaTeX (висячий $, хвостовые нули в
+            // evalf-выводе) — ТОЛЬКО на строке «Ответ: …». В объяснении и в
+            // general-чате эти преобразования вредят: «Цена $50», «IP
+            // 192.168.1.0», «версия 1.20.0» нельзя ломать. Маркер «Ответ:»
+            // ставит сама ветка /math-explain первой строкой, поэтому
+            // регулярка надёжно нацеливается только на неё.
+            // Маркер «Ответ\s*:» допускает пробел до двоеточия — LLM иногда
+            // ставит его опечаточно. Без \s* строки «Ответ : 3.0» не чистились.
+            html = html.replace(/^(\s*Ответ\s*:\s*)([^\n]+)/im, function (match, prefix, value) {
+                // $-strip с двух сторон от цифр. Lookahead/lookbehind для simple
+                // boundary — поддерживаются везде с ES2018+ включая Яндекс-браузер.
+                var cleaned = value.replace(/\$+(?=\d)/g, '').replace(/(\d)\$+/g, '$1');
+                // Хвостовые нули в десятичных: «3.0» → «3», «30.800000» → «30.8»,
+                // «1.4142135623730951» — не трогаем (значащих цифр > 1).
+                // Изоляция числа через capture group вместо lookbehind — старые
+                // Safari < 16.4 и Edge Legacy не поддерживали lookbehind regex,
+                // и парс скрипта падал, ломая createChatAgent → кнопка
+                // «Новая сессия» не подключалась к обработчику.
+                cleaned = cleaned.replace(/(^|[^.\d])(\d+)\.(\d+)(?![.\d])/g, function (m, pre, intPart, decPart) {
+                    var trimmed = decPart.replace(/0+$/, '');
+                    return pre + (trimmed ? intPart + '.' + trimmed : intPart);
+                });
+                return prefix + cleaned;
+            });
+            // Math notation: x**2 → x^2 (Python использует ** для степени,
+            // математическая нотация — ^). ВАЖНО: эта замена идёт ДО bold,
+            // потому что bold-regex /\*\*(.+?)\*\*/g жадно матчит выражения
+            // вроде sin(x)**2 + cos(x)**2 → ловит «**2 + cos(x)**» как bold-блок.
+            // Условие: ** окружён алфанумерикой или скобками с обеих сторон —
+            // тогда это математика, не markdown. Bold пишется с пробелами
+            // или знаками препинания вокруг, поэтому не задеваем.
+            html = html.replace(/([A-Za-z0-9_)\]])\*\*([A-Za-z0-9_(])/g, '$1^$2');
+            html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+            // Italic: требуем не-алфанумерическую границу с обеих сторон,
+            // иначе ломаются мат-выражения вида «5*x + 3*y» (раньше italic-regex
+            // съедал «*x + 3*» и оборачивал в <i>). Кириллица учтена явно —
+            // \w в JS не покрывает русские буквы. БЕЗ lookbehind — для
+            // совместимости со старыми браузерами; границу слева ловим через
+            // capture group (^|[^...]).
+            html = html.replace(/(^|[^A-Za-zА-Яа-я0-9])\*([^\s*][^*\n]*[^\s*]|\S)\*(?![A-Za-zА-Яа-я0-9])/g, '$1<i>$2</i>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        // Кастомный рендер bot-сообщения: только текст ответа («Ответ: X»
+        // + пояснение). Python-код и raw-output больше НЕ показываются —
+        // юзеру нужна только формулировка и число. Код по-прежнему живёт
+        // в chat_memory.extras на случай отладки через БД.
+        function formatBotMessage(msg) {
+            return formatText(msg.content || '');
+        }
+
+        // Auth-gate + изоляция сессий/history per user (userScoped:true).
+        GigaChat.auth.requireAuth({ onOk: function () {
+        document.documentElement.classList.remove('gc-pending-auth');
+        GigaChat.createChatAgent({
+            userScoped: true,
+            webhookPath: 'math',
+            historyPath: 'history',
+            prefix: 'math',
+            idPrefix: 'math_',
+            namePrefix: 'Math-',
+            inflightLabel: 'Считаю',
+            exportAgentName: 'GigaChat Math',
+            emptyChatHtml: '<div class="empty-chat">Создайте новую сессию для начала работы</div>',
+            historyErrorHtml: '<div class="empty-chat">Не удалось загрузить историю.</div>',
+            historyLoadingHtml: '<div class="empty-chat">Загружаю историю...</div>',
+            formatBotHtml: formatBotMessage,
+            parseBotMessage: function (data) {
+                return {
+                    role: 'assistant',
+                    content: data.response || 'Пустой ответ',
+                    extras: { code: data.code || '', raw_result: data.raw_result || '' }
+                };
+            },
+            // PAL-цикл: бэкенд возвращает {stage:'execute', code} → исполняем
+            // Python локально (Pyodide) → шлём результат на /math-explain →
+            // получаем готовый текст с числом и пояснением. Если stage не
+            // 'execute' (general-ответ, ошибка валидации, небезопасный код) —
+            // пропускаем без изменений.
+            interceptBotData: async function (data, ctx) {
+                if (data.stage !== 'execute' || !data.code) return data;
+
+                // Хелпер: если юзер нажал «отмена», прерываемся не дожидаясь
+                // окончания Pyodide / fetch. Без этих проверок отмена ждала
+                // полного завершения worker'а (до 15 сек таймаута).
+                function checkAborted() {
+                    if (ctx.signal && ctx.signal.aborted) {
+                        var err = new Error('Запрос отменён');
+                        err.name = 'AbortError';
+                        throw err;
+                    }
+                }
+
+                // Если юзер отменит во время Pyodide-исполнения — убиваем
+                // worker, иначе ждали бы до 15 сек таймаута. terminate()
+                // безопасно — следующий запрос автоматически создаст новый.
+                var onAbort = function () {
+                    try { PyodideClient.terminate(); } catch (_) {}
+                };
+                if (ctx.signal) ctx.signal.addEventListener('abort', onAbort, { once: true });
+                // removeOnAbort: ниже в finally снимаем listener вручную, если
+                // abort так и не произошёл. Иначе при множестве запросов
+                // listeners накапливаются на одном signal (если ctx переиспользуется).
+                var removeOnAbort = function () {
+                    if (ctx.signal) {
+                        try { ctx.signal.removeEventListener('abort', onAbort); } catch (_) {}
+                    }
+                };
+
+                checkAborted();
+                // PyodideClient сам управляет worker'ом: при первом запросе
+                // тратится ~1-2 сек на загрузку Pyodide в worker, дальше
+                // мгновенно. При таймауте (15 сек по умолчанию) worker
+                // убивается, следующий запрос автоматически создаёт новый —
+                // никаких перезагрузок страницы.
+                // setInflightLabel('Считаю') — убран: label в inflight-лоадере
+                // не рендерится (см. feedback_inflight_loader.md в памяти).
+                var exec;
+                try {
+                    exec = await PyodideClient.executePython(data.code);
+                } catch (execErr) {
+                    removeOnAbort();
+                    throw execErr;
+                }
+                checkAborted();
+                var finalLine = extractFinalLine(exec.lines);
+
+                // ВАЖНО: даже при exec.killed или exec.ok=false идём на
+                // /math-explain. Workflow обработает error/killed поля и
+                // сохранит assistant-запись в chat_memory с понятным текстом.
+                // Если ранний return — user-запись в БД есть, assistant нет,
+                // при reload пользователь увидит свой вопрос без ответа.
+                var explainUrl = ctx.sendUrl.replace(/\/math(\/?)$/, '/math-explain$1');
+                var resp;
+                try {
+                    // fetchWithRetry: 60s таймаут, БЕЗ retry (retries: 0).
+                    // Phase 2 — это INSERT в chat_memory. Если первый POST
+                    // дошёл до n8n но ответ потерялся, retry создал бы дубль
+                    // в БД (не идемпотентно). На localhost-связи дубль крайне
+                    // маловероятен, но защищаемся жёстко: одна попытка.
+                    resp = await GigaChat.fetchWithRetry(explainUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                        body: JSON.stringify({
+                            message: ctx.message,
+                            session_id: ctx.sessionId,
+                            token: GigaChat.auth.getToken(),  // userScoped: workflow проверит и фильтрует chat_memory по user_id
+                            code: data.code,
+                            raw_result: exec.output,
+                            final_line: finalLine,
+                            error: exec.ok ? '' : exec.error,
+                            killed: !!exec.killed
+                        })
+                    }, { timeout: 60000, retries: 0, signal: ctx.signal });
+                } catch (e) {
+                    // Сеть упала / отмена / таймаут. Возвращаем то, что есть локально:
+                    // число пользователь хотя бы увидит, объяснения не будет.
+                    removeOnAbort();
+                    if (e.name === 'AbortError') throw e;
+                    return {
+                        response: exec.ok
+                            ? ('Ответ: ' + finalLine + '\n\n(объяснение недоступно: ' + e.message + ')')
+                            : ('Не удалось выполнить код: ' + exec.error),
+                        code: data.code,
+                        raw_result: exec.output
+                    };
+                }
+                if (!resp.ok) {
+                    removeOnAbort();
+                    return {
+                        response: exec.ok
+                            ? ('Ответ: ' + finalLine + '\n\n(сервер вернул ' + resp.status + ', объяснение недоступно)')
+                            : ('Не удалось выполнить код: ' + exec.error),
+                        code: data.code,
+                        raw_result: exec.output
+                    };
+                }
+                removeOnAbort();
+                return await resp.json();
+            }
+        });
+        }}); // конец requireAuth.onOk
+    </script>
+</body>
+</html>

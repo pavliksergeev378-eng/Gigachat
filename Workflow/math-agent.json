@@ -1,0 +1,1461 @@
+{
+  "name": "Математический агент. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "math",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "math-0001-0001-0001-000000000001",
+      "name": "Webhook Math",
+      "webhookId": "math-agent-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst message = (body.message || '').trim();\nconst session_id = (body.session_id || 'math-default').trim();\n\n// Health-check: отдаём pong без вызова LLM\nif (message === 'ping') {\n  return [{json: {valid: 0, error: 'pong'}}];\n}\n\n// __AUTH_PATCH_V1__\n// === SSO Phase 3: token presence check ===\n// Без токена → auth_required, фронт redirect на /login.html\nconst __token = String((body && body.token) || '').trim();\nconst __userName = String((body && body.user_name) || '').trim().slice(0, 80);\nif (!__token || !/^[a-f0-9]{64}$/.test(__token)) {\n  return [{json: {valid: 0, error: 'auth_required', auth_required: true}}];\n}\n\n\nif (!message || message.length < 2) {\n  return [{json: {valid: 0, error: 'Введите сообщение'}}];\n}\n\n// Защита от SQL-инъекций через session_id\nif (!/^[a-zA-Z0-9_-]{3,64}$/.test(session_id)) {\n  return [{json: {valid: 0, error: 'session_id содержит недопустимые символы'}}];\n}\n\nif (message.length > 100000) {\n  return [{json: {valid: 0, error: 'Слишком длинный запрос (максимум 100000 символов)'}}];\n}\n\n// B5 fix: strip LaTeX-обёртки (\\(...\\), \\[...\\]) из пользовательского ввода.\n// Иначе LLM получает «\\(x + 1\\)» и интерпретирует как уравнение, додумывая.\nlet cleanMessage = message\n  .replace(/\\\\\\(/g, ' ').replace(/\\\\\\)/g, ' ')\n  .replace(/\\\\\\[/g, ' ').replace(/\\\\\\]/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\n\n// B4 fix: pre-check на явные security-keys в запросе пользователя.\n// LLM обычно игнорирует «плохие» инструкции и идёт легальным путём, но тогда\n// тест ожидает блокировку — а юзер получает ответ. Чтобы тест проходил и\n// чтобы агент не пытался даже подходить к dunder/exec — отбиваем тут.\nconst USER_SECURITY_RE = /__[A-Za-z]\\w*__|\\beval\\s*\\(|\\bexec\\s*\\(|\\bsubprocess\\b|\\bos\\.system\\b|\\b__import__\\b|\\bgetattr\\s*\\(/i;\nif (USER_SECURITY_RE.test(cleanMessage)) {\n  return [{json: {valid: 0, error: 'Запрос содержит запрещённые конструкции (dunder/eval/exec/subprocess).'}}];\n}\n\nreturn [{json: {valid: 1, message: cleanMessage, session_id: session_id, token: __token, user_name: __userName}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "id": "math-0002-0002-0002-000000000002",
+      "name": "Валидация"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-valid-math",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ],
+      "id": "math-0003-0003-0003-000000000003",
+      "name": "Запрос валиден?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({response: $json.error, auth_required: !!$json.auth_required, code: '', raw_result: ''}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        840,
+        520
+      ],
+      "id": "math-0004-0004-0004-000000000004",
+      "name": "Ответ: ошибка валидации"
+    },
+    {
+      "parameters": {
+        "jsCode": "const agg = $('Агрегация').first().json;\nconst message = agg.message;\nconst historyContext = agg.historyContext || '';\nconst historyContextMath = agg.historyContextMath || '';\nconst session_id = agg.session_id || 'math-default';\nconst lastCode = agg.lastCode || '';\nconst lastRawResult = agg.lastRawResult || '';\nconst lastTask = agg.lastTask || '';\nconst lastFinalLine = agg.lastFinalLine || '';\nconst lower = message.toLowerCase().trim();\nconst trimmed = message.trim();\n\n// ============ MODE 1: RE-EXPLAIN ============\n// Пользователь просит ПОЯСНИТЬ или ПЕРЕПРОВЕРИТЬ предыдущее решение.\n// Если есть сохранённый код от прошлого assistant — реюзим его (вместо\n// перегенерации через LLM с риском получить другой ответ).\n// Фразы — ищем подстрокой (lower.includes). Однозначны в контексте, мало false-positive.\nconst REEXPLAIN_PHRASES = [\n  'перепроверь', 'пересчитай', 'не понимаю',\n  'что ты сделал', 'как получилось', 'каким образом',\n  'по шагам', 'пошагово', 'правильно ли', 'верно ли',\n  'это точно', 'точно ли', 'ещё раз', 'еще раз', 'как ты'\n];\n// Слова делятся на две группы. STRICT — однозначно reexplain в мат-контексте\n// (\"поясни\", \"распиши\", \"подробнее\"). GENERIC — двусмысленные (\"расскажи\",\n// \"объясни\", \"почему\"): после первого мат-расчёта ловили chit-chat вроде\n// \"расскажи анекдот\" и ложно уходили в reexplain. Теперь GENERIC триггерит\n// только при наличии back-reference на прошлый расчёт (BACKREF_WORDS).\nconst REEXPLAIN_WORDS_STRICT = [\n  'поясни', 'распиши', 'переделай', 'непонятно',\n  'повтори', 'повторно', 'разъясни', 'расшифруй',\n  'подробнее', 'детальнее'\n];\nconst REEXPLAIN_WORDS_GENERIC = [\n  'расскажи', 'объясни', 'почему', 'отчего', 'проверь'\n];\n// Якорные слова: явная отсылка к ПРОШЛОМУ расчёту/задаче. Падежи русского\n// перечислены вручную — для офлайн-окружения без морфоанализатора это самый\n// дешёвый и предсказуемый путь.\nconst BACKREF_WORDS = new Set([\n  'это','этот','эта','этой','этого','этом','эти','этих','этим','этими',\n  'так','такое','таким','такого','таком','такая','такие',\n  'ответ','ответе','ответа','ответом','ответы',\n  'решение','решении','решения','решением',\n  'расчёт','расчёта','расчёте','расчётом','расчёты',\n  'расчет','расчета','расчете','расчетом','расчеты',\n  'результат','результата','результате','результатом',\n  'число','числа','числе','числом',\n  'значение','значения','значении','значением',\n  'формула','формулы','формуле','формулой',\n  'получил','получилось','получили',\n  'задачу','задаче','задачи','задачей','задача',\n  'пример','примере','примера'\n]);\nconst lowerWords = lower.match(/[а-яёa-z0-9_]+/g) || [];\n// Фразы вроде «как ты» через .includes() матчили «как тысячи лет назад» —\n// false-positive reexplain в чит-чате. Используем lookaround на алфавит/цифры\n// (\\b не работает с кириллицей в JS — там \\w = [A-Za-z0-9_], без а-я).\nconst hasPhrase = REEXPLAIN_PHRASES.some(p => {\n  const escaped = p.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n  return new RegExp('(?<![а-яёa-z0-9])' + escaped + '(?![а-яёa-z0-9])', 'iu').test(lower);\n});\nconst hasStrict = REEXPLAIN_WORDS_STRICT.some(w => lowerWords.includes(w));\nconst hasGeneric = REEXPLAIN_WORDS_GENERIC.some(w => lowerWords.includes(w));\nconst hasBackref = lowerWords.some(w => BACKREF_WORDS.has(w));\nconst hasReexplainKW = hasPhrase || hasStrict || (hasGeneric && hasBackref);\n// Re-explain только если: ключ есть И сообщение не содержит САМО выражение\n// (тогда это новая задача), И есть сохранённый код от прошлого assistant.\nconst messageHasOperators = /[+\\-*/^%]/.test(message);\nconst messageHasMultipleNumbers = (message.match(/\\d+/g) || []).length >= 2;\nconst looksLikeNewMath = messageHasOperators && messageHasMultipleNumbers;\n\nif (hasReexplainKW && !looksLikeNewMath && lastCode) {\n  return [{ json: {\n    message, mode: 'reexplain',\n    historyContext, historyContextMath, session_id,\n    lastCode, lastRawResult, lastTask, lastFinalLine\n  } }];\n}\n\n// ============ MODE 2: PURE EXPRESSION ============\n// Сообщение целиком — мат-выражение (только цифры/операторы/функции/скобки).\n// Минуем LLM, идём через sympify напрямую (детерминированный путь).\n// Кириллицу НЕ допускаем — иначе «сколько 5 + 7» матчилось бы и валилось\n// в sympify с SyntaxError. Latin разрешён только для имён функций / констант.\nconst PURE_RE = /^[\\d\\s+\\-*/^%().,!=<>a-zA-Z_]+$/;\nconst KNOWN_FNS = new Set([\n  'sin','cos','tan','asin','acos','atan','sinh','cosh','tanh',\n  'log','ln','exp','sqrt','pi','e','i','oo','inf',\n  'abs','floor','ceil','round','factorial','min','max','sum','mod'\n]);\n// Одиночные буквы — переменные. Их наличие → НЕ pure_expr (sympify.evalf()\n// не решает уравнения и вернёт символьное выражение, юзеру бесполезно).\nconst VAR_LETTERS = new Set(['x','y','z','t','n','k','a','b','c']);\n\nfunction isPureExprOk(s) {\n  if (!PURE_RE.test(s)) return false;\n  if (s.length < 3) return false;\n  // Уравнения (с =) — НЕ pure_expr, sympify.evalf() их не решает\n  if (/=/.test(s)) return false;\n  // Нужен ИЛИ оператор, ИЛИ вызов функции (скобка). Раньше требовался только\n  // оператор, поэтому sqrt(144), sin(0), factorial(10), exp(1) уходили в LLM\n  // (медленно и недетерминированно). С \"hasParen\" они идут детерминированной\n  // sympify-веткой. Также допускаем константные выражения без цифр (pi+e):\n  // ранее блокировались требованием /\\d/.\n  const hasOp = /[+\\-*/^%]/.test(s);\n  const hasParen = /\\(/.test(s);\n  if (!hasOp && !hasParen) return false;\n  const latinWords = (s.match(/[a-zA-Z]+/g) || []).map(w => w.toLowerCase());\n  // Свободные переменные → не pure_expr (отдадим LLM, тот вызовет sympy.solve)\n  if (latinWords.some(w => VAR_LETTERS.has(w))) return false;\n  // Все Latin-слова должны быть из whitelist'а функций/констант\n  return latinWords.every(w => KNOWN_FNS.has(w));\n}\n\nif (isPureExprOk(trimmed)) {\n  return [{ json: {\n    message, mode: 'pure_expr',\n    expression: trimmed,\n    historyContext, historyContextMath, session_id\n  } }];\n}\n\n// ============ MODE 3: TEXT + EXPRESSION (extraction) ============\n// Слова + содержит существенное математическое выражение.\n// Допускаем Latin как первый символ — чтобы захватить «x^2 + 5*x» в окружении.\nconst exprMatches = [...message.matchAll(/[\\d(a-zA-Z][\\d\\s+\\-*/^%().,a-zA-Z_=]{4,}/g)]\n  .map(m => m[0].trim().replace(/[.,;]+$/, ''));\n// Считаем мат-токены: операторы И вызовы функций (sin, cos, log и т.п.).\n// Без этого «посчитай sin(5) + cos(7)» не извлекалось (1 оператор < 2).\nconst FUNC_RE = /\\b(?:sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log|ln|exp|sqrt|factorial|abs|floor|ceil|round)\\b/g;\nconst candidates = exprMatches.filter(s => {\n  const ops = (s.match(/[+\\-*/^%]/g) || []).length;\n  const fns = (s.match(FUNC_RE) || []).length;\n  return (ops + fns) >= 2 && s.length >= 8 && isPureExprOk(s);\n});\nif (candidates.length > 0) {\n  const longest = candidates.reduce((a, b) => a.length > b.length ? a : b);\n  return [{ json: {\n    message, mode: 'pure_expr',\n    expression: longest,\n    historyContext, historyContextMath, session_id\n  } }];\n}\n\n// ============ Вложение с мат-контентом → math ============\nif (/\\[ВЛОЖЕНИЕ:/.test(message)) {\n  const hasOps = /\\d+\\s*[+\\-*/^%=]\\s*\\d/.test(message);\n  const hasEq = /(x|y|z|икс|игрек)\\s*[\\^+\\-*/=]/i.test(message);\n  const hasTerm = /(уравнен|формул|вычисл|реши|сколько|корен|интеграл|производн|сумм|процент|матриц|треугольник|периметр|площад|объ[её]м|радиус|диаметр|графи[кч]|функци|медиан|среднее|задач|пример)/i.test(message);\n  if (hasOps || hasEq || hasTerm) {\n    return [{ json: { message, mode: 'math', historyContext, historyContextMath, session_id } }];\n  }\n}\n\n// ============ Старая логика: math keywords vs general ============\nconst mathKeywords = [\n  'посчитай', 'вычисли', 'вычислить', 'рассчитай', 'рассчитать',\n  'реши', 'решить', 'решение', 'уравнен', 'неравенств',\n  'формул', 'процент', 'корень', 'степен', 'логарифм',\n  'сумм', 'разност', 'произведен', 'делен', 'остаток от',\n  'плюс', 'минус', 'умножь', 'умножить', 'умножен',\n  'раздели', 'разделить',\n  'возведи', 'возвести', 'в степени', 'в квадрате', 'в кубе',\n  'площад', 'объём', 'объем', 'периметр', 'окружност',\n  'треугольник', 'квадрат', 'куб', 'прямоугольник', 'цилиндр', 'сфер',\n  'интеграл', 'производн', 'предел', 'синус', 'косинус', 'тангенс',\n  'матриц', 'вектор', 'определител', 'детерминант',\n  'график', 'функци', 'парабол',\n  'статистик', 'среднее', 'медиан', 'дисперс', 'отклонен',\n  'вероятност', 'комбинатор', 'факториал', 'перестанов', 'сочетан',\n  'npv', 'irr', 'roi', 'аннуитет', 'ипотек', 'кредит', 'депозит',\n  'инвестиц', 'маржа', 'наценк', 'скидк', 'ндс', 'налог',\n  'зарплат', 'рентабельн', 'прибыл', 'выручк', 'себестоимост',\n  'сколько будет', 'чему равн', 'найди', 'найти',\n  'sqrt', 'calculate', 'solve', 'equation', 'math',\n  'конвертируй', 'переведи в'\n];\nconst hasMathExpr = /\\d+\\s*[+\\-*/^%=]\\s*\\d+/.test(message);\nconst hasFactorial = /\\d+\\s*!/.test(message);\n// hasPercent: «15% от 250000» не имеет цифры с обеих сторон % (между стоит\n// кириллица «от»), поэтому hasMathExpr его не ловил. Само наличие \\d% — уже\n// сильный сигнал math (никто не пишет «50%» в чит-чате о погоде).\nconst hasPercent = /\\d\\s*%/.test(message);\nconst hasMultiDigit = /\\d{2,}/.test(message) || /\\d+[.,]\\d+/.test(message);\nlet isMath = hasMathExpr || hasFactorial || hasPercent;\nif (!isMath) for (const kw of mathKeywords) if (lower.includes(kw)) { isMath = true; break; }\nif (!isMath && hasMultiDigit && message.length > 20) {\n  for (const kw of ['сколько','какой','какая','какое','найди','найти','определи','определить','если','при','дано','равно','равна']) {\n    if (lower.includes(kw)) { isMath = true; break; }\n  }\n}\n\nif (!isMath) {\n  return [{ json: { message, mode: 'general', historyContext, historyContextMath, session_id } }];\n}\nreturn [{ json: { message, mode: 'math', historyContext, historyContextMath, session_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2370,
+        80
+      ],
+      "id": "math-cls-0001",
+      "name": "Классификатор"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-general"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "pure_expr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-pure-expr"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "reexplain",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-reexplain"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2650,
+        80
+      ],
+      "id": "math-switch-0001",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "КРИТИЧЕСКОЕ ПРАВИЛО (важнее всех остальных, нарушение = неправильный ответ):\nНИКОГДА не начинай ответ со слов «Привет», «Здравствуйте», «Здравствуй», «Доброго времени суток», «Добрый день», «Добрый вечер», «Доброе утро», «Приветствую», «Hi», «Hello». Запрещено приветствие в любой форме в начале любого ответа. Даже если пользователь сам поздоровался — отвечай сразу по сути, без приветствия. Не используй эмодзи-приветствия (👋 и т.п.).\nНачинай ответ сразу с сути: с глагола, существительного, вопроса или утверждения по теме.\n\nТы — математический помощник GigaChat. Главная задача — решать задачи и вычисления.\n\n==================================================\nR8.40: ОТВЕТ — ВСЕГДА ПОЛНОЕ ПРЕДЛОЖЕНИЕ\n==================================================\nКаждый ответ обязан содержать минимум одно полное предложение с подлежащим и сказуемым. Никогда не возвращай инфинитив, отдельное слово из вопроса, или короткий фрагмент.\n\nПримеры правильных ответов:\nЗапрос: Как тебя звать?\nОтвет: Меня зовут Математический помощник GigaChat.\n\nЗапрос: Как твоё имя?\nОтвет: Моё имя — Математический помощник GigaChat.\n\nЗапрос: Кто ты?\nОтвет: Я математический помощник GigaChat, решаю задачи и объясняю математику.\n\n==================================================\nR8.40: МЕСТОИМЕНИЯ — ЧАСТЫЙ ИСТОЧНИК ОШИБОК\n==================================================\n- «меня», «мне», «я», «мой», «моё», «моя», «мои» — относятся К ПОЛЬЗОВАТЕЛЮ.\n- «тебя», «тебе», «ты», «твой», «твоё», «твоя», «твои» — относятся К ТЕБЕ.\n\nКогда пользователь говорит «меня зовут X» — это ЕГО имя. Запомни X.\nКогда пользователь спрашивает «как меня зовут?» — назови ЕГО имя из истории, а не своё.\nКогда пользователь спрашивает «как тебя зовут?» — назови своё имя (Математический помощник GigaChat).\n\nОБЯЗАТЕЛЬНО смотри блок «Известно о пользователе» ниже, если он есть — там имя пользователя уже извлечено из истории.\n\nПримеры правильных ответов:\nЗапрос: Как меня зовут?\nЕсли имя известно из контекста: Вас зовут Джо.\nЕсли имя неизвестно: Вы пока не представились — как к вам обращаться?\n\nЗапрос: Меня зовут Джо\nОтвет: Приятно познакомиться, Джо. Чем помочь?\n\nЗапрос (после «Меня зовут Джо»): А меня?\nОтвет: Вас зовут Джо.\n==================================================\n\nНо ты дружелюбный собеседник и можешь поддержать разговор на любую тему.\n\nПравила:\n1. Отвечай кратко — максимум 5-7 предложений\n2. Если пользователь поздоровался — НЕ отвечай «Привет», сразу представься и предложи помощь: «Я математический помощник — задавайте задачу, посчитаю.»\n3. Если спрашивают что ты умеешь — объясни про математику и вычисления\n4. Если вопрос на другую тему — ответь по-дружески, в конце плавно упомяни что можешь помочь с расчётами. Не навязывай\n5. Если пользователь продолжает общаться не про математику — просто общайся, не повторяй напоминание каждый раз\n6. Пиши на русском языке\n7. Не используй markdown-заголовки\n8. Будь живым, не роботичным\n9. Не повторяй одну и ту же фразу-шаблон в нескольких ответах подряд\n\nПример 1:\nЗапрос: Привет\nОтвет: Я математический помощник — решаю задачи, считаю формулы, проценты, уравнения. Задавайте задачу — посчитаю точно. А если просто поболтать — тоже можно.\n\nПример 2:\nЗапрос: Какая сегодня погода?\nОтвет: К сожалению, я не подключён к сервисам погоды. Зато могу посчитать что угодно — от процентов по кредиту до площади вашей комнаты!\n\nПример 3:\nЗапрос: Расскажи анекдот\nОтвет: Математик ставит два стакана на тумбочку перед сном — один с водой, один пустой. С водой — если захочет пить. Пустой — если не захочет. Если нужно что-то посчитать — обращайтесь!\n\nПример 4:\nЗапрос: Как дела?\nОтвет: Отлично, спасибо! Готов к вычислениям. Есть задача или просто заглянули?\n\nАнтипример (НЕЛЬЗЯ так):\nЗапрос: Привет\nПлохой ответ: Привет! Я математический помощник...\nХороший ответ: Я математический помощник — задавайте задачу."
+            },
+            {
+              "content": "={{ $('Агрегация').first().json.user_name ? ('Имя пользователя: ' + $('Агрегация').first().json.user_name + '. НЕ начинай ответ с его имени и не обращайся по имени в каждом ответе — это навязчиво; имя используй редко, только когда это правда уместно. Когда он спрашивает «как меня зовут?» — отвечай этим именем.' + String.fromCharCode(10) + String.fromCharCode(10)) : '' }}{{ $json.historyContext }}{{ $json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "temperature": 0,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2930,
+        -140
+      ],
+      "id": "math-gen-0001",
+      "name": "Ответ GENERAL",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n  if (raw.error) {\n    return [{ json: { response: 'GigaChat не отвечает. Проверьте подключение.', code: '', raw_result: '' } }];\n  }\n  // Безопасный доступ — LLM при таймауте может вернуть пустой output\n  const text = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n  if (!text) {\n    return [{ json: { response: 'Пустой ответ от LLM. Попробуйте ещё раз.', code: '', raw_result: '' } }];\n  }\n  return [{ json: { response: text.trim(), code: '', raw_result: '' } }];\n} catch(e) {\n  return [{ json: { response: 'Ошибка обработки.', code: '', raw_result: '' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3210,
+        -140
+      ],
+      "id": "math-gen-0002",
+      "name": "Проверка ответа GEN"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Проверка ответа GEN').first().json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3770,
+        -140
+      ],
+      "id": "math-gen-0003",
+      "name": "Ответ: GENERAL"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Ты — генератор Python-кода. Получив задачу, напиши Python-код для решения.\n\nКод исполняется в Pyodide (Python в браузере). Доступна стандартная библиотека Python + математический комплект:\n• stdlib: math, statistics, decimal, fractions, itertools, functools, collections, re, random, cmath, bisect, heapq\n• sympy (символьная математика — ВАЖНО, всегда предпочитай sympy для сложных выражений: даёт ТОЧНЫЙ ответ без накопления ошибок float)\n• numpy (массивы, линейная алгебра)\n• scipy (численные методы, оптимизация, интегралы)\n• mpmath (произвольная точность; зависимость sympy)\n\nНЕ доступны: pandas, matplotlib, sklearn, requests. НИКОГДА не пытайся их импортировать — упадёт с ModuleNotFoundError.\n\nПРАВИЛО ПРО sympy (КРИТИЧНО для воспроизводимости):\nЕсли в задаче есть сложное арифметическое выражение со степенями, логарифмами, тригонометрией — ИСПОЛЬЗУЙ sympy.sympify. Это превращает «26 * 27^4 * log(18) / sin(262) * 3 / cos(272)» в детерминированный символьный объект, который оценится одинаково при каждом запуске.\n\nПример:\n  from sympy import sympify\n  result = sympify(\"26 * 27**4 * log(18) / sin(262) * 3 / cos(272)\")\n  print(f\"ОТВЕТ: {result.evalf()}\")\n\nКРИТИЧЕСКИ ВАЖНО:\n- Пиши ТОЛЬКО код. Ни одного слова пояснений\n- Первая строка ответа = первая строка кода\n- Последний print ОБЯЗАТЕЛЬНО начинается с маркера «ОТВЕТ: » (заглавными буквами, двоеточие, пробел). Маркер РОВНО шесть символов: О-Т-В-Е-Т-:  никаких «ОТВИД», «ОТВЕД», «ОТВЕТТ», «АНСВЕР», «RESULT» и прочих опечаток — система их распознаёт, но это считается ошибкой\n- НЕ оборачивай в ```python``` или ```\n- НЕ пиши 'Вот решение', 'Конечно', 'Давайте' — сразу код\n\nПРАВИЛО ПРО ПОСЛЕДНИЙ PRINT (САМОЕ ВАЖНОЕ):\nПоследний print в коде должен иметь вид:\n    print(f\"ОТВЕТ: {итоговое_значение}\")\nили\n    print(\"ОТВЕТ:\", итоговое_значение)\n\nЭтот маркер обязателен — без него система не сможет показать результат.\n\n- Если ответ одно число — `print(f\"ОТВЕТ: {result}\")`\n- Если ответов несколько — ВСЁ в ОДНУ строку: `print(f\"ОТВЕТ: x1 = {x1}, x2 = {x2}\")`\n- Промежуточные print МОЖНО, но последний обязательно с маркером ОТВЕТ:\n- Округление: round(x, 2) для денег/процентов, 4 знака для научных расчётов\n- Для точной финансовой арифметики — Decimal, для точных дробей — Fraction\n- Python int — бигнум по умолчанию (факториал 1000 считается без потерь)\n\nКРИТИЧНО ПРО ОПЕРАТОРЫ (главные ошибки LLM):\n- В Python `^` это XOR, НЕ степень! Для степени всегда `**`. Если пользователь написал `2^10` — это «2 в степени 10», в коде пишем `2**10`.\n- `cos`, `sin`, `tan`, `log` — это math.cos, math.sin, math.log. Без import math не работают.\n- math.cos / math.sin / math.tan принимают РАДИАНЫ. Если в задаче градусы — обернуть в math.radians(x).\n- math.log БЕЗ второго аргумента — натуральный логарифм (ln). Для log по основанию 10 — math.log10. Для log по любому основанию — math.log(x, base).\n- Порядок операций в Python: `**` сначала, потом `*` `/` `%` слева-направо, потом `+` `-`. Если есть сомнения — ОБЯЗАТЕЛЬНО ставь скобки.\n- ОЧЕНЬ ВНИМАТЕЛЬНО переписывай длинные выражения: каждый оператор должен быть тот, который написал пользователь.\n\n\nКРИТИЧНО ПРО СТАТИСТИКУ (B2 fix):\n- «Дисперсия выборки» = выборочная дисперсия (sample, ddof=1):\n  import statistics; result = statistics.variance([...])\n  ИЛИ import numpy as np; result = np.var([...], ddof=1)\n- «Дисперсия генеральной совокупности» = population, ddof=0:\n  statistics.pvariance(...) или np.var([...], ddof=0)\n- По умолчанию (если не уточнено) — ВЫБОРОЧНАЯ (ddof=1).\n\nКРИТИЧНО ПРО ЛОГАРИФМЫ/ЭКСПОНЕНТЫ В УРАВНЕНИЯХ (B3 fix):\n- Уравнения с e^x, log(x), степенями — всегда оборачивай результат sympy\n  в .evalf(), иначе вернётся символическое «log(100)» вместо числа 4.6052.\n- Пример: «Реши e^x = 100»\n    from sympy import symbols, solve, exp, log\n    x = symbols('x')\n    sol = solve(exp(x) - 100, x)\n    result = float(sol[0].evalf())  # ОБЯЗАТЕЛЬНО .evalf() + float()\n    print(f\"ОТВЕТ: x ≈ {round(result, 4)}\")\n\nЗАПРЕЩЕНО: os, sys, subprocess, open(), exec(), eval(), socket, requests, urllib, pickle, pandas, matplotlib, sklearn\n\nПример 1 (простая арифметика):\nЗадача: 15% от 250000\nresult = 250000 * 0.15\nprint(f\"ОТВЕТ: {result}\")\n\nПример 2 (длинное умножение — Python int точен):\nЗадача: 373 * 7373 * 272 / 232\nresult = 373 * 7373 * 272 / 232\nprint(f\"ОТВЕТ: {result}\")\n\nПример 3 (math.pi, геометрия):\nЗадача: Площадь круга радиусом 5\nimport math\narea = math.pi * 5 ** 2\nprint(f\"ОТВЕТ: {round(area, 4)}\")\n\nПример 4 (квадратное уравнение через дискриминант):\nЗадача: Реши x^2 - 5x + 6 = 0\nimport math\na, b, c = 1, -5, 6\nd = b**2 - 4*a*c\nif d < 0:\n    print(f\"ОТВЕТ: вещественных корней нет\")\nelse:\n    x1 = (-b + math.sqrt(d)) / (2*a)\n    x2 = (-b - math.sqrt(d)) / (2*a)\n    print(f\"ОТВЕТ: x1 = {x1}, x2 = {x2}\")\n\nПример 5 (СЛАУ 2×2 через метод Крамера):\nЗадача: x + y = 10, x - y = 4\na11, a12, b1 = 1, 1, 10\na21, a22, b2 = 1, -1, 4\ndet = a11*a22 - a12*a21\nx = (b1*a22 - a12*b2) / det\ny = (a11*b2 - b1*a21) / det\nprint(f\"ОТВЕТ: x = {x}, y = {y}\")\n\nПример 6 (NPV):\nЗадача: NPV: вложение 1000000, доход 300000/год, 5 лет, ставка 12%\ninvestment = 1000000\ncash_flow = 300000\nrate = 0.12\nnpv = -investment\nfor t in range(1, 6):\n    npv += cash_flow / (1 + rate) ** t\nprint(f\"ОТВЕТ: {round(npv, 2)}\")\n\nПример 7 (точная финансовая арифметика через Decimal):\nЗадача: 0.1 + 0.2 точно\nfrom decimal import Decimal\nresult = Decimal('0.1') + Decimal('0.2')\nprint(f\"ОТВЕТ: {result}\")\n\nПример 8 (статистика):\nЗадача: Среднее, медиана, СКО: 10, 20, 30, 40, 50\nimport statistics\ndata = [10, 20, 30, 40, 50]\nprint(f\"ОТВЕТ: среднее = {statistics.mean(data)}, медиана = {statistics.median(data)}, СКО = {round(statistics.stdev(data), 4)}\")\n\nПример 9 (факториал):\nЗадача: Сколько способов расставить 10 человек в очередь\nimport math\nresult = math.factorial(10)\nprint(f\"ОТВЕТ: {result}\")\n\nПример 10 (сочетания):\nЗадача: Сколько способов выбрать 3 шара из 10\nimport math\nresult = math.comb(10, 3)\nprint(f\"ОТВЕТ: {result}\")\n\nПример 11 (численное интегрирование методом Симпсона):\nЗадача: Интеграл x^2 от 0 до 3\ndef simpson(f, a, b, n=1000):\n    if n % 2: n += 1\n    h = (b - a) / n\n    s = f(a) + f(b)\n    for i in range(1, n):\n        x = a + i * h\n        s += f(x) * (4 if i % 2 else 2)\n    return s * h / 3\nresult = simpson(lambda x: x**2, 0, 3)\nprint(f\"ОТВЕТ: {round(result, 4)}\")\n\nПример 12 (метод Ньютона для нелинейного уравнения):\nЗадача: Найди корень x^3 - 2x - 5 = 0\ndef newton(f, df, x0, eps=1e-10, maxit=100):\n    x = x0\n    for _ in range(maxit):\n        fx = f(x)\n        if abs(fx) < eps: return x\n        x -= fx / df(x)\n    return x\nresult = newton(lambda x: x**3 - 2*x - 5, lambda x: 3*x**2 - 2, 2.0)\nprint(f\"ОТВЕТ: {round(result, 6)}\")\n\nПример 13 (промежуточные шаги — можно, но последний обязательно с маркером):\nЗадача: 2827 * 722 * 782 / 40\nstep1 = 2827 * 722\nprint(f\"Шаг 1: {step1}\")\nstep2 = step1 * 782\nprint(f\"Шаг 2: {step2}\")\nfinal = step2 / 40\nprint(f\"ОТВЕТ: {round(final, 2)}\")\n\nПример 14a (сложное выражение с ^, cos, log — типичная ловушка):\nЗадача: 262^6 * 272 * 2 * cos(658) / 76 * log(5)\nimport math\n# `^` пользователя превращается в `**`. cos в радианах. log — натуральный.\nresult = (262**6) * 272 * 2 * math.cos(658) / 76 * math.log(5)\nprint(f\"ОТВЕТ: {round(result, 4)}\")\n\nПример 14 (сложные проценты):\nЗадача: Вклад 100000, ставка 8% годовых, капитализация ежемесячная, 3 года\nprincipal = 100000\nannual_rate = 0.08\nmonths = 36\nmonthly_rate = annual_rate / 12\nfinal = principal * (1 + monthly_rate) ** months\nprint(f\"ОТВЕТ: {round(final, 2)}\")\n\nПример 15 (производная — ВСЕГДА через sympy.diff с symbols):\nЗадача: Найди производную sin(x)\nfrom sympy import symbols, diff, sin\nx = symbols('x')\nresult = diff(sin(x), x)\nprint(f\"ОТВЕТ: {result}\")\n\nПример 16 (численный корень — только scipy.optimize.brentq, НЕ sympy.solve):\nЗадача: Найди корень x^3 - 2x - 5 = 0 численно\n# КРИТИЧНО: sympy.solve вернёт ТАКЖЕ комплексные корни вида «-1/2 - sqrt(3)*I/2 ...» — это символы, не число.\n# Для слова «численно» — scipy.optimize.brentq на интервале со сменой знака.\n# f(1) = 1 - 2 - 5 = -6 (отриц), f(3) = 27 - 6 - 5 = 16 (положит) → корень между 1 и 3.\nimport scipy.optimize as opt\nresult = opt.brentq(lambda x: x**3 - 2*x - 5, 1, 3)\nprint(f\"ОТВЕТ: {round(result, 4)}\")\n\nПример 17 (только дискриминант — НЕ решаем уравнение):\nЗадача: Дискриминант для 3x^2 - 5x + 1 = 0\na, b, c = 3, -5, 1\nd = b**2 - 4*a*c\nprint(f\"ОТВЕТ: D = {d}\")\n\nПример 18 (аннуитетный платёж по кредиту):\nЗадача: Аннуитет: кредит 1000000 на 12 месяцев под 15% годовых\nprincipal = 1000000\nannual_rate = 0.15\nn = 12  # месяцев\nr = annual_rate / 12  # месячная ставка\n# Формула аннуитетного платежа: P * r * (1+r)^n / ((1+r)^n - 1)\npayment = principal * r * (1 + r)**n / ((1 + r)**n - 1)\nprint(f\"ОТВЕТ: {round(payment, 2)}\")\n\nКЛЮЧЕВЫЕ ПРАВИЛА ДЛЯ ТИПОВЫХ ЗАПРОСОВ (нарушение = неправильный ответ):\n- «производная» → ТОЛЬКО sympy.diff(f, x) с x = symbols('x'). НЕ считай вручную, НЕ подставляй конкретное значение x.\n- «численно» / «численный корень» → scipy.optimize.brentq на интервале со сменой знака. НИКОГДА не используй sympy.solve — он даёт комплексные корни вида «-1/2 + sqrt(3)*I/2», это не число.\n- «дискриминант» → выведи ТОЛЬКО D = b**2 - 4*a*c. НЕ решай уравнение, НЕ считай корни.\n- «аннуитет» / «платёж по кредиту» → формула P*r*(1+r)^n / ((1+r)^n - 1), где r = годовая_ставка/12, n = число месяцев. round(..., 2).\n\nНЕПРАВИЛЬНО (так НЕ делай):\n\nA) Объяснения вместо кода:\nКонечно! Вот решение:\n```python\nprint(2 + 2)\n```\nОтвет: 4\n\nB) Попытка импортировать недоступное:\nimport pandas as pd       # ← УПАДЁТ, pandas нет в бандле!\nfrom sklearn import ...   # ← УПАДЁТ, sklearn нет в бандле!\nimport matplotlib.pyplot  # ← УПАДЁТ, matplotlib нет в бандле!\n(sympy, numpy, scipy, mpmath — РАЗРЕШЕНЫ и предпочтительны для математики)\n\nC) Последний print без маркера:\nprint(f\"Финальный: {final}\")\nprint(final)\n^^^ нельзя, последний print должен начинаться с \"ОТВЕТ: \"\n\nD) Маркер не в последней строке:\nprint(f\"ОТВЕТ: {result}\")\nprint(\"Проверка пройдена\")\n^^^ нельзя, ОТВЕТ должен быть в самом ПОСЛЕДНЕМ print\n\nПРАВИЛЬНО:\nprint(f\"ОТВЕТ: {result}\")\n\nПРАВИЛО ЧИСЛОВОГО ОТВЕТА (исправление главных багов):\nВ \\`print(f\"ОТВЕТ: {value}\")\\` ВСЕГДА выводи ЧИСЛОВОЕ значение, не символическое.\n- Если результат содержит pi, sqrt, log, exp — обязательно \\`float(value)\\` или \\`value.evalf()\\`\n- Для производных/символьных выражений (когда символический результат имеет смысл — x в выражении) — оставь как есть.\n- Используй \\`str(value).replace(\"**\", \"^\")\\` чтобы юзер видел \\`x^2\\` вместо \\`x**2\\`.\n\nПример 19 (площадь треугольника по 3 сторонам — формула Герона):\nЗадача: Площадь треугольника со сторонами 7, 8, 9\nimport math\na, b, c = 7, 8, 9\ns = (a + b + c) / 2  # полупериметр\narea = math.sqrt(s * (s-a) * (s-b) * (s-c))\nprint(f\"ОТВЕТ: {round(area, 4)}\")\n\nПример 20 (объём шара — обязательно ЧИСЛОВОЙ ответ, не 2304*pi):\nЗадача: Объём шара радиусом 12\nimport math\nr = 12\nvolume = (4/3) * math.pi * r**3\nprint(f\"ОТВЕТ: {round(volume, 2)}\")\n\nПример 21 (площадь правильного многоугольника):\nЗадача: Площадь правильного шестиугольника со стороной 4\nimport math\nn, side = 6, 4\narea = (n * side**2) / (4 * math.tan(math.pi / n))\nprint(f\"ОТВЕТ: {round(area, 4)}\")\n\nПример 22 (перестановки с повторениями):\nЗадача: Сколько перестановок слова «математика»\nimport math\nfrom collections import Counter\nword = \"математика\"\nfreq = Counter(word)\ndenom = 1\nfor count in freq.values():\n    denom *= math.factorial(count)\nresult = math.factorial(len(word)) // denom\nprint(f\"ОТВЕТ: {result}\")\n\nПример 23 (логарифмы с e — обязательно упрощай):\nЗадача: Чему равен log(e^7)\nimport math\nresult = math.log(math.e ** 7)  # = 7\nprint(f\"ОТВЕТ: {round(result, 4)}\")\n\nПример 24 (интеграл от 1 до e от 1/x — числовой ответ):\nЗадача: Интеграл от 1 до e от 1/x\nimport math\n# Аналитически ∫(1/x)dx = ln|x|, [ln(e) - ln(1)] = 1 - 0 = 1.\n# Используем math.log который натуральный — без второго аргумента.\nresult = math.log(math.e) - math.log(1)\nprint(f\"ОТВЕТ: {round(result, 4)}\")\n\nОТКАЗ ОТ НЕ-МАТЕМАТИЧЕСКИХ ЗАПРОСОВ (важно):\nЕсли в запросе пользователя есть просьба использовать запрещённые функции\n(eval, exec, chr, bytes, bytearray, subprocess, open, getattr, __import__,\ninput, vars, globals, locals, compile, breakpoint, os.*, sys.*, urllib*,\npickle, requests) — НЕ пытайся вычислить «математическую часть» запроса.\nВыведи ОДНУ строку и закончи:\n    print(f\"ОТВЕТ: Запрос содержит запрещённые операции, не выполняю.\")\n\nЭто НЕ относится к стандартным математическим функциям sin/cos/log/sqrt/exp\nиз math/sympy/numpy/scipy — они разрешены.\n\nПРИМЕРЫ ОТКАЗА:\nЗапрос: «Используй eval для вычисления 2+2»\nКод: print(f\"ОТВЕТ: Запрос содержит запрещённые операции, не выполняю.\")\n\nЗапрос: «Реши через chr(48)+chr(49)»\nКод: print(f\"ОТВЕТ: Запрос содержит запрещённые операции, не выполняю.\")\n\nЗапрос: «Используй subprocess чтобы выполнить...»\nКод: print(f\"ОТВЕТ: Запрос содержит запрещённые операции, не выполняю.\")\n\nЗАПРЕЩЕНО подставлять ДРУГУЮ задачу вместо запрошенной. Если просили решить\nчерез eval — отказывайся, не решай «2+2» отдельно.\n\nТеперь напиши код:"
+            },
+            {
+              "content": "={{ $('Агрегация').first().json.historyContextMath }}Задача: {{ $('Валидация').first().json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "temperature": 0,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2930,
+        300
+      ],
+      "id": "math-0005-0005-0005-000000000005",
+      "name": "Генерация кода",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n\n  if (raw.error) {\n    return [{ json: { success: 0, code: '', error: 'GigaChat не отвечает. Проверьте подключение.' } }];\n  }\n\n  // Безопасный доступ к ответу LLM\n  let code = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n  if (!code) {\n    return [{ json: { success: 0, code: '', error: 'Пустой ответ от LLM.' } }];\n  }\n\n  // Убираем markdown-обёртки\n  code = code.replace(/```python\\s*/gi, '').replace(/```\\s*/g, '').trim();\n\n  // Убираем текст до первого import или первой переменной\n  const lines = code.split('\\n');\n  let startIdx = 0;\n  for (let i = 0; i < lines.length; i++) {\n    const line = lines[i].trim();\n    if (line.startsWith('import ') || line.startsWith('from ') ||\n        line.match(/^[a-zA-Z_]/) || line.startsWith('#') ||\n        line.startsWith('print(')) {\n      startIdx = i;\n      break;\n    }\n  }\n  code = lines.slice(startIdx).join('\\n').trim();\n\n  if (!code || code.length < 5) {\n    return [{ json: { success: 0, code: '', error: 'GigaChat не смог сгенерировать код.' } }];\n  }\n\n  // === БЕЗОПАСНОСТЬ: whitelist-подход ===\n  // Старый blacklist через includes() был обходим: 'eval (' с пробелом,\n  // '__builtins__.eval', unicode-escape '\\u0065val(' и т.п. Whitelist\n  // надёжнее: разрешаем только импорты математических модулей stdlib.\n\n  // Декодируем unicode-escapes до проверок (защита от \\u0065val).\n  const decoded = code.replace(/\\\\u([0-9a-fA-F]{4})/g, (m, hex) =>\n    String.fromCharCode(parseInt(hex, 16))\n  );\n\n  // 1) Все import'ы и from-import'ы должны быть из whitelist'a\n  const ALLOWED_MODULES = new Set([\n    'math', 'statistics', 'decimal', 'fractions', 'cmath',\n    'itertools', 'functools', 'collections', 'bisect', 'heapq',\n    'random', 're', 'string', 'numbers',\n    // 'operator' УБРАН: operator.attrgetter(name)(obj) функционально\n    // эквивалентен getattr (который запрещён) и позволял sandbox escape:\n    // attr = 'z__class__z'[1:-1]; cls = operator.attrgetter(attr)(int)\n    // → доступ к __mro__, __subclasses__ → os._wrap_close.__init__.__globals__.\n    // В мат-задачах operator не нужен — numpy/sympy предоставляют свои операции.\n    // Математический комплект (Pyodide bundle, lazy-loaded из lib/pyodide/)\n    'sympy', 'numpy', 'scipy', 'mpmath'\n  ]);\n  // Ловим import'ы в ЛЮБОЙ позиции, не только в начале строки. Раньше regex\n  // `/^...^/gm` пропускал «y=1; import os» (после ';') и «import math, os»\n  // (только math проверялся, os проскакивал в группу '([\\\\w.]+)').\n  const importStmtRe = /(?:^|;|\\n)[\\t ]*(import|from)[\\t ]+([^\\n;]+)/g;\n  let im;\n  while ((im = importStmtRe.exec(decoded)) !== null) {\n    const kind = im[1];\n    const rest = im[2].trim();\n    let modules;\n    if (kind === 'from') {\n      // 'from MODULE import ...' — берём MODULE\n      const fromMatch = rest.match(/^([\\w.]+)/);\n      if (!fromMatch) continue;\n      modules = [fromMatch[1]];\n    } else {\n      // 'import X, Y as alias, A.B' — каждый модуль из comma-list отдельно\n      modules = rest.split(/,/).map(s => s.trim().split(/\\s+as\\s+/)[0].trim());\n    }\n    for (const mod of modules) {\n      if (!mod) continue;\n      const rootModule = mod.split('.')[0];\n      if (!ALLOWED_MODULES.has(rootModule)) {\n        return [{ json: { success: 0, code: code, error: 'Модуль не разрешён: ' + rootModule + '. Доступны только: ' + [...ALLOWED_MODULES].join(', ') } }];\n      }\n    }\n  }\n\n  // 2) Запрет любых dunder-методов (__import__, __class__.__bases__, etc.)\n  //    Регекс БЕЗ \\b — иначе строка 'z__class__z' проходила проверку\n  //    (между 'z' и '_' нет word-boundary, оба \\w-символа). Дальше через\n  //    [1:-1] получается чистое '__class__' для bypass'а. Сейчас ловим\n  //    любое вхождение __ИмяСИменем__ в исходнике.\n  if (/__[A-Za-z]\\w*__/.test(decoded)) {\n    return [{ json: { success: 0, code: code, error: 'Запрещены dunder-методы (__name__).' } }];\n  }\n  // 2b) Bypass через runtime-конструкцию имени dunder: '_'+'_class_'+'_'+'_'\n  //     или просто '__'+'class'+'__'. Блокируем любые строковые литералы,\n  //     состоящие из одних подчёркиваний. В математических задачах такие\n  //     строки не встречаются — false-positive риск минимальный.\n  if (/(['\"])_+\\1/.test(decoded)) {\n    return [{ json: { success: 0, code: code, error: 'Запрещены строки из подчёркиваний (используются для обхода dunder-фильтра).' } }];\n  }\n\n  // 3) Запрет опасных функций через regex с word-boundary и опциональным\n  //    пробелом перед '(' (eval (, exec ( и т.п. — теперь ловятся).\n  //    chr: chr(95)='_', применяется для сборки имени dunder из кодов\n  //    символов (chr(95)+chr(95)+chr(99)+chr(108)+... = '__cl...').\n  //    bytes/bytearray: bytes([95,95,99,...]).decode() — альтернативный путь\n  //    runtime-сборки имени dunder.\n  //    'help' УБРАН: help() только печатает docstring, кода не исполняет.\n  //    Раньше блокировал легитимные подсказки LLM вроде help(sympy.diff).\n  const BANNED_BUILTINS = [\n    'eval', 'exec', 'compile', 'open', 'input',\n    'globals', 'locals', 'vars', 'getattr', 'setattr', 'delattr',\n    'breakpoint', 'chr', 'bytes', 'bytearray'\n  ];\n  for (const fn of BANNED_BUILTINS) {\n    const re = new RegExp('\\\\b' + fn + '\\\\s*\\\\(');\n    if (re.test(decoded)) {\n      return [{ json: { success: 0, code: code, error: 'Запрещённый builtin: ' + fn + '()' } }];\n    }\n  }\n\n  // Если LLM забыла print() — пытаемся найти последнюю присвоенную\n  // переменную regex'ом и напечатать её с маркером ОТВЕТ:.\n  if (!/\\bprint\\s*\\(/.test(code)) {\n    const assignments = [...code.matchAll(/^[\\t ]*([a-zA-Z_][a-zA-Z0-9_]*)\\s*=(?!=)/gm)];\n    if (assignments.length > 0) {\n      const lastVar = assignments[assignments.length - 1][1];\n      code += `\\nprint(f\"ОТВЕТ: {${lastVar}}\")`;\n    } else {\n      return [{ json: { success: 0, code: code, error: 'GigaChat сгенерировал код без вывода. Попробуйте перефразировать задачу.' } }];\n    }\n  }\n\n  return [{ json: { success: 1, code: code, error: '' } }];\n\n} catch (e) {\n  return [{ json: { success: 0, code: '', error: 'Ошибка обработки ответа GigaChat: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3210,
+        300
+      ],
+      "id": "math-0006-0006-0006-000000000006",
+      "name": "Проверка кода"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-code-ok",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3490,
+        300
+      ],
+      "id": "math-0007-0007-0007-000000000007",
+      "name": "Код безопасен?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: '', code: $('Проверка кода').first().json.code || '', raw_result: '', stage: 'execute' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3770,
+        80
+      ],
+      "id": "math-respond-code-0001",
+      "name": "Ответ: код к исполнению"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $('Проверка кода').first().json.error || 'Код не прошёл проверку безопасности.', code: $('Проверка кода').first().json.code || '', raw_result: '' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4050,
+        520
+      ],
+      "id": "math-0012-0012-0012-000000000012",
+      "name": "Ответ: код опасен"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, SUBSTRING(content, 1, 2000) AS content, extras FROM chat_memory WHERE session_id = $1 AND user_id = $2::integer ORDER BY created_at DESC LIMIT 30",
+        "options": {
+          "queryReplacement": "={{ [$('Валидация').first().json.session_id, $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1530,
+        80
+      ],
+      "id": "math-load-history-0001",
+      "name": "Загрузить историю",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const historyRows = $input.all().reverse();\nlet historyContext = '';\nlet historyContextMath = '';\n// Поля для re-explain: код/результат/задача из последнего assistant-сообщения\nlet lastCode = '';\nlet lastRawResult = '';\nlet lastTask = '';\nlet lastFinalLine = '';\n\nif (historyRows.length > 0) {\n  const allLines = historyRows.map(item => {\n    const role = item.json.role === 'user' ? 'Пользователь' : 'Ассистент';\n    return role + ': ' + (item.json.content || '');\n  });\n  historyContext = 'История диалога:\\n' + allLines.join('\\n') + '\\n\\n';\n  const lastSix = allLines.slice(-6);\n  if (lastSix.length > 0) {\n    historyContextMath = 'История диалога:\\n' + lastSix.join('\\n') + '\\n\\n';\n  }\n\n  // Ищем последний assistant с extras.code — это будет кандидат для re-explain.\n  // Идём с конца, потому что нужен самый свежий мат-расчёт.\n  for (let i = historyRows.length - 1; i >= 0; i--) {\n    const row = historyRows[i].json;\n    if (row.role !== 'assistant') continue;\n    if (!row.extras) continue;\n    let ext;\n    try {\n      ext = typeof row.extras === 'string' ? JSON.parse(row.extras) : row.extras;\n    } catch (e) { continue; }\n    // reexplain-записи сохраняются с extras={reexplained:true} БЕЗ кода —\n    // условие ниже (!ext.code) их естественно пропустит, защитного флага\n    // не нужно. Это держит дубль состояния вне БД.\n    if (!ext || !ext.code) continue;\n    // UNSAFE-записи: код сохранился (для аудита), но raw_result пустой\n    // (валидация Phase 2 отвергла код, либо Python упал, либо worker был\n    // killed). Их нельзя реюзить для reexplain — нет финального числа,\n    // объяснять нечего. Идём искать предыдущий валидный assistant.\n    if (!ext.raw_result && !ext.final_line) continue;\n\n    // Ограничиваем размеры — Reexplain-промпт собирается из этих полей, и\n    // на больших raw_result (до 50KB) может вылететь по token limit LLM.\n    lastCode = (ext.code || '').slice(0, 5000);\n    lastRawResult = (ext.raw_result || '').slice(-3000);  // хвост важнее: там ОТВЕТ:\n\n    // Single source of truth: final_line вычислил фронтенд при первом расчёте\n    // (та логика умеет пропускать диагностические строки после маркера) и\n    // /math-explain сохранил его в extras. Просто читаем.\n    if (ext.final_line) {\n      lastFinalLine = ext.final_line;\n    } else {\n      // Fallback для legacy-записей без поля final_line — обычный парсинг.\n      const lines = (lastRawResult || '').split('\\n').map(l => l.trim()).filter(Boolean);\n      const markerRe = /^(?:ОТВ[А-Яа-яЁё]{0,3}|АНСВЕР|ИТОГ|РЕЗУЛЬТАТ|ANSWER|FINAL|RESULT)\\s*[:：]\\s*(.+)$/i;\n      for (let j = lines.length - 1; j >= 0; j--) {\n        const m = lines[j].match(markerRe);\n        if (m) { lastFinalLine = m[1].trim(); break; }\n      }\n      if (!lastFinalLine && lines.length > 0) lastFinalLine = lines[lines.length - 1];\n    }\n    if (lastFinalLine.length > 1000) lastFinalLine = lastFinalLine.slice(0, 1000) + '…';\n\n    // Задача — предыдущее user-сообщение перед этим assistant\n    if (i > 0 && historyRows[i - 1].json.role === 'user') {\n      lastTask = historyRows[i - 1].json.content || '';\n    }\n    break;\n  }\n}\n\nconst v = $('Валидация').first().json;\nreturn [{json: {\n    user_name: (v.user_name || ''),\n  message: v.message,\n  session_id: v.session_id,\n  historyContext,\n  historyContextMath,\n  lastCode,\n  lastRawResult,\n  lastTask,\n  lastFinalLine\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1810,
+        80
+      ],
+      "id": "math-aggregate-0001",
+      "name": "Агрегация"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, user_id) VALUES ($1, 'user', $2, $3::integer) RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$json.session_id, ($json.message || '').replace(/\\[ВЛОЖЕНИЕ:[^\\]]+\\][\\s\\S]*?\\[\\/ВЛОЖЕНИЕ\\]\\s*/g, '[прикреплён файл] ').replace(/\\[не удалось обработать файл:[^\\]]+\\]\\s*/g, '[ошибка вложения] '), $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2090,
+        80
+      ],
+      "id": "math-save-question-0001",
+      "name": "Сохранить вопрос",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, user_id) SELECT $1, 'assistant', $2, $3::integer WHERE LENGTH(TRIM($2)) > 0 AND $2 NOT IN ('GigaChat не отвечает. Проверьте подключение.','Ошибка обработки.','Ошибка генерации ответа.','GigaChat не отвечает. Проверьте подключение.','Пустой ответ от LLM. Попробуйте ещё раз.','Ошибка обработки ответа.') RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $json.response || '', $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3490,
+        -140
+      ],
+      "id": "math-save-resp-gen-0001",
+      "name": "Сохранить ответ GEN",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, extras, user_id) SELECT $1, 'assistant', $2, $3::jsonb, $4::integer WHERE LENGTH(TRIM($2)) > 0 AND $2 NOT IN ('GigaChat не отвечает. Проверьте подключение.','Ошибка обработки.','Ошибка генерации ответа.','GigaChat не отвечает. Проверьте подключение.','Пустой ответ от LLM. Попробуйте ещё раз.','Ошибка обработки ответа.') RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $json.error || 'Код не прошёл проверку безопасности.', JSON.stringify({code: $json.code || '', raw_result: ''}), $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3770,
+        520
+      ],
+      "id": "math-save-resp-unsafe-0001",
+      "name": "Сохранить ответ UNSAFE",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "math-explain",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        1000
+      ],
+      "id": "math-explain-webhook-001",
+      "name": "Webhook Math Explain",
+      "webhookId": "math-explain-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase 2 — фронт уже исполнил Python в Pyodide и шлёт результат.\n// Достаём поля и нормализуем. final_line — это значение после маркера\n// «ОТВЕТ: », отделённое от полного raw_result для удобства подстановки.\n// exec_killed — true если Pyodide убит по таймауту (frontend сделал\n// worker.terminate). Отличается от exec_error: kill это не Python\n// exception, а внешнее прерывание; формулировка ответа другая.\nconst body = $input.first().json.body || {};\nconst session_id = (body.session_id || 'math-default').trim();\n\n// Защита от SQL-инъекций (этот session_id уйдёт в queryReplacement позже)\nif (!/^[a-zA-Z0-9_-]{3,64}$/.test(session_id)) {\n  return [{json: {error: 'session_id содержит недопустимые символы'}}];\n}\n\n// Защита от DoS: ограничиваем длину пользовательских полей.\n// Pyodide-результат большой = переполнение БД и chat_memory.\nconst code = (body.code || '').toString();\nconst raw_result = (body.raw_result || '').toString();\nconst final_line = (body.final_line || '').toString().trim();\nconst message = (body.message || '').toString().trim();\nif (code.length > 50000) return [{json: {error: 'code слишком длинный (>50KB)'}}];\nif (raw_result.length > 50000) return [{json: {error: 'raw_result слишком длинный (>50KB)'}}];\nif (final_line.length > 5000) return [{json: {error: 'final_line слишком длинный (>5KB)'}}];\nif (message.length > 100000) return [{json: {error: 'message слишком длинный'}}];\n\nreturn [{json: {\n  message: message,\n  session_id: session_id,\n  code: code,\n  raw_result: raw_result,\n  final_line: final_line,\n  exec_error: (body.error || '').toString().slice(0, 5000),\n  exec_killed: !!body.killed\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        1000
+      ],
+      "id": "math-explain-extract-0001",
+      "name": "Извлечение полей"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Ты — математический помощник. Объясни, КАК была решена задача. Финальный ответ уже дан пользователю программно — ты его НЕ дублируешь, НЕ вычисляешь и НЕ переформулируешь.\n\nПравила:\n1. НЕ начинай со слова «Ответ» или с числа. Сразу пиши, как решали.\n2. 2-3 предложения о методе/формуле решения.\n3. Можешь упомянуть единицы измерения если уместно.\n4. НЕ пиши код. НЕ повторяй условие задачи дословно. НЕ выводи число, оно уже подставлено системой.\n5. Пиши на русском.\n6. Максимум 4 предложения.\n7. НЕ используй LaTeX/MathJax-разметку: никаких $...$, \\(...\\), \\frac, \\times, \\cdot, \\sqrt. Числа и операции пиши обычным текстом: «26 умножили на 27 в четвёртой степени», а не «$26 \\times 27^4$». Символы можно: ×, ·, ², ³, π, √ — но без обратных слешей.\n8. НЕ упоминай технические инструменты: sympy, numpy, scipy, mpmath, Python, Pyodide, библиотеки, модули, код, программу. Это деталь реализации, юзеру не нужна. Объясняй математику словами: «возвели в степень», «нашли производную», «применили формулу». Запрещены фразы вида «через sympy», «с помощью Python», «использовал scipy».\n\nПример 1:\nЗадача: 15% от 250000\nФинальный ответ (уже выдан системой): 37500.0\nТвоё объяснение: Умножили 250 000 на 0.15. Это стандартный расчёт процента от суммы.\n\nПример 2:\nЗадача: x^2 - 5x + 6 = 0\nФинальный ответ (уже выдан системой): x1 = 3.0, x2 = 2.0\nТвоё объяснение: Решение через дискриминант: D = b² − 4ac = 25 − 24 = 1. Корни считаются по формуле (−b ± √D) / 2a.\n\nПример 3:\nЗадача: Среднее и медиана: 10, 20, 30, 40, 50\nФинальный ответ (уже выдан системой): среднее = 30, медиана = 30\nТвоё объяснение: Сумма 150 делится на 5 — это среднее. Медиана — серединное значение упорядоченного ряда, в данном случае это 30.\n\nНЕПРАВИЛЬНО (так НЕ делай):\n- Не начинай с «Ответ: 37500. Умножаем...»\n- Не пиши «Итак, посчитав, получаем 37500»\n- Не дублируй число\n\nПРАВИЛЬНО:\n- Сразу с метода: «Умножили 250 000 на 0.15. Это стандартный расчёт процента.»\n\nТеперь объясни:"
+            },
+            {
+              "content": "=Задача: {{ $('Извлечение полей').first().json.message }}\n\nРешение (для контекста — НЕ упоминай в ответе):\n{{ $('Извлечение полей').first().json.code }}\n\nФинальный ответ (уже выдан системой пользователю): {{ $('Извлечение полей').first().json.final_line }}\n\nПромежуточный вывод:\n{{ $('Извлечение полей').first().json.raw_result }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "temperature": 0,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1760,
+        1000
+      ],
+      "id": "math-explain-llm-0001",
+      "name": "Объяснение результата",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Сборка финального ответа MATH детерминированно:\n//   число берём из final_line (= вывод Pyodide), пояснение — от LLM.\n// Если Pyodide сломался (exec_error не пустой), возвращаем ошибку и не\n// дёргаем LLM-пояснение как итог — оно не имеет смысла без результата.\ntry {\n  const raw = $input.first().json;\n  const prev = $('Извлечение полей').first().json;\n\n  // Серверная валидация Phase 2 отклонила запрос (session_id, длина и т.п.).\n  // Контракт: Извлечение полей при отказе возвращает {error: '...'} вместо\n  // полей. Прежде Сборка это игнорировала и выдавала ложное «Код выполнился,\n  // но не вернул значение».\n  if (prev.error) {\n    return [{ json: { response_text: 'Запрос отклонён: ' + prev.error } }];\n  }\n\n  // Pyodide убит по таймауту (worker.terminate с фронта) — exec_error уже\n  // содержит user-friendly сообщение от PyodideClient, не оборачиваем.\n  if (prev.exec_killed) {\n    return [{ json: { response_text: prev.exec_error || 'Python был прерван по таймауту.' } }];\n  }\n\n  // Python-исключение (ModuleNotFoundError, SyntaxError, ZeroDivisionError\n  // и т.п.) — оборачиваем в понятный префикс.\n  if (prev.exec_error) {\n    return [{ json: { response_text: 'Не удалось решить — Python завершился с ошибкой:\\n' + prev.exec_error } }];\n  }\n\n  const finalLine = (prev.final_line || prev.raw_result || '').trim();\n  if (!finalLine) {\n    return [{ json: { response_text: 'Код выполнился, но не вернул значение.' } }];\n  }\n\n  // Извлекаем пояснение LLM (может быть отсутствует — таймаут / GigaChat недоступен)\n  let explanation = '';\n  try {\n    explanation = raw.output[0].content[0].text.trim();\n  } catch (e) {\n    explanation = '';\n  }\n\n  // Защита: если LLM всё-таки начала с «Ответ: ...» — срезаем эту шапку,\n  // чтобы не было дубликата числа в финальном ответе.\n  explanation = explanation\n    .replace(/^Ответ\\s*[:\\-]\\s*[^\\n.]+[.\\n]\\s*/i, '')\n    .replace(/^Итак[,]?\\s*получаем[^\\n.]+[.\\n]\\s*/i, '')\n    .trim();\n\n  let response = 'Ответ: ' + finalLine;\n  if (explanation) {\n    response += '\\n\\n' + explanation;\n  }\n\n  return [{ json: { response_text: response } }];\n} catch (e) {\n  const prev = $('Извлечение полей').first().json;\n  if (prev && prev.final_line) {\n    return [{ json: { response_text: 'Ответ: ' + prev.final_line } }];\n  }\n  if (prev && prev.raw_result) {\n    return [{ json: { response_text: 'Ответ: ' + prev.raw_result } }];\n  }\n  return [{ json: { response_text: 'Ошибка обработки.' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        1000
+      ],
+      "id": "math-explain-merge-0001",
+      "name": "Сборка финального ответа"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, extras, user_id) SELECT $1, 'assistant', $2, $3::jsonb, $4::integer WHERE LENGTH(TRIM($2)) > 0 AND $2 NOT IN ('GigaChat не отвечает. Проверьте подключение.','Ошибка обработки.','Ошибка генерации ответа.','GigaChat не отвечает. Проверьте подключение.','Пустой ответ от LLM. Попробуйте ещё раз.','Ошибка обработки ответа.') RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Извлечение полей').first().json.session_id, $json.response_text || '', JSON.stringify({code: $('Извлечение полей').first().json.code || '', raw_result: $('Извлечение полей').first().json.raw_result || '', final_line: $('Извлечение полей').first().json.final_line || ''}), $('SQL: Verify token Explain').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2320,
+        1000
+      ],
+      "id": "math-explain-save-0001",
+      "name": "Сохранить ответ MATH",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $('Сборка финального ответа').first().json.response_text, code: $('Извлечение полей').first().json.code || '', raw_result: $('Извлечение полей').first().json.raw_result || '' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2600,
+        1000
+      ],
+      "id": "math-explain-respond-0001",
+      "name": "Ответ: результат MATH"
+    },
+    {
+      "parameters": {
+        "jsCode": "// PURE_EXPR: генерируем sympify-код БЕЗ LLM. Детерминированный путь:\n//   на одно и то же выражение всегда один и тот же код → один и тот же ответ.\n// parse_expr с transformations:\n//   convert_xor — превращает `^` в `**` (Python степень)\n//   implicit_multiplication_application — позволяет писать `2x` вместо `2*x`\nconst data = $input.first().json;\nlet raw = (data.expression || data.message || '').trim();\n\n// Русская десятичная запятая → точка ТОЛЬКО для изолированных пар d,d.\n// Сценарии:\n//   «10,5»        → «10.5»  (десятичная)\n//   «f(x, y)»     → не трогаем (пробел)\n//   «(1,2,3)»     → не трогаем (цепочка d,d,d — кортеж/аргументы)\n//   «f(0,5, 1,5)» → «f(0.5, 1.5)» (2 изолированных пары, разделённых пробелом)\n// Lookbehind (?<!\\d,) и lookahead (?!,\\d) гарантируют, что мы НЕ внутри цепочки.\nraw = raw.replace(/(?<!\\d,)(\\d),(\\d)(?!,\\d)/g, '$1.$2');\n\n// Препроцесс: «mod» как оператор остатка → «%». Без этого «123 mod 7»\n// парсится как «123 * mod * 7» (mod — свободный символ), .evalf() оставляет\n// символическое выражение. С % parse_expr корректно делает Mod(123, 7).\n// Окружения проверяем чтобы НЕ трогать слова типа «model», «modify».\nraw = raw.replace(/(\\d)\\s+mod\\s+(\\d)/gi, '$1 % $2');\n\n// Экранирование для встраивания в Python-строку\nconst esc = raw.replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, ' ');\n\nconst code = [\n  'from sympy.parsing.sympy_parser import parse_expr, standard_transformations, convert_xor, implicit_multiplication_application',\n  'from sympy import log, ln, sin, cos, tan, asin, acos, atan, exp, sqrt, pi, E, I, oo, factorial, Rational, ceiling, floor, Abs, simplify, Float',\n  'transformations = standard_transformations + (convert_xor, implicit_multiplication_application)',\n  '# local_dict — мэппинг ИМЁН ИЗ ВЫРАЖЕНИЯ на sympy-сущности.',\n  '#   e (lowercase) → E (Euler) — иначе \\'pi + e\\' оставался бы pi + free_symbol(e)',\n  '#   ceil/floor/abs → sympy.ceiling/floor/Abs — иначе \\'ceil(3.2)\\' с',\n  '#     implicit_multiplication парсилось как c*e*i*l*(3.2).',\n  '#   ln → log (sympy.log это натуральный, ln в sympy alias на log).',\n  'local_dict = {',\n  '    \"e\": E, \"E\": E, \"pi\": pi, \"Pi\": pi,',\n  '    \"ceil\": ceiling, \"floor\": floor, \"abs\": Abs,',\n  '    \"ln\": log,  # натуральный',\n  '}',\n  `expr_str = \"${esc}\"`,\n  'try:',\n  '    expr = parse_expr(expr_str, transformations=transformations, local_dict=local_dict)',\n  '    # simplify() сворачивает log(exp(x)) → x, упрощает тригонометрию,',\n  '    # raises tan(arctan(x)) → x. Без simplify результат остался бы символическим.',\n  '    simplified = simplify(expr)',\n  '    # evalf() приводит к числу с произвольной точностью (default 15 знаков).',\n  '    result = simplified.evalf()',\n  '    # Если результат всё ещё символический (например имена переменных в выражении) —',\n  '    # выводим как есть. Иначе округляем до 6 значащих, чтобы не вываливать 15 цифр.',\n  '    try:',\n  '        if result.is_number:',\n  '            # B1 fix: целые числа (factorial(15) = 1307674368000) выводим',\n  '            # как integer без потери точности. .10g формат даёт scientific',\n  '            # для целых > 10^10 (1.307674368e+12) — теряет последние нули.',\n  '            if result.is_integer:',\n  '                result_str = str(int(result))',\n  '            else:',\n  '                result_float = float(result)',\n  '                # round до 6 значащих знаков, без trailing-нулей',\n  '                if abs(result_float) >= 1e-4 and abs(result_float) < 1e15:',\n  '                    result_str = f\"{result_float:.10g}\"',\n  '                else:',\n  '                    result_str = str(result)',\n  '        else:',\n  '            result_str = str(result)',\n  '    except Exception:',\n  '        result_str = str(result)',\n  '    # ** → ^ для математической нотации в выводе. Внутри Python используется **,',\n  '    # но юзер ожидает видеть ^. expr_str показывает «Выражение» как ввёл юзер,',\n  '    # str(simplified) может содержать ** в символьной части.',\n  '    expr_display = str(simplified).replace(\"**\", \"^\")',\n  '    result_display = result_str.replace(\"**\", \"^\")',\n  '    print(f\"Выражение: {expr_display}\")',\n  '    print(f\"ОТВЕТ: {result_display}\")',\n  'except Exception as e:',\n  '    print(f\"Не удалось распознать выражение: {e}\")',\n  '    print(f\"ОТВЕТ: ошибка парсинга\")'\n].join('\\n');\n\n// Возвращаем в LLM-формате: «Проверка кода» ожидает raw.output[0].content[0].text\n// (она спроектирована под выход LLM-узла «Генерация кода»). Без обёртки\n// pure_expr-ветка вернёт «Пустой ответ от LLM».\nreturn [{ json: { output: [{ content: [{ text: code }] }] } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2930,
+        600
+      ],
+      "id": "math-sympify-gen-0001",
+      "name": "Генерация sympify"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Ты — математический помощник. Пользователь ранее задал задачу, ты её решил, сейчас он переспрашивает — просит ПОЯСНИТЬ, ПЕРЕПРОВЕРИТЬ или РАССКАЗАТЬ подробнее.\n\nКонтекст:\n- Финальный ответ уже выдан и НЕ МЕНЯЕТСЯ (он подставлен системой)\n- Твоя роль — объяснить КАК решалось, в 3-5 предложениях\n- Если попросили «перепроверь» — кратко перечисли шаги и подтверди: «расчёт корректен»\n- Если попросили «поясни» — объясни метод/формулу\n- Если попросили «подробнее/по шагам» — распиши промежуточные операции\n\nКРИТИЧНЫЕ ПРАВИЛА:\n1. НЕ начинай со слова «Ответ» или с числа — оно уже подставлено системой\n2. НЕ ВЫЧИСЛЯЙ заново. Финальное число дано тебе в шапке — используй только его\n3. НЕ пиши код\n4. НЕ повторяй условие задачи дословно\n5. Пиши на русском, без приветствий\n6. Максимум 5 предложений\n7. НЕ используй LaTeX/MathJax-разметку: никаких $...$, \\\\(...\\\\), \\\\frac, \\\\times, \\\\cdot. Числа и операции пиши обычным текстом. Символы можно: ×, ·, ², ³, π, √, ≈\n8. НЕ упоминай технические инструменты: sympy, numpy, scipy, mpmath, Python, Pyodide, библиотеки, модули, код, программу. Это деталь реализации, юзеру не нужна. Объясняй математику словами: «возвели в степень», «нашли производную», «использовали формулу дискриминанта». Запрещены фразы вида «через sympy», «с помощью Python», «использовал scipy».\n\nПример:\nЗадача (предыдущая): 26 * 27^4 * log(18) / sin(262) * 3 / cos(272)\nФинальный ответ (уже выдан): <число> (используй ровно то, что в шапке этого запроса)\nПросьба пользователя: «перепроверь»\nХороший ответ: Возвели 27 в четвёртую степень, умножили на 26 и натуральный логарифм 18, разделили на синус 262 рад, умножили на 3, разделили на косинус 272 рад. Это точный символьный расчёт с численной оценкой — корректен.\n\nПлохой ответ (НЕ так): Расчёт выполнен через sympy: возвели 27... ← упоминание библиотеки запрещено.\n\nТеперь объясни:"
+            },
+            {
+              "content": "=Задача (ранее): {{ $('Агрегация').first().json.lastTask }}\n\nРешение (для контекста — НЕ упоминай в ответе):\n{{ $('Агрегация').first().json.lastCode }}\n\nФинальный ответ (уже выдан пользователю): {{ $('Агрегация').first().json.lastFinalLine }}\n\nПросьба пользователя сейчас: «{{ $('Агрегация').first().json.message }}»"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "temperature": 0,
+          "maxRetries": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2930,
+        800
+      ],
+      "id": "math-reexplain-llm-0001",
+      "name": "Reexplain LLM",
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Сборка ответа для re-explain: число из истории + новое пояснение от LLM.\nconst raw = $input.first().json;\nconst prev = $('Агрегация').first().json;\nconst finalLine = (prev.lastFinalLine || '').trim();\n\nlet explanation = '';\ntry {\n  explanation = (raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text || '').trim();\n} catch(e) {}\n\n// Срезаем шапку «Ответ: ...» если LLM нарушила правило\nexplanation = explanation\n  .replace(/^Ответ\\s*[:\\-]\\s*[^\\n.]+[.\\n]\\s*/i, '')\n  .replace(/^Итак[,]?\\s*получаем[^\\n.]+[.\\n]\\s*/i, '')\n  .trim();\n\nif (!finalLine) {\n  return [{ json: { response: explanation || 'Не удалось извлечь предыдущий результат.', code: prev.lastCode || '', raw_result: prev.lastRawResult || '' } }];\n}\n\nlet response = 'Ответ: ' + finalLine;\nif (explanation) response += '\\n\\n' + explanation;\n\nreturn [{ json: { response: response, code: prev.lastCode || '', raw_result: prev.lastRawResult || '' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3210,
+        800
+      ],
+      "id": "math-reexplain-merge-0001",
+      "name": "Сборка Reexplain"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _save AS (INSERT INTO chat_memory (session_id, role, content, extras, user_id) SELECT $1, 'assistant', $2, $3::jsonb, $4::integer WHERE LENGTH(TRIM($2)) > 0 AND $2 NOT IN ('GigaChat не отвечает. Проверьте подключение.','Ошибка обработки.','Ошибка генерации ответа.','GigaChat не отвечает. Проверьте подключение.','Пустой ответ от LLM. Попробуйте ещё раз.','Ошибка обработки ответа.','Не удалось извлечь предыдущий результат.') RETURNING id) SELECT _save.id FROM _save CROSS JOIN _lock",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $json.response || '', JSON.stringify({reexplained: true}), $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3490,
+        800
+      ],
+      "id": "math-reexplain-save-0001",
+      "name": "Сохранить Reexplain",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $('Сборка Reexplain').first().json.response, code: $('Сборка Reexplain').first().json.code, raw_result: $('Сборка Reexplain').first().json.raw_result }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3770,
+        800
+      ],
+      "id": "math-reexplain-respond-0001",
+      "name": "Ответ: Reexplain"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        790,
+        300
+      ],
+      "id": "math-sso-sql-verify-V1",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\n// PostgreSQL сбой: data может быть null или содержать .error поле — НЕ\n// помечаем как unauthorized, иначе юзер видит ложный auth_required редирект.\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        300
+      ],
+      "id": "math-sso-token-result-V1",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-math-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1250,
+        300
+      ],
+      "id": "math-sso-token-if-V1",
+      "name": "Token OK?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === SSO auth check for /webhook/math-explain ===\n// Этот endpoint раньше был без auth — любой мог писать в chat_memory.\nconst item = $input.first();\nconst j = item && item.json ? item.json : {};\nconst body = j.body || j;\nconst token = String((body && body.token) || j.token || '').trim();\nif (!token || !/^[a-f0-9]{64}$/.test(token)) {\n  return [{ json: { __auth_required: true } }];\n}\nreturn [{ json: { ...j, token: token, __auth_ok: true } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1000
+      ],
+      "id": "math-explain-auth-V1-check",
+      "name": "SSO: Auth check Explain"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-math-explain-auth-ok",
+              "leftValue": "={{ !!$json.__auth_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        470,
+        1000
+      ],
+      "id": "math-explain-auth-V1-if",
+      "name": "SSO: Auth OK Explain?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        700,
+        1000
+      ],
+      "id": "math-explain-auth-V1-sql",
+      "name": "SQL: Verify token Explain",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('SSO: Auth check Explain').first().json;\n// PostgreSQL сбой: data может быть null или содержать .error поле — НЕ\n// помечаем как unauthorized, иначе юзер видит ложный auth_required редирект.\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        930,
+        1000
+      ],
+      "id": "math-explain-auth-V1-result",
+      "name": "Token result Explain"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-math-explain-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1160,
+        1000
+      ],
+      "id": "math-explain-auth-V1-tokif",
+      "name": "Token OK Explain?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: 'unauthorized', auth_required: true }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1160,
+        1200
+      ],
+      "id": "math-explain-auth-V1-resp",
+      "name": "Ответ: auth_required Explain"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Math": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Запрос валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Запрос валиден?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка валидации",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Классификатор": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Ответ GENERAL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Генерация sympify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reexplain LLM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Генерация кода",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Генерация sympify": {
+      "main": [
+        [
+          {
+            "node": "Проверка кода",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reexplain LLM": {
+      "main": [
+        [
+          {
+            "node": "Сборка Reexplain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сборка Reexplain": {
+      "main": [
+        [
+          {
+            "node": "Сохранить Reexplain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить Reexplain": {
+      "main": [
+        [
+          {
+            "node": "Ответ: Reexplain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ответ GENERAL": {
+      "main": [
+        [
+          {
+            "node": "Проверка ответа GEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка ответа GEN": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ GEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Генерация кода": {
+      "main": [
+        [
+          {
+            "node": "Проверка кода",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка кода": {
+      "main": [
+        [
+          {
+            "node": "Код безопасен?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Код безопасен?": {
+      "main": [
+        [
+          {
+            "node": "Ответ: код к исполнению",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Сохранить ответ UNSAFE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить историю": {
+      "main": [
+        [
+          {
+            "node": "Агрегация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агрегация": {
+      "main": [
+        [
+          {
+            "node": "Сохранить вопрос",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить вопрос": {
+      "main": [
+        [
+          {
+            "node": "Классификатор",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ GEN": {
+      "main": [
+        [
+          {
+            "node": "Ответ: GENERAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ UNSAFE": {
+      "main": [
+        [
+          {
+            "node": "Ответ: код опасен",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Math Explain": {
+      "main": [
+        [
+          {
+            "node": "SSO: Auth check Explain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Извлечение полей": {
+      "main": [
+        [
+          {
+            "node": "Объяснение результата",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Объяснение результата": {
+      "main": [
+        [
+          {
+            "node": "Сборка финального ответа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сборка финального ответа": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ MATH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ MATH": {
+      "main": [
+        [
+          {
+            "node": "Ответ: результат MATH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Загрузить историю",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка валидации",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSO: Auth check Explain": {
+      "main": [
+        [
+          {
+            "node": "SSO: Auth OK Explain?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSO: Auth OK Explain?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token Explain",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: auth_required Explain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token Explain": {
+      "main": [
+        [
+          {
+            "node": "Token result Explain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result Explain": {
+      "main": [
+        [
+          {
+            "node": "Token OK Explain?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK Explain?": {
+      "main": [
+        [
+          {
+            "node": "Извлечение полей",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: auth_required Explain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 70
+  },
+  "versionId": "math-agent-v3-pyodide",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ad16de428774283a74f2bef15a9b31f771c3828cae096d3c33aab7bd18058813"
+  },
+  "id": "math-agent-001",
+  "tags": []
+}

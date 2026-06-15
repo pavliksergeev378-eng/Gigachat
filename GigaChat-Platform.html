@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GigaChat — Панель управления</title>
+    <style>
+        /* Pre-paint фон + color-scheme + базовый body — первый paint в
+           правильных цветах и шрифтах, без серифного фолбэка. */
+        html { color-scheme: light; background: #fdfdfc; }
+        html[data-theme="dark"] { color-scheme: dark; background: #1f1f1e; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: #1f1f1e;
+            background: #fdfdfc;
+        }
+        html[data-theme="dark"] body {
+            color: #d4d4d4;
+            background: #1f1f1e;
+        }
+        /* Анти-FOUC mask на время verify-токена. Дашборд = протектед страница:
+           без токена редиректим на /login.html, до завершения verify прячем
+           container, чтобы юзер не успел увидеть карточки до редиректа. */
+        html.gc-pending-auth .container,
+        html.gc-pending-auth .bg-dots,
+        html.gc-pending-auth #gcAuthWidget { display: none !important; }
+    </style>
+    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1f1f1e':'#fdfdfc','important');document.documentElement.classList.add('gc-pending-auth');}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+    <style>
+        :root {
+            --bg-primary: #1f1f1e;
+            --bg-secondary: #1f1e1c;
+            --bg-card: #1f1e1c;
+            --bg-card-hover: #1c2028;
+            --border: #363432;
+            --border-hover: #d4a574;
+            --text-primary: #d4d4d4;
+            --text-secondary: #8a8a8a;
+            --text-muted: #5a5a5a;
+            --accent: #d4a574;
+            --accent-hover: #c08a5a;
+            --glow-green: #10b981;
+            --glow-red: #ef4444;
+        }
+        :root[data-theme="light"] {
+            --bg-primary: #fdfdfc;
+            --bg-secondary: #f3f1ec;
+            --bg-card: #fffffe;
+            --bg-card-hover: #faf7f0;
+            --border: #e3dfd5;
+            --border-hover: #b8895d;
+            --text-primary: #1f1f1e;
+            --text-secondary: #6b6b68;
+            --text-muted: #a8a59f;
+            --accent: #b8895d;
+            --accent-hover: #a0764d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* overflow-y:scroll на HTML (ниже) безопасно: на КОРНЕВОМ элементе это не
+           делает position:fixed «плывущим» (fixed остаётся от viewport). Избегаем
+           overflow на ВЛОЖЕННЫХ контейнерах-обёртках. Горизонтальное переполнение
+           обрезается на декоративных элементах (.bg-layers: overflow:hidden). */
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        /* Скроллбар страницы. Правила НА HTML — потому что в Chrome/Edge
+           page-scrollbar рендерится на корневом элементе, а не на body.
+           scrollbar-* стили — для Firefox. */
+        html {
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+            /* R8.107: всегда показываем вертикальный скроллбар. overflow-y:scroll
+               поддерживается во ВСЕХ браузерах (в отличие от scrollbar-gutter,
+               который старые офисные Chromium игнорируют) → контентный край стабилен
+               с первого кадра, fixed-кнопка темы стоит одинаково на всех страницах
+               и не залезает под скроллбар. На html это НЕ ломает position:fixed. */
+            overflow-y: scroll;
+        }
+        html::-webkit-scrollbar { width: 5px; }
+        html::-webkit-scrollbar-track { background: transparent; }
+        html::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        html::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* Animated multi-layer radial gradient background */
+        /* Анимированные градиенты + noise убраны, но точечная сетка
+           возвращена для лёгкого «3D» ощущения объёма. */
+        .bg-layers, .bg-noise { display: none; }
+        .bg-dots {
+            position: fixed; top:0;right:0;bottom:0;left:0; z-index: 0;
+            pointer-events: none;
+            background-image:
+                radial-gradient(circle, rgba(212,165,116,0.22) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(212,165,116,0.12) 1px, transparent 1.5px);
+            background-size: 60px 60px, 30px 30px;
+            background-position: 0 0, 15px 15px;
+        }
+        :root[data-theme="light"] .bg-dots {
+            background-image:
+                radial-gradient(circle, rgba(120,85,45,0.32) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(120,85,45,0.18) 1px, transparent 1.5px);
+        }
+
+        /* Layout */
+        .container {
+            position: relative; z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 60px 30px 40px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .header-logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .header h1 {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: 6px;
+            background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        :root[data-theme="light"] .header h1 {
+            background: linear-gradient(135deg, #1f1f1e 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+        }
+
+        .header-sub {
+            color: var(--text-secondary);
+            font-size: 14px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+
+        .header-line {
+            width: 120px;
+            height: 2px;
+            margin: 20px auto 0;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            border-radius: 1px;
+        }
+
+        /* Status bar — pulse keyframe (как gcPulse) тоже в _shared.js. */
+
+        /* Cards grid */
+        .cards-section-title {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            padding-left: 4px;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        /* Plane — 7-я карточка в «Агенты» (одинокая в 3-й строке). Принудительно
+           ставим её в среднюю колонку, чтобы строка визуально не «провисала»
+           слева. На узких экранах (<900px) сетка становится 2-колоночной — для
+           этого случая центрирование уже не нужно, отменяем правило. */
+        #card-plane { grid-column: 2; }
+        @media (max-width: 900px) {
+            #card-plane { grid-column: auto; }
+        }
+
+        .cards-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            max-width: 730px;
+            margin: 0 auto;
+        }
+
+        /* Сетка для второй строки «Инструментов». Ширина каждой карточки =
+           ширина карточки из 3-колоночной сетки сверху, чтобы строки визуально
+           соответствовали друг другу. Третья карточка (Планировщик) полностью
+           заполняет ряд — добавлена после merger-word. */
+        .cards-grid-tools-2 {
+            display: grid;
+            grid-template-columns: repeat(3, calc((100% - 40px) / 3));
+            gap: 20px;
+            justify-content: flex-start;
+            margin-top: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 24px 24px;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent);
+            transform: translateY(-4px);
+        }
+
+        .card:active { transform: translateY(-2px); }
+
+        .card-icon {
+            width: 48px; height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 18px;
+            flex-shrink: 0;
+        }
+        .card-icon svg {
+            width: 26px; height: 26px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .card .card-icon { background: linear-gradient(135deg, rgba(212,165,116,0.15), rgba(192,138,90,0.15)); color: var(--accent); }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+        }
+
+        .card .card-title { color: var(--accent); }
+
+        .card-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            flex: 1;
+        }
+
+        .card-tag {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .card .card-tag { background: rgba(212,165,116,0.10); color: var(--accent); border: 1px solid rgba(212,165,116,0.25); }
+
+
+        /* Card status dot: позиционирование и размер per-page.
+           Цвета online/offline/checking и анимация — в _shared.js
+           через GigaChat.injectStatusDotCss() (вызывается ниже из inline-script). */
+        .card-status {
+            position: absolute;
+            top: 28px; right: 28px;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-secondary);
+            letter-spacing: 0.5px;
+        }
+
+        .footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        /* === Auth-виджет в правом верхнем углу =============================
+           Показывает текущего юзера + dropdown «Сменить пароль / Выйти».
+           position: absolute (не fixed) — виджет стоит на том же визуальном
+           месте при загрузке, но УЕЗЖАЕТ ВВЕРХ при scroll вниз вместе с
+           контентом (не «прилипает» к viewport). top:10px подобран под центр
+           theme-toggle из _shared.js (она fixed — это by design на агентах). */
+        .gc-auth-widget {
+            /* R8.102: top:8 → центр пилла (высота 32) = 24px, ровно под центром
+               кнопки темы из _shared.js (она тоже center 24px). */
+            position: absolute; top: 8px; right: 58px; z-index: 9998;
+            display: none;
+        }
+        .gc-auth-widget.gc-ready { display: block; }
+        .gc-auth-pill {
+            display: inline-flex; align-items: center; gap: 12px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 16px;
+            height: 32px;
+            padding: 0 14px;
+            color: var(--text-primary); font-family: inherit; font-size: 13px;
+            cursor: pointer; outline: none;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .gc-auth-pill:hover { border-color: var(--accent); }
+        .gc-auth-widget.open .gc-auth-pill { border-color: var(--accent); background: var(--bg-card-hover); }
+        .gc-auth-pill .gc-auth-name {
+            max-width: 180px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent) transparent;
+            /* A8: touch-action:pan-x — touch-swipe горизонтально = scroll name,
+               вертикальный tap = click bubbles up в pill (открыть dropdown).
+               Pointer-events:none ломал scroll на mobile полностью. */
+            touch-action: pan-x;
+        }
+        .gc-auth-pill .gc-auth-name::-webkit-scrollbar { height: 2px; }
+        .gc-auth-pill .gc-auth-name::-webkit-scrollbar-track { background: transparent; }
+        .gc-auth-pill .gc-auth-name::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 1px; }
+        .gc-auth-pill .gc-auth-arrow {
+            width: 6px; height: 6px;
+            border-right: 1.5px solid var(--text-secondary);
+            border-bottom: 1.5px solid var(--text-secondary);
+            transform: translateY(-2px) rotate(45deg);
+            transition: transform 0.18s ease, border-color 0.18s ease;
+        }
+        .gc-auth-widget.open .gc-auth-arrow {
+            transform: translateY(2px) rotate(-135deg);
+            border-color: var(--accent);
+        }
+        .gc-auth-dropdown {
+            position: absolute; top: calc(100% + 6px); right: 0;
+            min-width: 180px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 4px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+            opacity: 0; visibility: hidden; transform: translateY(-4px);
+            transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+        }
+        .gc-auth-widget.open .gc-auth-dropdown {
+            opacity: 1; visibility: visible; transform: translateY(0);
+        }
+        .gc-auth-dropdown button,
+        .gc-auth-dropdown a {
+            display: block; width: 100%;
+            background: none; border: none; cursor: pointer;
+            padding: 8px 12px; border-radius: 5px;
+            font-family: inherit; font-size: 13px;
+            color: var(--text-primary); text-align: left;
+            text-decoration: none;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .gc-auth-dropdown button:hover,
+        .gc-auth-dropdown a:hover {
+            background: var(--bg-card-hover); color: var(--accent);
+        }
+        /* «Войти»-кнопка убрана: дашборд теперь = протектед страница
+           (без токена редирект на /login.html). Login living separately. */
+
+        /* ========== Change-password модалка (перенесена из планировщика) ====
+           Аккаунтное управление консолидировано на дашборде: pill dropdown
+           «Сменить пароль» открывает эту модалку. Перенос — чтобы не было
+           дублирования и юзер всегда знал ОДНУ точку входа в свой аккаунт. */
+        @keyframes gcChgpwdSlide {
+            from { opacity: 0; transform: translateY(8px) scale(0.985); }
+            to   { opacity: 1; transform: translateY(0)  scale(1);     }
+        }
+        .gc-chgpwd-overlay {
+            position: fixed; top:0;right:0;bottom:0;left:0; z-index: 9999;
+            background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .gc-chgpwd-overlay.show { display: flex; }
+        .gc-chgpwd-modal {
+            background: var(--bg-primary); border: 1px solid var(--border);
+            border-radius: 12px; width: min(420px, 92vw);
+            animation: gcChgpwdSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .gc-chgpwd-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 18px 22px; border-bottom: 1px solid var(--border);
+            font-size: 15px; font-weight: 600; color: var(--text-primary);
+        }
+        .gc-chgpwd-close {
+            background: none; border: none; color: var(--text-secondary);
+            font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px;
+        }
+        .gc-chgpwd-close:hover { color: var(--text-primary); }
+        .gc-chgpwd-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 10px; }
+        .gc-chgpwd-body label {
+            display: flex; flex-direction: column; gap: 4px;
+            font-size: 12px; color: var(--text-secondary); font-weight: 500;
+        }
+        .gc-chgpwd-body input {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 6px; padding: 9px 12px; color: var(--text-primary);
+            font-family: inherit; font-size: 14px; outline: none;
+            transition: border-color 0.18s ease, background 0.18s ease;
+        }
+        .gc-chgpwd-body input:focus { border-color: var(--accent); background: var(--bg-card-hover); }
+
+        /* Глазок show/hide для password-полей (как в login.html). Wrapper relative,
+           input full-width, кнопка absolute поверх правого края. */
+        .gc-pw-wrap { position: relative; display: block; }
+        .gc-pw-wrap input { width: 100% !important; }
+        .gc-pw-toggle {
+            position: absolute; right: 8px; top: 50%;
+            transform: translateY(-50%);
+            background: transparent; border: none;
+            cursor: pointer; padding: 6px;
+            display: inline-flex; align-items: center; justify-content: center;
+            color: var(--text-secondary);
+            border-radius: 4px;
+            transition: color .15s ease, background .15s ease;
+        }
+        .gc-pw-toggle:hover {
+            color: var(--accent);
+            background: rgba(255,255,255,0.06);
+        }
+        :root[data-theme="light"] .gc-pw-toggle:hover { background: rgba(0,0,0,0.05); }
+        .gc-pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .gc-pw-toggle svg {
+            width: 18px; height: 18px;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .gc-chgpwd-error {
+            padding: 0 22px; min-height: 14px;
+            color: #d97757; font-size: 12px;
+        }
+        .gc-chgpwd-error.gc-success {
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; color: var(--text-primary); font-size: 13px;
+        }
+        .gc-chgpwd-footer {
+            display: flex; justify-content: flex-end; gap: 8px;
+            padding: 14px 22px 20px;
+        }
+        .gc-chgpwd-footer button {
+            padding: 8px 18px; border-radius: 6px;
+            font-family: inherit; font-size: 13px; cursor: pointer;
+            border: 1px solid var(--border); background: transparent;
+            color: var(--text-secondary); transition: all 0.18s ease;
+        }
+        .gc-chgpwd-footer button:hover { color: var(--text-primary); }
+        .gc-chgpwd-footer .primary {
+            background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+        }
+        .gc-chgpwd-footer .primary:hover { opacity: 0.85; color: #fff; }
+        .gc-success-badge {
+            flex-shrink: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 18px; height: 18px;
+            background: #4caf50; border-radius: 50%;
+            position: relative;
+        }
+        .gc-success-badge::before {
+            content: '';
+            width: 5px; height: 9px;
+            border: solid #fff;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg) translate(-1px, -1px);
+        }
+
+        /* Responsive */
+        @media (max-width: 1100px) {
+            .cards-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 900px) {
+            .cards-grid { grid-template-columns: repeat(2, 1fr); }
+            .cards-grid-2 { grid-template-columns: 1fr; max-width: 400px; }
+            .cards-grid-tools-2 { grid-template-columns: 1fr; }
+            .header h1 { font-size: 32px; letter-spacing: 4px; }
+            .container { padding: 40px 16px 30px; }
+        }
+        @media (max-width: 500px) {
+            .cards-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 26px; }
+            .gc-auth-widget { right: 54px; }
+            .gc-auth-pill .gc-auth-name { max-width: 90px; }
+        }
+
+    </style>
+    <script src="Agents/_config.js"></script>
+    <script src="Agents/_shared-guard.js"></script>
+    <script src="Agents/_shared.js"></script>
+</head>
+<body>
+
+<div class="bg-layers"></div>
+<div class="bg-dots"></div>
+<div class="bg-noise"></div>
+
+<!-- Auth-виджет (top-right). Содержимое подменяется в JS:
+     - pill «<имя> ▾» с dropdown «Сменить пароль / Выйти»
+     - logged-out не показывается: без токена → редирект на login.html
+     Класс .gc-ready выставляется после verify (анти-FOUC). -->
+<div class="gc-auth-widget" id="gcAuthWidget"></div>
+
+<!-- Change-password модалка (перенесена из планировщика). Открывается из
+     pill dropdown «Сменить пароль». z-index выше всего, чтобы перекрывать
+     карточки и фон. -->
+<div class="gc-chgpwd-overlay" id="chgpwdOverlay" onclick="if(event.target===this)closeChgpwdModal()">
+    <div class="gc-chgpwd-modal">
+        <div class="gc-chgpwd-header">
+            Сменить пароль
+            <button class="gc-chgpwd-close" onclick="closeChgpwdModal()" aria-label="Закрыть">&times;</button>
+        </div>
+        <div class="gc-chgpwd-body">
+            <label>Текущий пароль
+                <span class="gc-pw-wrap">
+                    <input type="password" id="chgpwdOld" autocomplete="current-password" data-next="chgpwdNew">
+                    <button type="button" class="gc-pw-toggle" aria-label="Показать пароль" onclick="togglePassword(this)"></button>
+                </span>
+            </label>
+            <label>Новый пароль
+                <span class="gc-pw-wrap">
+                    <input type="password" id="chgpwdNew" autocomplete="new-password"
+                           placeholder="не менее 6 символов" data-next="chgpwdNew2">
+                    <button type="button" class="gc-pw-toggle" aria-label="Показать пароль" onclick="togglePassword(this)"></button>
+                </span>
+            </label>
+            <label>Подтвердите новый пароль
+                <span class="gc-pw-wrap">
+                    <input type="password" id="chgpwdNew2" autocomplete="new-password" data-next="chgpwdSaveBtn">
+                    <button type="button" class="gc-pw-toggle" aria-label="Показать пароль" onclick="togglePassword(this)"></button>
+                </span>
+            </label>
+        </div>
+        <div class="gc-chgpwd-error" id="chgpwdError"></div>
+        <div class="gc-chgpwd-footer">
+            <button onclick="closeChgpwdModal()">Отмена</button>
+            <button class="primary" id="chgpwdSaveBtn" onclick="submitChangePassword()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="header">
+        <div class="header-logo">
+            <h1>GigaChat</h1>
+        </div>
+        <div class="header-sub">ПЛАТФОРМА</div>
+        <div class="header-line"></div>
+    </div>
+
+    <div class="cards-section-title">Агенты</div>
+    <div class="cards-grid">
+
+        <a class="card card-chat" href="Agents/chat-agent.html" id="card-chat">
+            <div class="card-status checking" id="status-chat"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
+            <div class="card-title">GigaChat Talk</div>
+            <div class="card-desc">Свободный диалог с GigaChat.</div>
+            <span class="card-tag">Диалог</span>
+        </a>
+
+        <a class="card card-rag" href="Agents/rag-agent.html" id="card-rag">
+            <div class="card-status checking" id="status-rag"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+            <div class="card-title">GigaChat Docs</div>
+            <div class="card-desc">Поиск по документам, ответы на вопросы по содержимому, составление документов.</div>
+            <span class="card-tag">Документы</span>
+        </a>
+
+        <a class="card card-math" href="Agents/math-agent.html" id="card-math">
+            <div class="card-status checking" id="status-math"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 4 5 4 12 12 5 20 20 20"/></svg></div>
+            <div class="card-title">GigaChat Math</div>
+            <div class="card-desc">Решение задач, вычисления.</div>
+            <span class="card-tag">Вычисления</span>
+        </a>
+
+        <a class="card card-prompt" href="Agents/prompt-engineer.html" id="card-prompt">
+            <div class="card-status checking" id="status-prompt"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+            <div class="card-title">GigaChat Prompt</div>
+            <div class="card-desc">Создание, улучшение и оценка промптов для языковых моделей.</div>
+            <span class="card-tag">Промпты</span>
+        </a>
+
+        <a class="card card-plane" href="Agents/plane-agent.html" id="card-plane">
+            <div class="card-status checking" id="status-plane"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/><line x1="3" y1="10" x2="9" y2="10"/><line x1="15" y1="14" x2="21" y2="14"/></svg></div>
+            <div class="card-title">GigaChat Plane</div>
+            <div class="card-desc">Управляет проектами и задачами в Plane: создаёт, обновляет, ищет — по запросу в GigaChat.</div>
+            <span class="card-tag">Проекты</span>
+        </a>
+
+    </div>
+
+    <div class="cards-section-title">Инструменты</div>
+    <div class="cards-grid">
+
+        <a class="card card-ocr" href="Agents/OCR-search-FIO.html" id="card-ocr">
+            <div class="card-status checking" id="status-ocr"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+            <div class="card-title">Поиск ФИО</div>
+            <div class="card-desc">Распознавание документов и поиск фамилий, имён, отчеств.</div>
+            <span class="card-tag">Поиск</span>
+        </a>
+
+        <a class="card card-docs" href="Agents/document-loader.html" id="card-docs">
+            <div class="card-status checking" id="status-docs"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+            <div class="card-title">Загрузка документов</div>
+            <div class="card-desc">Загрузка файлов в базу данных.</div>
+            <span class="card-tag">База данных</span>
+        </a>
+
+        <a class="card card-extract" href="Agents/text-extractor.html" id="card-extract">
+            <div class="card-status checking" id="status-extract"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg></div>
+            <div class="card-title">Извлечение текста</div>
+            <div class="card-desc">PDF, изображения, Word, Excel, CSV — в чистый текст с форматированием.</div>
+            <span class="card-tag">Извлечение</span>
+        </a>
+
+    </div>
+    <div class="cards-grid-tools-2">
+
+        <a class="card card-table-merger" href="Agents/table-merger.html" id="card-table-merger">
+            <div class="card-status checking" id="status-table-merger"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg></div>
+            <div class="card-title">Объединение таблиц</div>
+            <div class="card-desc">Объединяет таблицы из Word, Excel и CSV/TSV в один итоговый файл — формат на выбор.</div>
+            <span class="card-tag">Word, Excel, CSV</span>
+        </a>
+
+        <a class="card card-file-merger" href="Agents/file-merger.html" id="card-file-merger">
+            <div class="card-status checking" id="status-file-merger"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+            <div class="card-title">Объединение файлов</div>
+            <div class="card-desc">Word, Excel, PDF, CSV/TSV и фото в один Word-документ.</div>
+            <span class="card-tag">Word, Excel, PDF, CSV, фото</span>
+        </a>
+
+    </div>
+
+    <div class="cards-section-title">Алгоритмы</div>
+    <div class="cards-grid">
+
+        <a class="card card-org-appeal" href="Agents/organization-appeal.html" id="card-org-appeal">
+            <div class="card-status checking" id="status-org-appeal"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="card-title">Организация обращения</div>
+            <div class="card-desc">Извлекает ФИО, дату рождения, СНИЛС и личный номер из документа и проходит 4-ступенчатую идентификацию по базе данных.</div>
+            <span class="card-tag">Идентификация</span>
+        </a>
+
+        <a class="card card-compliance" href="Agents/compliance-agent.html" id="card-compliance">
+            <div class="card-status checking" id="status-compliance"></div>
+            <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></div>
+            <div class="card-title">Меры информационной безопасности</div>
+            <div class="card-desc">Анализ нарушений информационной безопасности и подбор компенсирующих мер с обоснованием.</div>
+            <span class="card-tag">Безопасность</span>
+        </a>
+
+    </div>
+
+    <div class="footer">
+        GigaChat &middot; ПЛАТФОРМА &middot; <span id="currentYear"></span>
+    </div>
+
+</div>
+
+<script>
+    GigaChat.injectStatusDotCss(); // .card-status цвета + @keyframes gcPulse
+    var AGENTS = [
+        { id: 'rag',    webhook: GigaChat.webhookUrl('rag') },
+        { id: 'math',   webhook: GigaChat.webhookUrl('math') },
+        { id: 'prompt', webhook: GigaChat.webhookUrl('prompt-engineer') },
+        { id: 'chat',   webhook: GigaChat.webhookUrl('chat') },
+        { id: 'ocr',    webhook: GigaChat.webhookUrl('ocr') },
+        { id: 'docs',   webhook: GigaChat.webhookUrl('upload-doc') },
+        { id: 'extract', webhook: GigaChat.webhookUrl('extract-text') },
+        { id: 'plane',      webhook: GigaChat.webhookUrl('plane-agent') },
+        { id: 'compliance', webhook: GigaChat.webhookUrl('compliance') },
+        { id: 'org-appeal', webhook: GigaChat.webhookUrl('organization-appeal') }
+        // merger-word работает целиком в браузере (JSZip + DOMParser) —
+        // без webhook'а, всегда «онлайн», статус-чек не нужен.
+    ];
+
+    document.getElementById('currentYear').textContent = new Date().getFullYear();
+
+    // table-merger и file-merger работают в браузере — статус ВСЕГДА online
+    // (никакой сервер не нужен, JSZip и DOMParser всё делают локально).
+    var tableMergerDot = document.getElementById('status-table-merger');
+    if (tableMergerDot) tableMergerDot.className = 'card-status online';
+    var fileMergerDot = document.getElementById('status-file-merger');
+    if (fileMergerDot) fileMergerDot.className = 'card-status online';
+
+    // Per-agent health-check: каждая карточка пингует СВОЙ webhook через
+    // POST ?ping=1 с body {"message":"ping"}. Это покрывает оба варианта
+    // ping-обработчика — body-based (chat-агенты с if (message==='ping'))
+    // и query-based (4 tool-workflow'а с Ping?-IF нодой после Webhook).
+    // Router возвращает pong на любой POST.
+    //
+    // Логика по статус-кодам:
+    //   200 → workflow активен → online
+    //   404 → workflow отключен или не зарегистрирован → offline
+    //   сетевая ошибка / таймаут → n8n офлайн или DNS не отвечает → offline
+    //
+    // Раньше пинговали /healthz n8n-ядра — один пинг на всех. Но индикатор
+    // показывал «здоровье сервера», не «активность конкретного workflow».
+    // Теперь каждая карточка реально отражает свой workflow.
+    function checkCard(agent) {
+        var dot = document.getElementById('status-' + agent.id);
+        if (!dot) return;
+        dot.className = 'card-status checking';
+
+        function pingOnce() {
+            var controller = new AbortController();
+            var timeout = setTimeout(function () { controller.abort(); }, 5000);
+            var pingUrl = agent.webhook + (agent.webhook.indexOf('?') >= 0 ? '&' : '?') + 'ping=1';
+            return fetch(pingUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                body: '{"message":"ping"}',
+                signal: controller.signal
+            })
+                .then(function (res) { clearTimeout(timeout); return res.ok; })
+                .catch(function (e) { clearTimeout(timeout); throw e; });
+        }
+
+        // Один retry через 2 сек на случай сетевой моргнулки. На AbortError
+        // и res.ok===false не retry'им — реальный отказ, повтор не поможет.
+        pingOnce()
+            .catch(function (err) {
+                if (err && err.name === 'AbortError') throw err;
+                return new Promise(function (r) { setTimeout(r, 2000); }).then(pingOnce);
+            })
+            .then(function (ok) {
+                dot.className = ok ? 'card-status online' : 'card-status offline';
+            })
+            .catch(function () {
+                dot.className = 'card-status offline';
+            });
+    }
+
+    function checkAll() {
+        for (var i = 0; i < AGENTS.length; i++) checkCard(AGENTS[i]);
+    }
+
+    // Health-таймер с lifecycle для BFCache: на pagehide останавливаемся,
+    // на pageshow возобновляемся. Иначе при history.back в Firefox/Safari
+    // накапливались дубль-интервалы.
+    var dashboardHealthTimer = null;
+    function startDashboardHealth() {
+        if (dashboardHealthTimer) return;
+        checkAll();
+        dashboardHealthTimer = setInterval(checkAll, 30000);
+    }
+    function stopDashboardHealth() {
+        if (dashboardHealthTimer) { clearInterval(dashboardHealthTimer); dashboardHealthTimer = null; }
+    }
+    window.addEventListener('pagehide', stopDashboardHealth);
+    window.addEventListener('pageshow', startDashboardHealth);
+    startDashboardHealth();
+
+    // === Auth-gate + widget (top-right) =====================================
+    // Дашборд — протектед страница. Без токена сразу редирект на /login.html.
+    // После успешного verify: снимаем gc-pending-auth (показываем cards) и
+    // рендерим pill «<имя> ▾» с dropdown «Сменить пароль / Выйти».
+    // Pill scrollable (длинные имена прокручиваются ←/→ внутри).
+    GigaChat.auth.requireAuth({ onOk: function (username) {
+        document.documentElement.classList.remove('gc-pending-auth');
+
+        var widget = document.getElementById('gcAuthWidget');
+        if (!widget) return;
+        widget.innerHTML =
+            '<button class="gc-auth-pill" type="button" id="gcAuthPill" aria-haspopup="menu" aria-expanded="false">' +
+                '<span class="gc-auth-name"></span>' +
+                '<span class="gc-auth-arrow" aria-hidden="true"></span>' +
+            '</button>' +
+            '<div class="gc-auth-dropdown" role="menu">' +
+                '<button type="button" id="gcAuthChgpwd" role="menuitem">Сменить пароль</button>' +
+                '<button type="button" id="gcAuthLogout" role="menuitem">Выйти</button>' +
+            '</div>';
+        // textContent — защита от XSS (имя приходит от сервера, но всё равно).
+        // Без «Привет, » префикса — оставляем только имя, длинное прокручивается.
+        // ФИО из домена (display_name), если есть; иначе логин.
+        widget.querySelector('.gc-auth-name').textContent = GigaChat.auth.getDisplayName() || username;
+        widget.classList.add('gc-ready');
+
+        var pill = document.getElementById('gcAuthPill');
+        var chgpwdBtn = document.getElementById('gcAuthChgpwd');
+        var logoutBtn = document.getElementById('gcAuthLogout');
+        function setOpen(open) {
+            widget.classList.toggle('open', open);
+            pill.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        pill.addEventListener('click', function (e) {
+            e.stopPropagation();
+            setOpen(!widget.classList.contains('open'));
+        });
+        document.addEventListener('click', function (e) {
+            if (!widget.contains(e.target)) setOpen(false);
+        });
+        chgpwdBtn.addEventListener('click', function () {
+            setOpen(false);
+            openChgpwdModal();
+        });
+        logoutBtn.addEventListener('click', function () {
+            // После logout → login.html (а не на сам дашборд, иначе бесконечный
+            // редирект: dashboard → no token → login → success → dashboard).
+            GigaChat.auth.logout({ redirectTo: 'login.html' });
+        });
+    }});
+
+    // ============== Change-password modal logic =============================
+    // Перенесено из планировщика. setLoginError/showSuccessBadge — общие
+    // хелперы для inline-сообщений (имя осталось по историческим причинам,
+    // на дашборде используется только для chgpwdError).
+    function setLoginError(elId, text) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        if (el._clearTimer) { clearTimeout(el._clearTimer); el._clearTimer = null; }
+        el.classList.remove('gc-success');
+        el.textContent = text || '';
+        if (text) {
+            el._clearTimer = setTimeout(function () {
+                el.textContent = '';
+                el._clearTimer = null;
+            }, 5000);
+        }
+    }
+    function showSuccessBadge(elId, text) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        if (el._clearTimer) { clearTimeout(el._clearTimer); el._clearTimer = null; }
+        el.classList.add('gc-success');
+        el.innerHTML = '<span class="gc-success-badge" aria-hidden="true"></span><span></span>';
+        el.lastElementChild.textContent = text;
+    }
+    // _chgpwdPrevOverflow — сохраняем оригинальный overflow чтобы не затереть
+    // чужие inline-стили на html при закрытии (A9). _chgpwdSuccessTimer — pending
+    // close-timer, чистится при повторном open/close (A10).
+    var _chgpwdPrevOverflow = '';
+    var _chgpwdSuccessTimer = null;
+    function openChgpwdModal() {
+        // Если pending success-timer ещё не сработал (быстрое open после успеха) —
+        // отменяем чтобы не закрылась повторно открытая модалка через 2 сек (A10).
+        if (_chgpwdSuccessTimer) { clearTimeout(_chgpwdSuccessTimer); _chgpwdSuccessTimer = null; }
+        document.getElementById('chgpwdOverlay').classList.add('show');
+        document.getElementById('chgpwdOld').value = '';
+        document.getElementById('chgpwdNew').value = '';
+        document.getElementById('chgpwdNew2').value = '';
+        document.getElementById('chgpwdError').textContent = '';
+        // Запретить скролл страницы пока модалка открыта. Сохраняем прежнее
+        // значение чтобы вернуть при закрытии (защита от затирания).
+        _chgpwdPrevOverflow = document.documentElement.style.overflow || '';
+        document.documentElement.style.overflow = 'hidden';
+        // Сбросить состояние глазков — при повторном открытии пароли скрыты
+        var toggles = document.querySelectorAll('#chgpwdOverlay .gc-pw-toggle');
+        for (var i = 0; i < toggles.length; i++) {
+            var inp = toggles[i].parentNode.querySelector('input');
+            if (inp) inp.type = 'password';
+            toggles[i].innerHTML = EYE_SVG;
+            toggles[i].setAttribute('aria-label', 'Показать пароль');
+        }
+        setTimeout(function () { document.getElementById('chgpwdOld').focus(); }, 50);
+    }
+    function closeChgpwdModal() {
+        document.getElementById('chgpwdOverlay').classList.remove('show');
+        document.documentElement.style.overflow = _chgpwdPrevOverflow;
+        if (_chgpwdSuccessTimer) { clearTimeout(_chgpwdSuccessTimer); _chgpwdSuccessTimer = null; }
+    }
+    // ESC закрывает модалку (A2)
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        var overlay = document.getElementById('chgpwdOverlay');
+        if (overlay && overlay.classList.contains('show')) closeChgpwdModal();
+    });
+
+    // === Глазок show/hide для password-полей (лифт из login.html) ===
+    var EYE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var EYE_OFF_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    function togglePassword(btn) {
+        var inp = btn.parentNode.querySelector('input[type="password"], input[type="text"]');
+        if (!inp) return;
+        if (inp.type === 'password') {
+            inp.type = 'text';
+            btn.innerHTML = EYE_OFF_SVG;
+            btn.setAttribute('aria-label', 'Скрыть пароль');
+        } else {
+            inp.type = 'password';
+            btn.innerHTML = EYE_SVG;
+            btn.setAttribute('aria-label', 'Показать пароль');
+        }
+    }
+    (function initEyeIcons() {
+        var btns = document.querySelectorAll('.gc-pw-toggle');
+        for (var i = 0; i < btns.length; i++) btns[i].innerHTML = EYE_SVG;
+    })();
+    // _chgpwdInflight: модуль-уровень flag, блокирует параллельные submit
+    // (даже если юзер закрыл и снова открыл модалку — A3).
+    var _chgpwdInflight = false;
+    async function submitChangePassword() {
+        if (_chgpwdInflight) return;  // hard guard от двойного клика и реоткрытия
+        var btn = document.getElementById('chgpwdSaveBtn');
+        var oldP = document.getElementById('chgpwdOld').value;
+        var newP = document.getElementById('chgpwdNew').value;
+        var newP2 = document.getElementById('chgpwdNew2').value;
+        setLoginError('chgpwdError', '');
+        if (!oldP) { setLoginError('chgpwdError', 'Введите текущий пароль'); return; }
+        if (newP.length < 6) { setLoginError('chgpwdError', 'Новый пароль не короче 6 символов'); return; }
+        if (newP !== newP2) { setLoginError('chgpwdError', 'Новые пароли не совпадают'); return; }
+        if (oldP === newP) { setLoginError('chgpwdError', 'Новый пароль должен отличаться от текущего'); return; }
+        var token = GigaChat.auth.getToken();
+        if (!token) { setLoginError('chgpwdError', 'Не авторизован'); return; }
+        _chgpwdInflight = true;
+        btn.disabled = true;
+        btn.textContent = 'Сохранение…';
+        try {
+            var data = await GigaChat.auth.apiCall({
+                action: 'change_password', token: token,
+                old_password: oldP, new_password: newP
+            });
+            if (data.response !== 'ok') {
+                if (data.error) console.warn('change_password error:', data.error);
+                setLoginError('chgpwdError',
+                    data.network ? 'Сеть недоступна' : 'Не удалось сменить пароль');
+                btn.disabled = false; btn.textContent = 'Сохранить';
+                return;
+            }
+            showSuccessBadge('chgpwdError', 'Пароль изменён');
+            btn.textContent = 'Готово';
+            // Сохраняем timer чтобы можно было его отменить при manual close (A10)
+            _chgpwdSuccessTimer = setTimeout(function () {
+                _chgpwdSuccessTimer = null;
+                closeChgpwdModal();
+                setLoginError('chgpwdError', '');
+                btn.disabled = false; btn.textContent = 'Сохранить';
+            }, 2000);
+        } finally {
+            _chgpwdInflight = false;
+        }
+    }
+    // Enter-цепочка внутри chgpwd модалки: Enter → следующее поле/кнопка
+    function handleChgpwdEnterChain(e) {
+        if (e.key !== 'Enter') return;
+        var inp = e.target;
+        if (!inp || inp.tagName !== 'INPUT') return;
+        var nextId = inp.getAttribute('data-next');
+        if (!nextId) return;
+        var nextEl = document.getElementById(nextId);
+        if (!nextEl) return;
+        e.preventDefault();
+        if (nextEl.tagName === 'BUTTON') nextEl.click();
+        else nextEl.focus();
+    }
+    (function bindChgpwdEnterChain() {
+        var inputs = document.querySelectorAll('.gc-chgpwd-body input');
+        for (var i = 0; i < inputs.length; i++) {
+            inputs[i].addEventListener('keydown', handleChgpwdEnterChain);
+        }
+    })();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Поиск ФИО — GigaChat</title>
+<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+<style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
+<style>
+:root {
+    --bg-primary: #1f1f1e;
+    --bg-secondary: #1f1e1c;
+    --bg-input: #2c2c2a;
+    --bg-card: #1f1e1c;
+    --border: #363432;
+    --text-primary: #d4d4d4;
+    --text-secondary: #8a8a8a;
+    --text-muted: #5a5a5a;
+    --accent: #d4a574;
+    --accent-hover: #c08a5a;
+    --accent-light: rgba(212, 165, 116, 0.12);
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+:root[data-theme="light"] {
+    --bg-primary: #fdfdfc;
+    --bg-secondary: #f3f1ec;
+    --bg-input: #fffffe;
+    --bg-card: #fffffe;
+    --border: #e3dfd5;
+    --text-primary: #1f1f1e;
+    --text-secondary: #6b6b68;
+    --text-muted: #a8a59f;
+    --accent: #b8895d;
+    --accent-hover: #a0764d;
+    --accent-light: rgba(184, 137, 93, 0.15);
+}
+/* Общие стили tool-страницы — в _shared.js через GigaChat.injectToolCss().
+   Здесь — только per-page правила. */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+html::-webkit-scrollbar { width: 5px; }
+html::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+html::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+main { max-width: 800px; }
+#fileInput { display: none; }
+/* OCR: точки внутри .loading + blink animation (нет в shared toolCss). */
+.loading .dots span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--text-secondary); animation: gcBlink 1.4s infinite; margin: 0 2px; }
+.loading .dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading .dots span:nth-child(3) { animation-delay: 0.4s; }
+/* #result — цветной info-блок (отличается от shared .error-box). */
+#result { display: none; padding: 20px 24px; border-radius: 12px; line-height: 1.7; font-size: 14px; white-space: pre-wrap; margin-bottom: 16px; }
+#result.success { background: rgba(16, 185, 129, 0.10); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; }
+#result.error { background: rgba(239, 68, 68, 0.10); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--error); }
+#result b { color: var(--text-primary); }
+
+</style>
+<script src="_config.js"></script>
+<script src="_shared-guard.js"></script>
+<script src="_shared.js"></script>
+</head>
+<body>
+
+<header>
+    <div class="header-left"><a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a><h1>Поиск ФИО</h1></div>
+    <div class="header-right">
+        <div class="status-bar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
+    </div>
+</header>
+
+<main>
+    <div class="intro">
+        <h2>Что делает инструмент</h2>
+        <p>Загрузите документ или фотографию — система распознаёт текст и найдёт в нём <b>фамилии, имена и отчества</b>.</p>
+        <p>Принимаются <code>.pdf</code>, <code>.doc</code>, <code>.docx</code>, <code>.rtf</code>, <code>.txt</code>, а также изображения: <code>.jpg</code>, <code>.png</code>, <code>.tiff</code>, <code>.bmp</code>, <code>.webp</code>, <code>.heic</code>. Максимум — 50 МБ.</p>
+    </div>
+
+    <label class="drop-zone" id="uploadArea" for="fileInput">
+        <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        <div class="title">Перетащите файл сюда или нажмите для выбора</div>
+        <div class="hint">PDF, Word, изображения (JPG, PNG, TIFF, BMP, WEBP, HEIC)</div>
+        <div class="filename" id="fileName"></div>
+        <div class="filesize" id="fileSize"></div>
+    </label>
+
+    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.gif,.webp,.heic,.heif" onchange="fileSelected(this)">
+
+    <button id="sendBtn" class="btn-primary" onclick="sendFile()" disabled>Распознать и найти ФИО</button>
+
+    <div class="loading" id="loading">
+        Распознаю документ и ищу ФИО
+        <span class="dots"><span></span><span></span><span></span></span>
+        <div class="timer" id="timer"></div>
+    </div>
+
+    <div id="result"></div>
+
+    <div class="reset-btn" id="resetBtn">
+        <button onclick="resetForm()">Загрузить другой файл</button>
+        <button onclick="copyResult()">Копировать результат</button>
+    </div>
+</main>
+
+<script>
+    // Auth-gate: без токена → /login.html. После успеха снимаем mask.
+    GigaChat.auth.requireAuth({ onOk: function () {
+        document.documentElement.classList.remove('gc-pending-auth');
+    }});
+    GigaChat.injectToolCss();
+    var WEBHOOK_URL = GigaChat.webhookUrl('ocr');
+    var FETCH_TIMEOUT_MS = 180000;
+    var MAX_RETRIES = 1;
+    var RETRY_DELAY_MS = 3000;
+    var MAX_FILE_SIZE_MB = 50;
+    var selectedFile = null;
+    var isProcessing = false;
+    var uploadArea = document.getElementById('uploadArea');
+    var sendBtn = document.getElementById('sendBtn');
+    var loading = document.getElementById('loading');
+    var result = document.getElementById('result');
+    var resetBtnDiv = document.getElementById('resetBtn');
+    var timerEl = document.getElementById('timer');
+    var timerInterval = null;
+    // OCR-агент: принимаем то, что extract-text сервер реально умеет.
+    // Единый список — в GigaChat.SUPPORTED_FILE_EXTS (browser + ocr).
+    var ALLOWED_EXTENSIONS = GigaChat.SUPPORTED_FILE_EXTS.browser.concat(GigaChat.SUPPORTED_FILE_EXTS.ocr);
+    function getExtension(fn) { return (fn||'').split('.').pop().toLowerCase(); }
+    function isAllowedFile(fn) { return ALLOWED_EXTENSIONS.indexOf(getExtension(fn)) !== -1; }
+    function formatFileSize(b) {
+        if (b < 1024) return b + ' Б';
+        if (b < 1048576) return (b/1024).toFixed(1) + ' КБ';
+        return (b/1048576).toFixed(1) + ' МБ';
+    }
+    function hasFiles(e) {
+        var t = e.dataTransfer && e.dataTransfer.types;
+        if (!t) return false;
+        for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
+        return false;
+    }
+    uploadArea.addEventListener('dragover', function(e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        uploadArea.classList.add('dragging');
+    });
+    uploadArea.addEventListener('dragleave', function(e) {
+        if (e.relatedTarget && uploadArea.contains(e.relatedTarget)) return;
+        uploadArea.classList.remove('dragging');
+    });
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault(); uploadArea.classList.remove('dragging');
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+    function fileSelected(input) { if (input.files.length > 0) handleFile(input.files[0]); }
+    function handleFile(file) {
+        if (!isAllowedFile(file.name)) {
+            alert('Неподдерживаемый формат: .' + getExtension(file.name)); return;
+        }
+        if (file.size > MAX_FILE_SIZE_MB * 1048576) {
+            alert('Файл слишком большой: ' + formatFileSize(file.size) + '\nМаксимум: ' + MAX_FILE_SIZE_MB + ' МБ'); return;
+        }
+        selectedFile = file;
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = formatFileSize(file.size);
+        sendBtn.disabled = false;
+    }
+    async function sendFile() {
+        if (!selectedFile || isProcessing) return;
+        isProcessing = true;
+        sendBtn.disabled = true; loading.classList.add('show');
+        result.style.display = 'none'; resetBtnDiv.classList.remove('show');
+        var startTime = Date.now(); timerEl.textContent = '';
+        timerInterval = setInterval(function() {
+            timerEl.textContent = Math.floor((Date.now()-startTime)/1000) + ' сек.';
+        }, 1000);
+        try {
+            var formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('token', GigaChat.auth.getToken());  // per-user auth
+            // GigaChat.fetchWithRetry напрямую — без локального враппера,
+            // чтобы параметры retries/retryDelay/timeout не рассинхронизировались.
+            var res = await GigaChat.fetchWithRetry(WEBHOOK_URL, { method: 'POST', body: formData }, {
+                timeout: FETCH_TIMEOUT_MS,
+                retries: MAX_RETRIES,
+                retryDelay: RETRY_DELAY_MS
+            });
+            clearInterval(timerInterval); loading.classList.remove('show');
+            if (!res.ok) throw new Error('Сервер вернул ошибку: ' + res.status);
+            // Безопасный JSON-парсинг (сервер мог ответить HTML).
+            var data;
+            try {
+                data = await res.json();
+            } catch (parseErr) {
+                throw new Error('Сервер вернул некорректный ответ (не JSON).');
+            }
+            if (data && data.auth_required) {
+                GigaChat.auth.clearAuth();
+                GigaChat.auth.redirectToLogin();
+                return;
+            }
+            var responseText = data.response || data.output || 'Пустой ответ';
+            result.className = 'success';
+            result.innerHTML = formatResponse(responseText);
+            result.style.display = 'block';
+            document.getElementById('statusDot').className = 'dot online';
+            document.getElementById('statusText').textContent = 'Онлайн';
+        } catch(e) {
+            clearInterval(timerInterval); loading.classList.remove('show');
+            result.className = 'error';
+            // На таймаут показываем чистое «GigaChat не отвечает…» без «Ошибка:».
+            result.textContent = (e && e.isTimeout) ? e.message : ('Ошибка: ' + e.message);
+            result.style.display = 'block';
+            // Не ставим «Офлайн» вслепую: провал чаще всего — таймаут LLM, а
+            // workflow жив. Пингуем (patient) и показываем реальный статус —
+            // жёлтая «Проверка…» вместо мигания Офлайн↔Онлайн.
+            GigaChat.checkServerStatus(WEBHOOK_URL, document.getElementById('statusDot'), document.getElementById('statusText'), { patient: true });
+        }
+        isProcessing = false;
+        resetBtnDiv.classList.add('show');
+    }
+    function resetForm() {
+        selectedFile = null;
+        document.getElementById('fileInput').value = '';
+        document.getElementById('fileName').textContent = '';
+        document.getElementById('fileSize').textContent = '';
+        sendBtn.disabled = true; result.style.display = 'none';
+        resetBtnDiv.classList.remove('show');
+        if (timerInterval) clearInterval(timerInterval);
+    }
+    function copyResult() {
+        var text = result.innerText || result.textContent;
+        if (!text) return;
+        GigaChat.copyToClipboard(text).then(function (ok) {
+            GigaChat.showToast(ok ? 'Скопировано' : 'Не удалось скопировать');
+        });
+    }
+    function formatResponse(text) {
+        return GigaChat.formatMarkdown(text || '');
+    }
+    GigaChat.startHealthCheck(
+        WEBHOOK_URL,
+        document.getElementById('statusDot'),
+        document.getElementById('statusText')
+    );
+</script>
+</body>
+</html>

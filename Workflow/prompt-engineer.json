@@ -1,0 +1,698 @@
+{
+  "name": "Промпт-Инженер. Поток",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prompt-engineer",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "pe-webhook",
+      "name": "Webhook Prompt",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "prompt-engineer-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst message = (body.message || '').trim();\nconst session_id = (body.session_id || 'pe-default').trim();\n\n// Health-check: отдаём pong без вызова LLM\nif (message === 'ping') {\n  return [{ json: { valid: 0, error: 'pong' } }];\n}\n\n// __AUTH_PATCH_V1__\n// === SSO Phase 3: token presence check ===\n// Без токена → auth_required, фронт redirect на /login.html\nconst __token = String((body && body.token) || '').trim();\nconst __userName = String((body && body.user_name) || '').trim().slice(0, 80);\nif (!__token || !/^[a-f0-9]{64}$/.test(__token)) {\n  return [{json: {valid: 0, error: 'auth_required', auth_required: true}}];\n}\n\n\nif (!message || message.length < 2) {\n  return [{ json: { valid: 0, error: 'Введите сообщение' } }];\n}\n\nif (message.length > 10000) {\n  return [{ json: { valid: 0, error: 'Слишком длинный запрос (максимум 10000 символов)' } }];\n}\n\n// Защита от SQL-инъекций через session_id (дальше используется в WHERE session_id = $1)\nif (!/^[a-zA-Z0-9_-]{3,64}$/.test(session_id)) {\n  return [{ json: { valid: 0, error: 'session_id содержит недопустимые символы' } }];\n}\n\nreturn [{ json: { valid: 1, message: message, session_id: session_id, token: __token, user_name: __userName } }];"
+      },
+      "id": "pe-validation",
+      "name": "Валидация",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "pe-cond-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "id": "pe-if-valid",
+      "name": "Запрос валиден?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $('Агрегация').first().json.message;\nconst historyContext = $('Агрегация').first().json.historyContext || '';\nconst lower = message.toLowerCase();\n\nconst promptKeywords = [\n  'промпт', 'prompt', 'системн', 'создай', 'напиши', 'сгенерируй',\n  'адаптируй', 'адаптировать', 'переделай', 'переделать', 'перепиши под',\n  'переписать под', 'измени под', 'изменить под', 'подстрой', 'подстроить',\n  'улучши', 'улучшить', 'доработай', 'доработать', 'оптимизируй',\n  'оптимизировать', 'исправь промпт', 'усиль', 'усилить', 'сделай лучше',\n  'что не так с промптом', 'проанализируй промпт',\n  'инструкци', 'для модели', 'для нейросет', 'для ии', 'для ai',\n  'для gigachat', 'для гигачат', 'для бота', 'для чат-бота',\n  'роль ассистент', 'ты —', 'you are'\n];\n\nconst hasExistingPrompt = (\n  (message.includes('```') || message.includes('Ты —') || message.includes('Ты -') || message.includes('You are')) &&\n  message.length > 100\n);\n\nlet isPromptTask = hasExistingPrompt;\nif (!isPromptTask) {\n  for (const kw of promptKeywords) {\n    if (lower.includes(kw)) { isPromptTask = true; break; }\n  }\n}\n\nif (!isPromptTask && message.length > 50) {\n  const taskIndicators = ['нужен', 'нужно', 'хочу', 'сделай', 'помоги написать', 'составь', 'разработай'];\n  for (const kw of taskIndicators) {\n    if (lower.includes(kw)) { isPromptTask = true; break; }\n  }\n}\n\nif (!isPromptTask) {\n  return [{ json: { message, mode: 'general', modeLabel: 'Общение', historyContext } }];\n}\n\nconst adaptKeywords = ['адаптируй', 'адаптировать', 'переделай', 'переделать', 'перепиши под', 'переписать под', 'измени под', 'изменить под', 'подстрой', 'подстроить'];\nconst improveKeywords = ['улучши', 'улучшить', 'доработай', 'доработать', 'оптимизируй', 'оптимизировать', 'исправь промпт', 'усиль', 'усилить', 'сделай лучше', 'что не так с промптом', 'проанализируй промпт'];\n\nlet mode = 'create';\nlet modeLabel = 'Создание нового промпта';\n\nfor (const kw of adaptKeywords) {\n  if (lower.includes(kw)) { mode = 'adapt'; modeLabel = 'Адаптация промпта'; break; }\n}\n\nif (mode === 'create') {\n  for (const kw of improveKeywords) {\n    if (lower.includes(kw)) { mode = 'improve'; modeLabel = 'Улучшение промпта'; break; }\n  }\n}\n\nif (mode === 'create' && hasExistingPrompt) {\n  mode = 'improve';\n  modeLabel = 'Улучшение промпта';\n}\n\nreturn [{ json: { message, mode, modeLabel, historyContext } }];"
+      },
+      "id": "pe-classifier",
+      "name": "Классификатор",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2370,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-general"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "looseTypeValidation": true
+      },
+      "id": "pe-switch",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2650,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "КРИТИЧЕСКОЕ ПРАВИЛО (важнее всех остальных, нарушение = неправильный ответ):\nНИКОГДА не начинай ответ со слов «Привет», «Здравствуйте», «Здравствуй», «Доброго времени суток», «Добрый день», «Добрый вечер», «Доброе утро», «Приветствую», «Hi», «Hello». Запрещено приветствие в любой форме в начале любого ответа. Даже если пользователь сам поздоровался — отвечай сразу по сути, без приветствия. Не используй эмодзи-приветствия (👋 и т.п.).\nНачинай ответ сразу с сути: с глагола, существительного, вопроса или утверждения по теме.\n\nТы — ИИ-Агент по промпт-инженерии для GigaChat. Помогаешь писать пользовательские промпты (одноразовые задачи для модели), а не системные.\n\n==================================================\nR8.40: ОТВЕТ — ВСЕГДА ПОЛНОЕ ПРЕДЛОЖЕНИЕ\n==================================================\nКаждый ответ обязан содержать минимум одно полное предложение с подлежащим и сказуемым. Никогда не возвращай инфинитив, отдельное слово из вопроса, или короткий фрагмент.\n\nПримеры правильных ответов:\nЗапрос: Как тебя звать?\nОтвет: Меня зовут Промпт-инженер GigaChat.\n\nЗапрос: Как твоё имя?\nОтвет: Моё имя — Промпт-инженер GigaChat.\n\nЗапрос: Кто ты?\nОтвет: Я ИИ-Агент по промпт-инженерии для GigaChat, помогаю составлять промпты.\n\n==================================================\nR8.40: МЕСТОИМЕНИЯ — ЧАСТЫЙ ИСТОЧНИК ОШИБОК\n==================================================\n- «меня», «мне», «я», «мой», «моё», «моя», «мои» — относятся К ПОЛЬЗОВАТЕЛЮ.\n- «тебя», «тебе», «ты», «твой», «твоё», «твоя», «твои» — относятся К ТЕБЕ.\n\nКогда пользователь говорит «меня зовут X» — это ЕГО имя. Запомни X.\nКогда пользователь спрашивает «как меня зовут?» — назови ЕГО имя из истории, а не своё.\nКогда пользователь спрашивает «как тебя зовут?» — назови своё имя (Промпт-инженер GigaChat).\n\nОБЯЗАТЕЛЬНО смотри блок «Известно о пользователе» ниже, если он есть — там имя пользователя уже извлечено из истории.\n\nПримеры правильных ответов:\nЗапрос: Как меня зовут?\nЕсли имя известно из контекста: Вас зовут Джо.\nЕсли имя неизвестно: Вы пока не представились — как к вам обращаться?\n\nЗапрос: Меня зовут Джо\nОтвет: Приятно познакомиться, Джо. Чем помочь?\n\nЗапрос (после «Меня зовут Джо»): А меня?\nОтвет: Вас зовут Джо.\n==================================================\n\nГлавная задача — помогать с промптами. Но ты дружелюбный собеседник и можешь поддержать разговор на любую тему.\n\nПравила:\n1. Отвечай кратко — максимум 5-7 предложений\n2. Если пользователь поздоровался — НЕ отвечай «Привет», сразу представься: «Я ИИ-Агент по промпт-инженерии...»\n3. Если спрашивают что ты умеешь — объясни: помогаешь писать пользовательские промпты по инструкции\n4. Если вопрос на другую тему — ответь по-дружески, в конце плавно упомяни промпты\n5. Если пользователь продолжает общаться не про промпты — просто общайся\n6. Пиши на русском языке\n7. Не используй markdown-заголовки в общении\n8. Будь живым, не роботичным\n9. Не повторяй одну и ту же фразу-шаблон в нескольких ответах подряд\n\nПример 1:\nЗапрос: Привет\nОтвет: Я ИИ-Агент по промпт-инженерии — помогаю писать пользовательские промпты для разовых задач. Опишите своими словами, какой промпт нужен (можно подробно, в несколько абзацев) — соберу готовый текст, который вы скопируете и отправите модели.\n\nПример 2:\nЗапрос: Какая сегодня погода?\nОтвет: К сожалению, я не подключён к сервисам погоды. Зато могу собрать промпт, который попросит модель проанализировать прогноз и выдать совет по одежде — если такая задача нужна.\n\nПример 3:\nЗапрос: Как дела?\nОтвет: Отлично, спасибо! Готов к работе. Есть задача для промпта или просто заглянули?\n\nАнтипример (НЕЛЬЗЯ так):\nЗапрос: Привет\nПлохой ответ: Привет! Я ИИ-Агент по промпт-инженерии...\nХороший ответ: Я ИИ-Агент по промпт-инженерии — помогаю писать промпты."
+            },
+            {
+              "content": "={{ $('Агрегация').first().json.user_name ? ('Имя пользователя: ' + $('Агрегация').first().json.user_name + '. НЕ начинай ответ с его имени и не обращайся по имени в каждом ответе — это навязчиво; имя используй редко, только когда это правда уместно. Когда он спрашивает «как меня зовут?» — отвечай этим именем.' + String.fromCharCode(10) + String.fromCharCode(10)) : '' }}{{ $json.historyContext }}{{ $json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "maxRetries": 0
+        }
+      },
+      "id": "pe-general",
+      "name": "Ответ GENERAL",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2930,
+        -140
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n  if (raw.error) {\n    return [{ json: { response: 'GigaChat не отвечает. Проверьте подключение.', prompt: '' } }];\n  }\n  // Безопасный доступ — LLM при таймауте может вернуть пустой output\n  const text = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n  if (!text) {\n    return [{ json: { response: 'Пустой ответ от LLM. Попробуйте ещё раз.', prompt: '' } }];\n  }\n  return [{ json: { response: text.trim(), prompt: '' } }];\n} catch(e) {\n  return [{ json: { response: 'Ошибка обработки.', prompt: '' } }];\n}"
+      },
+      "id": "pe-general-safety",
+      "name": "Проверка ответа GEN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3210,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Проверка ответа GEN').first().json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "pe-respond-general",
+      "name": "Ответ: GENERAL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3770,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": ".",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "КРИТИЧЕСКОЕ ПРАВИЛО (важнее всех остальных, нарушение = неправильный ответ):\nНИКОГДА не начинай ответ со слов «Привет», «Здравствуйте», «Здравствуй», «Доброго времени суток», «Добрый день», «Добрый вечер», «Доброе утро», «Приветствую», «Hi», «Hello». Запрещено приветствие в любой форме в начале любого ответа. Даже если пользователь сам поздоровался — отвечай сразу по сути, без приветствия. Не используй эмодзи-приветствия (👋 и т.п.).\nСразу начинай с «## Промпт». Никаких вступлений.\n\nТы — ИИ-Агент по промпт-инженерии для GigaChat.\n\nВАЖНО: ты пишешь ПОЛЬЗОВАТЕЛЬСКИЕ ПРОМПТЫ — те, что человек отправляет модели как обычное сообщение для выполнения конкретной разовой задачи. Ты НЕ пишешь системные промпты (те, что задают персону/поведение модели на всю сессию).\n\nРазличие:\n- Системный промпт = «Ты — помощник по X. Веди себя так-то...» (задаёт роль навсегда). НЕ ПИШИ ТАКОЕ.\n- Пользовательский промпт = «Сделай мне X из Y, учитывая Z. Формат ответа: ...» (разовая задача). ПИШИ ИМЕННО ТАКОЕ.\n\nКАК РАБОТАТЬ:\nПользователь даёт тебе инструкцию — описание того, какой промпт ему нужен. Инструкция МОЖЕТ БЫТЬ ДЛИННОЙ (несколько абзацев или целая страница текста — это нормально, читай всю). Из этой инструкции ты строишь готовый пользовательский промпт, который пользователь скопирует и сразу отправит модели.\n\nЧТО ДОЛЖНО БЫТЬ В ХОРОШЕМ ПОЛЬЗОВАТЕЛЬСКОМ ПРОМПТЕ:\n1. ЯСНАЯ ЗАДАЧА в первой строке — глагол в начале: «Составь...», «Проанализируй...», «Сгенерируй...», «Извлеки...»\n2. КОНТЕКСТ — для чего нужен результат, кто адресат, важные ограничения\n3. ВХОДНЫЕ ДАННЫЕ — что есть на руках. Используй плейсхолдеры в квадратных скобках: [текст письма], [список товаров], [csv-данные]\n4. ТРЕБОВАНИЯ — пронумерованный список того, что должно/не должно быть\n5. ФОРМАТ ОТВЕТА — точная структура (список / таблица / JSON / абзацы / число). Длина если важна\n6. ПРИМЕР «вход → выход» — если задача нетривиальная\n\nОСОБЕННОСТИ GIGACHAT (учти при написании промпта):\n- Короткие чёткие промпты работают лучше длинных размытых\n- Списки и нумерация сильнее, чем сплошной текст\n- Явно укажи формат ответа — иначе модель импровизирует\n- Один пример «вход → выход» часто эффективнее десятка правил\n- Избегай вложенных условий и абстрактных формулировок\n\nФОРМАТ ТВОЕГО ОТВЕТА (строго):\n## Промпт\n```\n[готовый пользовательский промпт — то, что человек скопирует и отправит модели]\n```\n\n## Что включено и почему\n[3-5 пунктов: какие части промпта решают какие задачи из инструкции]\n\n## Что можно улучшить\n[1-3 опциональных пункта: что добавить, если результат не устроит]\n\nПРИМЕР:\nИнструкция пользователя:\n\"Мне нужен промпт, чтобы модель помогала писать письма клиентам с отказом. Тон — вежливый, конкретный. Должна быть структура: благодарность, причина отказа, альтернатива (если есть), приглашение к диалогу.\"\n\nТвой ответ:\n## Промпт\n```\nСоставь письмо-отказ клиенту на русском языке.\n\nКонтекст отказа: [опиши суть ситуации]\nИмеется альтернатива: [да/нет, и какая, если есть]\n\nПисьмо должно содержать ровно эти части в указанном порядке:\n1. Благодарность клиенту за обращение (1-2 предложения)\n2. Причина отказа — мягко, без оправданий (2-3 предложения)\n3. Альтернатива — если есть, конкретно. Если нет — пропусти этот блок\n4. Приглашение к дальнейшему диалогу (1 предложение)\n\nТон: вежливый, профессиональный, без излишних извинений.\nОбъём: 80-120 слов.\nБез подписи и шапки — только тело письма.\n```\n\n## Что включено и почему\n- Плейсхолдеры `[опиши суть...]` — один промпт работает для разных ситуаций\n- Жёсткая нумерация блоков — модель не пропустит часть и не перепутает порядок\n- Указание объёма (80-120 слов) — отсекает многословие\n- Запрет излишних извинений — типовая ошибка моделей в отказах\n- «Без подписи и шапки» — иначе модель приделает «С уважением, ИИ»\n\n## Что можно улучшить\n- Указать конкретную сферу (B2B / частный клиент) — даст более попадающий тон\n- Прикрепить пример хорошего письма-отказа из вашей практики\n\nАНТИПРИМЕРЫ (так делать НЕЛЬЗЯ):\n- Не пиши системный промпт вида «Ты — ассистент по...». Пиши задачу для модели.\n- Не выдавай свой ответ без формата `## Промпт` — пользователю нужен копируемый текст.\n- Не сокращай длинную инструкцию пользователя — учти все требования.\n\nКРИТИЧНО — РАБОТАТЬ С ВХОДНЫМИ ДАННЫМИ:\n- Внимательно читай инструкцию пользователя ЦЕЛИКОМ. Учитывай ВСЕ упомянутые в ней детали (домен, формат, аудитория, ограничения).\n- Если юзер привёл примеры/данные/контекст — обязательно отрази их в промпте.\n- НЕ выдавай универсальный шаблон без учёта инструкции.\n- Если инструкция короткая («сделай промпт для X»), всё равно сформулируй конкретный промпт под X, а не general-purpose.\n- ЕСЛИ инструкция совсем непонятна — задай 1-2 уточняющих вопроса в секции «Что можно улучшить», но базовый промпт всё равно сгенерируй.\n- Обязательно используй формат  для основного промпта — иначе фронтенд не сможет его выделить и кнопка «Копировать» не появится.\n"
+            },
+            {
+              "content": "={{ $json.historyContext }}Инструкция пользователя:\n{{ $json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "temperature": 0.3,
+          "maxRetries": 0
+        }
+      },
+      "id": "pe-generate",
+      "name": "Генерация промпта",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2930,
+        300
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Qwyuj8GrADL2wlnl",
+          "name": "GigaChat"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const raw = $input.first().json;\n\n  if (raw.error) {\n    return [{ json: { response: 'GigaChat не отвечает. Проверьте подключение.', prompt: '' } }];\n  }\n\n  // Безопасный доступ — LLM при таймауте может вернуть пустой output\n  const generatedText = raw && raw.output && raw.output[0] && raw.output[0].content && raw.output[0].content[0] && raw.output[0].content[0].text;\n  if (!generatedText) {\n    return [{ json: { response: 'Пустой ответ от LLM. Попробуйте ещё раз.', prompt: '' } }];\n  }\n\n  // Многоступенчатый парсинг — GigaChat часто пишет ``` нестандартно\n  // (без переноса строки после открывающего, без указания языка,\n  // случайно с одним backtick'ом и т.п.). Раньше падали в пустой\n  // extras.prompt и кнопка «Копировать» вообще не появлялась.\n  let extractedPrompt = '';\n  let extractionNote = '';\n\n  // Попытка 1: канонический формат ```lang\\n...```\n  let m = generatedText.match(/```\\w*\\s*\\n([\\s\\S]*?)```/);\n  if (m) {\n    extractedPrompt = m[1].trim();\n  } else {\n    // Попытка 2: ``` без \\n после открывающего\n    m = generatedText.match(/```\\w*\\s*([\\s\\S]*?)```/);\n    if (m) extractedPrompt = m[1].trim();\n  }\n  if (!extractedPrompt) {\n    // Попытка 3: любые ``` ... ``` без языка\n    m = generatedText.match(/```([\\s\\S]*?)```/);\n    if (m) extractedPrompt = m[1].trim();\n  }\n  if (!extractedPrompt) {\n    // Попытка 4: код-блок в одинарных backtick'ах в начале строки\n    m = generatedText.match(/^`([^`\\n][\\s\\S]*?)`/m);\n    if (m) extractedPrompt = m[1].trim();\n  }\n  if (!extractedPrompt) {\n    // Fallback: GigaChat не вернул блок в стандартном формате.\n    // Берём ВЕСЬ ответ как промпт — лучше показать что-то с возможностью\n    // копирования, чем пустой блок. Пользователь сам разберётся.\n    extractedPrompt = generatedText.trim();\n    extractionNote = '\\n\\n_GigaChat не вернул промпт в стандартном формате ```...``` — показан весь ответ как есть._';\n  }\n\n  return [{ json: { response: generatedText + extractionNote, prompt: extractedPrompt } }];\n} catch(e) {\n  return [{ json: { response: 'Ошибка обработки ответа GigaChat: ' + e.message, prompt: '' } }];\n}"
+      },
+      "id": "pe-extract",
+      "name": "Извлечь промпт",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3210,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Извлечь промпт').first().json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "pe-respond-ok",
+      "name": "Ответ: результат",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3770,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.error, auth_required: !!$json.auth_required, prompt: '' }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "pe-respond-err",
+      "name": "Ответ: ошибка",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        840,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, SUBSTRING(content, 1, 2000) AS content FROM (SELECT role, content, id, created_at FROM chat_memory WHERE session_id = $1 AND user_id = $2::integer ORDER BY created_at DESC, id DESC LIMIT 30) sub ORDER BY created_at ASC, id ASC",
+        "options": {
+          "queryReplacement": "={{ [$('Валидация').first().json.session_id, $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1530,
+        80
+      ],
+      "id": "pe-load-history-0001",
+      "name": "Загрузить историю",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const historyRows = $input.all().reverse();\nlet historyContext = '';\nif (historyRows.length > 0) {\n  const lines = historyRows.map(item => {\n    const role = item.json.role === 'user' ? 'Пользователь' : 'Ассистент';\n    return role + ': ' + (item.json.content || '');\n  });\n  historyContext = 'История диалога:\\n' + lines.join('\\n') + '\\n\\n';\n}\nconst v = $('Валидация').first().json;\nreturn [{json: {message: v.message, session_id: v.session_id, historyContext: historyContext, user_name: (v.user_name || '')}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1810,
+        80
+      ],
+      "id": "pe-aggregate-0001",
+      "name": "Агрегация"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _user AS (INSERT INTO chat_memory (session_id, role, content, user_id) VALUES ($1, 'user', $2, $4::integer) RETURNING id AS uid), _ass AS (INSERT INTO chat_memory (session_id, role, content, user_id) SELECT $1, 'assistant', $3, $4::integer WHERE LENGTH(TRIM($3)) > 0 RETURNING id AS aid) SELECT _user.uid FROM _user CROSS JOIN _lock LEFT JOIN _ass ON TRUE",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $('Агрегация').first().json.message || '', $json.response || '', $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3490,
+        -140
+      ],
+      "id": "pe-save-resp-gen-0001",
+      "name": "Сохранить ответ GEN",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH _lock AS (SELECT pg_advisory_xact_lock(hashtext($1)) AS l), _user AS (INSERT INTO chat_memory (session_id, role, content, user_id) VALUES ($1, 'user', $2, $5::integer) RETURNING id AS uid), _ass AS (INSERT INTO chat_memory (session_id, role, content, extras, user_id) SELECT $1, 'assistant', $3, $4::jsonb, $5::integer WHERE LENGTH(TRIM($3)) > 0 RETURNING id AS aid) SELECT _user.uid FROM _user CROSS JOIN _lock LEFT JOIN _ass ON TRUE",
+        "options": {
+          "queryReplacement": "={{ [$('Агрегация').first().json.session_id, $('Агрегация').first().json.message || '', $json.response || '', JSON.stringify({prompt: $json.prompt || ''}), $('SQL: Verify token').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3490,
+        300
+      ],
+      "id": "pe-save-resp-task-0001",
+      "name": "Сохранить ответ TASK",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT user_id FROM upd;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        },
+        "alwaysOutputData": true
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        790,
+        300
+      ],
+      "id": "pe-sso-sql-verify-V1",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\n// PostgreSQL сбой: data может быть null или содержать .error поле — НЕ\n// помечаем как unauthorized, иначе юзер видит ложный auth_required редирект.\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        300
+      ],
+      "id": "pe-sso-token-result-V1",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-pe-token-ok",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {},
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1250,
+        300
+      ],
+      "id": "pe-sso-token-if-V1",
+      "name": "Token OK?"
+    }
+  ],
+  "connections": {
+    "Webhook Prompt": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Запрос валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Запрос валиден?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Классификатор": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Ответ GENERAL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Генерация промпта",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ответ GENERAL": {
+      "main": [
+        [
+          {
+            "node": "Проверка ответа GEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка ответа GEN": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ GEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Генерация промпта": {
+      "main": [
+        [
+          {
+            "node": "Извлечь промпт",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Извлечь промпт": {
+      "main": [
+        [
+          {
+            "node": "Сохранить ответ TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить историю": {
+      "main": [
+        [
+          {
+            "node": "Агрегация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агрегация": {
+      "main": [
+        [
+          {
+            "node": "Классификатор",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ GEN": {
+      "main": [
+        [
+          {
+            "node": "Ответ: GENERAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранить ответ TASK": {
+      "main": [
+        [
+          {
+            "node": "Ответ: результат",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Загрузить историю",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 70
+  },
+  "versionId": "prompt-engineer-v4-general",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ad16de428774283a74f2bef15a9b31f771c3828cae096d3c33aab7bd18058813"
+  },
+  "id": "prompt-engineer-001",
+  "tags": []
+}

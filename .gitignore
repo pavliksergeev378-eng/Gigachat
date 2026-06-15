@@ -1,0 +1,50 @@
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Temp
+*.tmp
+*.log
+*.bak
+
+# Python venv и кэш
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Оффлайн-бандл эмбеддингов — лежит в GitHub Release, не в репо
+embedding-server/wheels/
+embedding-server/wheels.zip
+
+# Оффлайн-бандл OCR — лежит в GitHub Release, не в репо
+ocr-server/wheels/
+ocr-server/wheels.zip
+ocr-server/ocr-wheels.zip
+ocr-server/easyocr_models/
+ocr-server/easyocr_models.zip
+ocr-server/ocr-easyocr-models.zip
+ocr-server/_tmp_venv/
+
+# Pyodide-бандл для math-agent — лежит в репозитории, чтобы ZIP-загрузка
+# с GitHub содержала всё необходимое для офисного офлайн-развёртывания.
+
+# Plane — клонирован локально для разработки Plane-агента, не наш код.
+# Lowercase `plane/` — это локальный клон upstream-репозитория (97 МБ),
+# в репо не нужен. Заглавная `Plane/` — наша документация-хаб с README +
+# OFFICE-TESTING.md, она ДОЛЖНА коммититься. На case-insensitive ФС (Windows)
+# обе папки одинаково матчат `plane/`, поэтому нужен явный exception.
+plane/
+!Plane/
+!Plane/**
+
+# Файлы > 50 МБ — через Git LFS (torch, модели easyocr)
