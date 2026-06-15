@@ -1856,6 +1856,22 @@
         /* Модалка импорта — строго по центру экрана (общий .card-modal-backdrop
            прижат к верху ради модалки задачи; здесь переопределяем только для неё). */
         #gc-plan-modal { align-items: center; padding-top: 0; }
+        /* ===== Экспорт плана в .docx ===== */
+        .gc-export-modal { align-items: center; padding-top: 0; }
+        .gc-export-modal .card-modal { max-width: 480px; }
+        .gc-export-picker { padding: 6px 0; }
+        .gc-export-picker label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .gc-export-picker .ep-range { display: flex; gap: 10px; margin: 12px 0; }
+        .gc-export-picker .ep-range input { flex: 1; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; }
+        .gc-export-picker .ep-presets { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
+        .gc-export-picker .ep-presets button { flex: 1; min-width: 100px; padding: 8px 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; transition: 0.15s; }
+        .gc-export-picker .ep-presets button:hover { border-color: var(--accent); background: var(--accent-light); }
+        .gc-export-picker .ep-presets button.active { border-color: var(--accent); background: var(--accent); color: #1f1f1e; font-weight: 600; }
+        .gc-export-picker .ep-summary { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+        .gc-export-picker .ep-summary b { color: var(--text-primary); }
+        .gc-export-picker .ep-params { margin-bottom: 10px; }
+        .gc-export-picker .ep-params label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); cursor: pointer; }
+        .gc-export-picker .ep-params input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
     </style>
     <script src="_config.js"></script>
     <link rel="stylesheet" href="lib/hljs-dark.min.css" id="hljs-theme-dark">
@@ -1924,6 +1940,7 @@
                     </div>
                     <button class="board-refresh" onclick="forceFullReload()">Обновить</button>
                     <button class="board-refresh board-import-plan" onclick="gcImportPlanPick()" aria-label="Импорт плана из Word"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg></button>
+                    <button class="board-refresh board-import-plan" onclick="gcExportPlanOpen()" aria-label="Экспорт плана в Word" title="Экспорт плана в Word"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
                     <!-- R7.93: кнопка «Экспорт» (Excel/Word/PDF) дашборда убрана.
                          Дублировала функционал Plane UI (там есть свой export
                          по проекту). Кнопка «Экспорт чата» в верхней шапке —
@@ -9077,6 +9094,329 @@
             // R7.92: startNotifPolling удалён вместе с колокольчиком
             updateHeaderTimer();
             bindSlashCommandsInput();
+
+            // ============================================================
+            // ЭКСПОРТ ПЛАНА В .docx
+            // ============================================================
+            // Помощники: получить понедельник и воскресенье для указанной даты
+            function _gcWeekRange(dateStr) {
+                var d = new Date(dateStr);
+                if (isNaN(d.getTime())) d = new Date();
+                var day = d.getDay(); // 0=воскресенье, 1=понедельник ...
+                // Понедельник: если воскресенье (0) → отнять 6, иначе отнять day-1
+                var mon = new Date(d);
+                mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+                var sun = new Date(mon);
+                sun.setDate(mon.getDate() + 6);
+                return {
+                    mon: mon,
+                    sun: sun,
+                    monStr: _gcFormatDate(mon),
+                    sunStr: _gcFormatDate(sun),
+                };
+            }
+            function _gcFormatDate(d) {
+                return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+            }
+            function _gcFormatDateRu(d) {
+                var months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+                return d.getDate() + ' ' + months[d.getMonth()];
+            }
+            function _gcWeekdayName(index) {
+                var wd = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+                return wd[index] || '';
+            }
+            // Собрать задачи за выбранный промежуток из BOARD_ALL_ISSUES
+            function _gcCollectIssuesForRange(dateFrom, dateTo) {
+                var all = BOARD_ALL_ISSUES || [];
+                var from = new Date(dateFrom + 'T00:00:00');
+                var to = new Date(dateTo + 'T23:59:59');
+                var byDay = {};
+                var total = 0;
+                all.forEach(function(issue){
+                    var td = issue && issue.target_date;
+                    if (!td) return;
+                    var d = new Date(td + 'T00:00:00');
+                    if (isNaN(d.getTime()) || d < from || d > to) return;
+                    var key = _gcFormatDate(d);
+                    if (!byDay[key]) byDay[key] = [];
+                    byDay[key].push(issue);
+                    total++;
+                });
+                return { byDay: byDay, total: total };
+            }
+            // Сгенерировать .docx с недельным планом из собранных задач
+            async function _gcGeneratePlanDocx(dateFrom, dateTo, includeDesc) {
+                var collected = _gcCollectIssuesForRange(dateFrom, dateTo);
+                if (!collected.total) {
+                    alert('Нет задач на выбранный период.');
+                    return;
+                }
+                // Собираем дни от dateFrom до dateTo
+                var start = new Date(dateFrom + 'T12:00:00');
+                var end = new Date(dateTo + 'T12:00:00');
+                var days = [];
+                var cur = new Date(start);
+                while (cur <= end) {
+                    var key = _gcFormatDate(cur);
+                    var dayIssues = collected.byDay[key] || [];
+                    // Сортируем по названию (у задач без времени — просто по имени)
+                    dayIssues.sort(function(a, b) {
+                        var na = (a.name || '').toLowerCase();
+                        var nb = (b.name || '').toLowerCase();
+                        return na < nb ? -1 : na > nb ? 1 : 0;
+                    });
+                    var tasks = dayIssues.map(function(issue) {
+                        var desc = '';
+                        if (includeDesc) {
+                            desc = (issue.description_html || issue.description || '')
+                                .replace(/<[^>]+>/g, '').trim().slice(0, 300);
+                        }
+                        return {
+                            name: issue.name || '—',
+                            desc: desc,
+                        };
+                    });
+                    var wdName = _gcWeekdayName(cur.getDay());
+                    var dayLabel = wdName.charAt(0).toUpperCase() + wdName.slice(1) + ', ' + _gcFormatDateRu(cur);
+                    days.push({
+                        dateLabel: dayLabel,
+                        iso: key,
+                        tasks: tasks,
+                    });
+                    cur.setDate(cur.getDate() + 1);
+                }
+                if (!days.length) { alert('Нет данных для экспорта.'); return; }
+
+                // Генерируем XML для .docx
+                var RS = String.fromCharCode(30); // разделитель как в импорте
+                // Формируем строки таблицы: заголовок (дни), темы, расписание
+                var dayCells = [];
+                var themeCells = [];
+                var schedCells = [];
+                var hasThemes = false;
+                days.forEach(function(d, idx){
+                    var label = d.dateLabel;
+                    dayCells.push(label);
+                    // Тема = первая задача (как тема дня), если есть
+                    var theme = d.tasks.length ? d.tasks[0].name : '';
+                    if (theme) hasThemes = true;
+                    themeCells.push(theme);
+                    // Расписание: все задачи
+                    var schedParts = d.tasks.map(function(t, ti){
+                        var prefix = (ti > 0 ? RS : '');
+                        // Пытаемся извлечь время из названия (формат "09:00–10:00 Название")
+                        var timeMatch = t.name.match(/^\(?\s*(\d{1,2}[:.]\d{2})\s*[–—\-]\s*(\d{1,2}[:.]\d{2})/);
+                        if (timeMatch) {
+                            var remainder = t.name.replace(timeMatch[0], '').trim();
+                            var fullName = remainder || t.name;
+                            var descAdd = t.desc ? ('\n' + t.desc) : '';
+                            return timeMatch[1] + '–' + timeMatch[2] + ' ' + fullName + descAdd;
+                        }
+                        // Без времени — просто имя
+                        return t.name + (t.desc ? ('\n' + t.desc) : '');
+                    });
+                    schedCells.push(schedParts.join(''));
+                });
+                if (!hasThemes) { themeCells = []; }
+
+                // Год из dateFrom
+                var year = new Date(dateFrom + 'T12:00:00').getFullYear();
+
+                // Строим OOXML
+                var bodyXml = '<w:body>';
+                // Заголовок — год (как в импорте парсится из текста вне таблицы)
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t>' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>' + _gcEscapeXml('Неделя: ' + _gcFormatDateRu(start) + ' – ' + _gcFormatDateRu(end)) + '</w:t></w:r></w:p>';
+
+                // Таблица
+                var tblXml = '<w:tbl>';
+                tblXml += '<w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>' +
+                    '<w:top w:val="single" w:sz="4" w:color="333333"/>' +
+                    '<w:bottom w:val="single" w:sz="4" w:color="333333"/>' +
+                    '<w:left w:val="single" w:sz="4" w:color="333333"/>' +
+                    '<w:right w:val="single" w:sz="4" w:color="333333"/>' +
+                    '<w:insideH w:val="single" w:sz="4" w:color="333333"/>' +
+                    '<w:insideV w:val="single" w:sz="4" w:color="333333"/>' +
+                    '</w:tblBorders></w:tblPr>';
+
+                // Строка дней
+                tblXml += '<w:tr>';
+                dayCells.forEach(function(cell){
+                    tblXml += _gcTblCell(_gcEscapeXml(cell), true);
+                });
+                tblXml += '</w:tr>';
+
+                // Строка тем (если есть)
+                if (hasThemes) {
+                    tblXml += '<w:tr>';
+                    themeCells.forEach(function(cell){
+                        tblXml += _gcTblCell(_gcEscapeXml(cell), false);
+                    });
+                    tblXml += '</w:tr>';
+                }
+
+                // Строка расписания
+                tblXml += '<w:tr>';
+                schedCells.forEach(function(cell){
+                    // Заменяем Record Separator на разрыв строки внутри ячейки
+                    var xmlCell = _gcEscapeXml(cell);
+                    // Разделяем по RS для multi-line в ячейке
+                    var parts = cell.split(RS);
+                    var cellXml = '';
+                    parts.forEach(function(p, pi){
+                        if (pi > 0) cellXml += '<w:br/>';
+                        cellXml += _gcEscapeXml(p);
+                    });
+                    tblXml += _gcTblCell(cellXml, false);
+                });
+                tblXml += '</w:tr>';
+
+                tblXml += '</w:tbl>';
+                bodyXml += tblXml + '</w:body>';
+
+                // Собираем .docx
+                var docxBuf = await _gcBuildDocx(bodyXml);
+                // Скачиваем
+                var blob = new Blob([docxBuf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'plan-' + dateFrom + '.docx';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                return true;
+            }
+            function _gcTblCell(text, bold) {
+                var props = bold
+                    ? '<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>' + text + '</w:t></w:r>'
+                    : '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>' + text + '</w:t></w:r>';
+                return '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + props + '</w:tc>';
+            }
+            function _gcEscapeXml(s) {
+                if (s == null) return '';
+                return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            async function _gcBuildDocx(bodyXml) {
+                // Минимальный .docx пакет: [Content_Types].xml, _rels/.rels, word/document.xml
+                var pkg = new JSZip();
+                pkg.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+                    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+                    '<Default Extension="xml" ContentType="application/xml"/>' +
+                    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+                    '</Types>');
+                pkg.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+                    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+                    '</Relationships>');
+                pkg.file('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+                    bodyXml + '</w:document>');
+                return await pkg.generateAsync({ type: 'arraybuffer', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            }
+            // Главная функция — открыть модалку выбора дат
+            function gcExportPlanOpen() {
+                if (!BOARD_CURRENT_PROJECT) { alert('Сначала выбери проект в выпадающем списке доски.'); return; }
+                var allIssues = BOARD_ALL_ISSUES || [];
+                var withDates = allIssues.filter(function(i){ return i && i.target_date; });
+                if (!withDates.length) { alert('Нет задач с установленными датами. Сначала создай задачи со сроками.'); return; }
+                // Определяем текущую неделю
+                var now = new Date();
+                var wr = _gcWeekRange(_gcFormatDate(now));
+                var nextMon = new Date(wr.mon);
+                nextMon.setDate(nextMon.getDate() + 7);
+                var nextSun = new Date(nextMon);
+                nextSun.setDate(nextSun.getDate() + 6);
+
+                var from = _gcFormatDate(wr.mon);
+                var to = _gcFormatDate(wr.sun);
+
+                // Создаём модалку
+                var bd = document.createElement('div');
+                bd.className = 'card-modal-backdrop show gc-export-modal';
+                bd.id = 'gc-export-modal';
+                bd.style.zIndex = '3000';
+
+                var fromLabel = _gcFormatDateRu(wr.mon);
+                var toLabel = _gcFormatDateRu(wr.sun);
+                bd.innerHTML = '<div class="card-modal">' +
+                    '<div class="card-modal-header"><h3>📥 Экспорт плана в Word</h3>' +
+                    '<button class="card-modal-close" onclick="gcCloseExportModal()" title="Закрыть">×</button></div>' +
+                    '<div class="card-modal-body gc-export-picker">' +
+                    '<label>Выберите период</label>' +
+                    '<div class="ep-presets">' +
+                    '<button class="active" data-preset="thisweek" onclick="gcExportPickPreset(this,\'thisweek\')">🗓 Текущая неделя</button>' +
+                    '<button data-preset="nextweek" onclick="gcExportPickPreset(this,\'nextweek\')">➡ Следующая неделя</button>' +
+                    '</div>' +
+                    '<div class="ep-range">' +
+                    '<label style="flex:1">С <input type="date" id="gc-export-from" value="' + from + '" onchange="gcExportUpdateSummary()"></label>' +
+                    '<label style="flex:1">По <input type="date" id="gc-export-to" value="' + to + '" onchange="gcExportUpdateSummary()"></label>' +
+                    '</div>' +
+                    '<div class="ep-params">' +
+                    '<label><input type="checkbox" id="gc-export-desc" checked> Включить описания задач</label>' +
+                    '</div>' +
+                    '<div class="ep-summary" id="gc-export-summary">Загрузка...</div>' +
+                    '</div>' +
+                    '<div class="card-modal-footer">' +
+                    '<button onclick="gcCloseExportModal()">Отмена</button>' +
+                    '<button class="primary" onclick="gcExportPlanDo()">📥 Скачать .docx</button>' +
+                    '</div></div>';
+                document.body.appendChild(bd);
+                gcExportUpdateSummary();
+            }
+            function gcCloseExportModal() {
+                var m = document.getElementById('gc-export-modal');
+                if (m) m.remove();
+            }
+            function gcExportPickPreset(btn, preset) {
+                // Снять active со всех
+                var parent = btn.closest('.ep-presets');
+                Array.from(parent.querySelectorAll('button')).forEach(function(b){ b.classList.remove('active'); });
+                btn.classList.add('active');
+                var now = new Date();
+                var wr = _gcWeekRange(_gcFormatDate(now));
+                var from, to;
+                if (preset === 'thisweek') {
+                    from = wr.monStr; to = wr.sunStr;
+                } else if (preset === 'nextweek') {
+                    var nm = new Date(wr.mon);
+                    nm.setDate(nm.getDate() + 7);
+                    var ns = new Date(nm);
+                    ns.setDate(ns.getDate() + 6);
+                    from = _gcFormatDate(nm); to = _gcFormatDate(ns);
+                }
+                document.getElementById('gc-export-from').value = from;
+                document.getElementById('gc-export-to').value = to;
+                gcExportUpdateSummary();
+            }
+            function gcExportUpdateSummary() {
+                var from = document.getElementById('gc-export-from').value;
+                var to = document.getElementById('gc-export-to').value;
+                var el = document.getElementById('gc-export-summary');
+                if (!from || !to) { el.innerHTML = 'Выберите даты.'; return; }
+                var collected = _gcCollectIssuesForRange(from, to);
+                var daysCount = collected.byDay ? Object.keys(collected.byDay).length : 0;
+                el.innerHTML = 'Найдено <b>' + collected.total + '</b> задач' +
+                    (collected.total % 10 === 1 && collected.total % 100 !== 11 ? 'а' : '') +
+                    ' на <b>' + daysCount + '</b> дн' + (daysCount % 10 === 1 && daysCount % 100 !== 11 ? 'ь' : 'ей');
+            }
+            function gcExportPlanDo() {
+                var from = document.getElementById('gc-export-from').value;
+                var to = document.getElementById('gc-export-to').value;
+                var includeDesc = document.getElementById('gc-export-desc').checked;
+                if (!from || !to) { alert('Выберите даты.'); return; }
+                if (from > to) { alert('Дата «С» должна быть раньше «По».'); return; }
+                gcCloseExportModal();
+                // Асинхронная генерация
+                _gcGeneratePlanDocx(from, to, includeDesc).then(function(ok){
+                    if (ok) setTimeout(function(){ alert('План экспортирован: ' + dateFrom + '.docx'); }, 50);
+                }).catch(function(err){
+                    alert('Ошибка генерации: ' + (err && err.message || String(err)));
+                });
+            }
         }
         document.addEventListener('DOMContentLoaded', _planeInitOnce);
         _planeInitOnce();

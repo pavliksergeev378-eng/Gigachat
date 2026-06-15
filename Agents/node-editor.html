@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Node Editor — Визуальный конструктор</title>
+<script src="_shared-guard.js"></script>
+<script src="_config.js"></script>
+<script src="_shared.js"></script>
+<style>
+/* ===== RESET & BASE ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+html{overflow-y:hidden!important}
+
+/* ===== TOOLBAR ===== */
+.toolbar{display:flex;align-items:center;gap:10px;padding:10px 20px;background:#16213e;border-bottom:1px solid #0f3460;flex-shrink:0}
+.toolbar h1{font-size:16px;font-weight:600;color:#e94560;margin-right:auto;display:flex;align-items:center;gap:10px}
+.toolbar h1 small{font-size:11px;font-weight:400;color:#888;opacity:0.7}
+.toolbar .tb-group{display:flex;align-items:center;gap:6px;padding:0 4px}
+.toolbar .tb-sep{width:1px;height:20px;background:#0f3460;margin:0 4px}
+.toolbar button{padding:6px 14px;border:1px solid #0f3460;background:#1a1a40;color:#e0e0e0;border-radius:6px;cursor:pointer;font-size:13px;transition:0.15s;white-space:nowrap}
+.toolbar button:hover{background:#0f3460;border-color:#e94560}
+.toolbar button.active{background:#e94560;border-color:#e94560;color:#fff}
+.toolbar input[type="file"]{display:none}
+.toolbar .node-count{font-size:12px;color:#666;margin-left:8px}
+.toolbar .zoom-display{font-size:12px;color:#888;min-width:40px;text-align:center}
+
+/* ===== MAIN LAYOUT ===== */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* ===== PALETTE ===== */
+.palette{width:220px;min-width:220px;background:#16213e;border-right:1px solid #0f3460;display:flex;flex-direction:column;overflow:hidden}
+.palette-header{padding:12px 14px 8px;font-size:13px;font-weight:600;color:#e94560;border-bottom:1px solid #0f3460;flex-shrink:0}
+.palette-section{padding:6px 14px 2px;font-size:10px;font-weight:600;text-transform:uppercase;color:#555;letter-spacing:1px;background:#131b30}
+.palette-list{flex:1;overflow-y:auto;padding:8px}
+.palette-item{padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:grab;font-size:13px;color:#ccc;background:#1a1a40;border:1px solid transparent;transition:0.15s;user-select:none;display:flex;align-items:center;gap:8px}
+.palette-item:hover{background:#0f3460;border-color:#e94560;color:#fff}
+.palette-item:active{cursor:grabbing}
+.palette-item .badge{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.palette-item .pi-icon{width:16px;height:16px;flex-shrink:0;opacity:0.7}
+.palette-item .pi-label{flex:1}
+.palette-item .pi-type{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:0.5px}
+
+/* ===== CANVAS ===== */
+.canvas-wrap{flex:1;position:relative;overflow:hidden}
+.canvas-viewport{position:absolute;inset:0;overflow:auto}
+.canvas-inner{position:relative;transform-origin:0 0}
+
+/* ===== NODE ===== */
+.node{position:absolute;width:190px;background:#222244;border:2px solid #0f3460;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);cursor:move;user-select:none;z-index:10}
+.node.selected{border-color:#e94560;box-shadow:0 0 0 2px rgba(233,69,96,0.3)}
+.node-header{padding:8px 12px;border-radius:8px 8px 0 0;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;color:#fff}
+.node-header .node-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-header .node-actions{display:flex;gap:4px}
+.node-header .node-actions button{background:none;border:none;color:rgba(255,255,255,0.6);cursor:pointer;font-size:14px;padding:0 4px;line-height:1}
+.node-header .node-actions button:hover{color:#fff}
+.node-body{padding:8px 12px;font-size:11px;color:#aaa;min-height:24px;max-height:60px;overflow:hidden}
+.node-port{padding:3px 10px;font-size:11px;color:#8af;cursor:pointer;display:flex;align-items:center;gap:6px;transition:0.15s}
+.node-port:hover{background:rgba(138,170,255,0.1)}
+.node-port .dot{width:10px;height:10px;border-radius:50%;border:2px solid #8af;background:#1a1a2e;flex-shrink:0;transition:0.15s}
+.node-port .dot.connected{background:#8af}
+.node-port .dot:hover{background:#8af}
+.node-port .dot-output{dot-color:#f8a;border-color:#f8a}
+.node-port .dot-output:hover,.node-port .dot-output.connected{background:#f8a}
+.node-port-label{font-size:10px;opacity:0.7;white-space:nowrap}
+.node-desc{font-size:10px;color:#777;padding:2px 12px 6px;line-height:1.3}
+
+/* Node type header colors */
+.node-type-chat .node-header{background:#0984e3}
+.node-type-rag .node-header{background:#e17055}
+.node-type-math .node-header{background:#00b894}
+.node-type-prompt .node-header{background:#6c5ce7}
+.node-type-plane .node-header{background:#d63031}
+.node-type-ocr .node-header{background:#00cec9}
+.node-type-docloader .node-header{background:#e17055}
+.node-type-textextract .node-header{background:#0984e3}
+.node-type-tablemerge .node-header{background:#00b894}
+.node-type-filemerge .node-header{background:#f39c12}
+.node-type-orgappeal .node-header{background:#d63031}
+.node-type-compliance .node-header{background:#27ae60}
+.node-type-ocrtable .node-header{background:#00cec9}
+.node-type-router .node-header{background:#fdcb6e;color:#1a1a2e}
+
+/* ===== SVG CONNECTIONS ===== */
+.connections-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5}
+.connections-layer svg{width:100%;height:100%}
+.connections-layer .connection{stroke:#8af;stroke-width:2;fill:none;cursor:pointer;pointer-events:stroke}
+.connections-layer .connection:hover{stroke:#e94560;stroke-width:3}
+.connections-layer .connection.highlighted{stroke:#f8a;stroke-width:3}
+.connections-layer .temp-line{stroke:#e94560;stroke-width:2;stroke-dasharray:6,3;fill:none;pointer-events:none}
+
+/* ===== CONFIG PANEL ===== */
+.config-overlay{position:fixed;top:0;right:-460px;width:440px;height:100%;background:#16213e;border-left:1px solid #0f3460;z-index:1000;transition:right 0.25s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,0.5)}
+.config-overlay.open{right:0}
+.config-overlay .config-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #0f3460;flex-shrink:0}
+.config-overlay .config-header h2{font-size:15px;font-weight:600;color:#e94560}
+.config-overlay .config-header button{background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:4px}
+.config-overlay .config-header button:hover{color:#fff}
+.config-overlay .config-body{flex:1;overflow-y:auto;padding:18px}
+.config-overlay .config-body label{display:block;font-size:11px;color:#888;margin-bottom:4px;margin-top:12px}
+.config-overlay .config-body label:first-child{margin-top:0}
+.config-overlay .config-body input,.config-overlay .config-body textarea,.config-overlay .config-body select{width:100%;padding:8px 10px;background:#1a1a40;border:1px solid #0f3460;border-radius:6px;color:#e0e0e0;font-size:13px;font-family:inherit;outline:none;transition:0.15s}
+.config-overlay .config-body input:focus,.config-overlay .config-body textarea:focus,.config-overlay .config-body select:focus{border-color:#e94560}
+.config-overlay .config-body textarea{min-height:80px;resize:vertical}
+.config-overlay .config-footer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid #0f3460;flex-shrink:0}
+.config-overlay .config-footer button{flex:1;padding:8px 14px;border:1px solid #0f3460;background:#1a1a40;color:#e0e0e0;border-radius:6px;cursor:pointer;font-size:13px}
+.config-overlay .config-footer button.primary{background:#e94560;border-color:#e94560;color:#fff}
+.config-overlay .config-footer button.primary:hover{background:#d63851}
+.config-overlay .config-footer button:hover{background:#0f3460}
+
+/* ===== CONTEXT MENU ===== */
+.context-menu{position:fixed;background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:4px;min-width:160px;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none}
+.context-menu button{display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;color:#ccc;font-size:13px;cursor:pointer;border-radius:4px}
+.context-menu button:hover{background:#0f3460;color:#fff}
+.context-menu button.danger{color:#e94560}
+.context-menu button.danger:hover{background:rgba(233,69,96,0.15)}
+
+/* ===== TOAST ===== */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:9999}
+.toast{padding:10px 18px;border-radius:8px;font-size:13px;margin-top:8px;animation:toastIn 0.25s}
+.toast.info{background:#0984e3;color:#fff}
+.toast.success{background:#00b894;color:#fff}
+.toast.error{background:#e94560;color:#fff}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== SCROLLBAR ===== */
+.palette-list::-webkit-scrollbar,.config-overlay .config-body::-webkit-scrollbar{width:4px}
+.palette-list::-webkit-scrollbar-track,.config-overlay .config-body::-webkit-scrollbar-track{background:transparent}
+.palette-list::-webkit-scrollbar-thumb,.config-overlay .config-body::-webkit-scrollbar-thumb{background:#0f3460;border-radius:2px}
+.canvas-viewport::-webkit-scrollbar{width:8px;height:8px}
+.canvas-viewport::-webkit-scrollbar-track{background:transparent}
+.canvas-viewport::-webkit-scrollbar-thumb{background:#0f3460;border-radius:4px}
+
+/* ===== CANVAS DOTS ===== */
+.canvas-inner{background-image:radial-gradient(circle,#2a2a4e 1px,transparent 1px);background-size:24px 24px}
+
+/* ===== OPEN NODE BTN ===== */
+.open-node-btn{margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 10px;border:1px solid #0f3460;background:#1a1a40;color:#8af;border-radius:4px;cursor:pointer;transition:0.15s;text-decoration:none}
+.open-node-btn:hover{background:#0f3460;border-color:#8af;color:#fff}
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <h1>⚡ Node Editor <small>Конструктор агентов</small></h1>
+  <div class="tb-group">
+    <button id="btnSave" title="Сохранить схему (Ctrl+S)">💾 Save</button>
+    <button id="btnLoad" title="Загрузить схему">📂 Load</button>
+    <input type="file" id="fileInput" accept=".json">
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnExport" title="Экспорт в n8n JSON">🚀 Export n8n</button>
+    <button id="btnClear" title="Очистить холст">🗑 Clear</button>
+    <button id="btnAutoLayout" title="Авторасположение">🔀 Auto Layout</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnZoomIn" title="Приблизить (Ctrl+=)">➕</button>
+    <span class="zoom-display" id="zoomDisplay">100%</span>
+    <button id="btnZoomOut" title="Отдалить (Ctrl+-)">➖</button>
+    <button id="btnZoomReset" title="Сбросить масштаб (Ctrl+0)">⟲ 1:1</button>
+  </div>
+  <span class="node-count" id="nodeCount">0 нод</span>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- PALETTE -->
+  <div class="palette">
+    <div class="palette-header">🧩 Палитра</div>
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+
+  <!-- CANVAS -->
+  <div class="canvas-wrap" id="canvasWrap">
+    <div class="canvas-viewport" id="canvasViewport">
+      <div class="canvas-inner" id="canvasInner">
+        <svg class="connections-layer" id="connectionsLayer"><defs/><g id="connectionGroup"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- DRAG GHOST -->
+  <div id="dragGhost" style="display:none;position:fixed;pointer-events:none;z-index:9999;padding:8px 14px;background:#16213e;border:1px solid #e94560;border-radius:6px;color:#e94560;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.4)">+</div>
+</div>
+
+<!-- CONFIG OVERLAY -->
+<div class="config-overlay" id="configOverlay">
+  <div class="config-header">
+    <h2 id="configTitle">⚙️ Настройки ноды</h2>
+    <button id="configClose" title="Закрыть (Esc)">✕</button>
+  </div>
+  <div class="config-body" id="configBody">
+    <label>Название</label>
+    <input id="cfgName" placeholder="Название ноды">
+    <label>Тип</label>
+    <input id="cfgType" disabled placeholder="—">
+    <label>Описание</label>
+    <input id="cfgDesc" placeholder="Описание (необязательно)">
+    <label>Тег / метка</label>
+    <input id="cfgTag" placeholder="например: main, test, docs">
+    <label>Параметры (JSON)</label>
+    <textarea id="cfgParams" placeholder='{"model":"GigaChat-Pro","temperature":0.7}'></textarea>
+    <label>Действия</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+      <a class="open-node-btn" id="cfgOpenAgent" target="_blank" style="display:none">🔗 Открыть агента</a>
+    </div>
+  </div>
+  <div class="config-footer">
+    <button id="cfgDelete" style="background:transparent;color:#e94560;border-color:rgba(233,69,96,0.3)">Удалить</button>
+    <button id="cfgCancel">Отмена</button>
+    <button class="primary" id="cfgSave">Сохранить</button>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="context-menu" id="contextMenu">
+  <button data-action="config">⚙️ Настроить</button>
+  <button data-action="duplicate">📋 Дублировать</button>
+  <button data-action="open">🔗 Открыть агента</button>
+  <hr style="border:none;border-top:1px solid #0f3460;margin:4px 0">
+  <button data-action="delete" class="danger">🗑 Удалить</button>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // AUTH — интегрируемся с платформой
+  // ============================================================
+  GigaChat.auth.requireAuth({
+    onOk: function(username) {
+      initEditor();
+    }
+  });
+
+  // ============================================================
+  // AGENT TYPES — полный справочник для текущей платформы
+  // ============================================================
+  var AGENT_TYPES = [
+    // === АГЕНТЫ ===
+    { id:'chat',       label:'GigaChat Talk',    section:'agent', color:'#0984e3', icon:'💬', tag:'Диалог',
+      desc:'Свободный диалог с GigaChat', agentFile:'chat-agent.html',
+      ports:{in:['input','context'],out:['response']} },
+    { id:'rag',        label:'GigaChat Docs',    section:'agent', color:'#e17055', icon:'📄', tag:'Документы',
+      desc:'Поиск по документам, ответы на вопросы', agentFile:'rag-agent.html',
+      ports:{in:['query','docs'],out:['answer','sources']} },
+    { id:'math',       label:'GigaChat Math',    section:'agent', color:'#00b894', icon:'📐', tag:'Вычисления',
+      desc:'Решение задач, вычисления через Pyodide', agentFile:'math-agent.html',
+      ports:{in:['expression'],out:['result']} },
+    { id:'prompt',     label:'GigaChat Prompt',  section:'agent', color:'#6c5ce7', icon:'✏️', tag:'Промпты',
+      desc:'Создание, улучшение и оценка промптов', agentFile:'prompt-engineer.html',
+      ports:{in:['input','template'],out:['output']} },
+    { id:'plane',      label:'GigaChat Plane',   section:'agent', color:'#d63031', icon:'✈️', tag:'Проекты',
+      desc:'Управление проектами и задачами в Plane', agentFile:'plane-agent.html',
+      ports:{in:['request'],out:['result','error']} },
+    // === ИНСТРУМЕНТЫ ===
+    { id:'ocr',        label:'Поиск ФИО',        section:'tool', color:'#00cec9', icon:'🔍', tag:'Поиск',
+      desc:'Распознавание документов и поиск ФИО', agentFile:'OCR-search-FIO.html',
+      ports:{in:['image'],out:['text','fio']} },
+    { id:'ocrtable',   label:'OCR+Таблицы',      section:'tool', color:'#00cec9', icon:'📊', tag:'Таблицы',
+      desc:'Извлечение таблиц из изображений и PDF (post /extract-table)', agentFile:null,
+      ports:{in:['image'],out:['markdown','text']} },
+    { id:'docloader',  label:'Document Loader',  section:'tool', color:'#e17055', icon:'📁', tag:'Загрузка',
+      desc:'Загрузка файлов в базу данных', agentFile:'document-loader.html',
+      ports:{in:['file'],out:['content','meta']} },
+    { id:'textextract',label:'Text Extractor',   section:'tool', color:'#0984e3', icon:'📝', tag:'Извлечение',
+      desc:'PDF, Word, Excel, CSV — в чистый текст', agentFile:'text-extractor.html',
+      ports:{in:['document'],out:['text']} },
+    { id:'tablemerge', label:'Table Merger',     section:'tool', color:'#00b894', icon:'🔗', tag:'Таблицы',
+      desc:'Объединение таблиц из Word, Excel, CSV', agentFile:'table-merger.html',
+      ports:{in:['files'],out:['merged']} },
+    { id:'filemerge',  label:'File Merger',      section:'tool', color:'#f39c12', icon:'🗂️', tag:'Файлы',
+      desc:'Word, Excel, PDF, CSV и фото в один документ', agentFile:'file-merger.html',
+      ports:{in:['files'],out:['merged']} },
+    { id:'orgappeal',  label:'Организация обращения', section:'tool', color:'#d63031', icon:'📋', tag:'Обращения',
+      desc:'Извлечение ФИО, СНИЛС и 4-ступенчатая идентификация', agentFile:'organization-appeal.html',
+      ports:{in:['appeal'],out:['decision','status']} },
+    { id:'compliance', label:'Compliance Check',  section:'tool', color:'#27ae60', icon:'🛡️', tag:'Безопасность',
+      desc:'Анализ нарушений ИБ и подбор компенсирующих мер', agentFile:'compliance-agent.html',
+      ports:{in:['report'],out:['decision','measures']} },
+    // === СЛУЖЕБНЫЕ ===
+    { id:'router',     label:'Router',           section:'system',color:'#fdcb6e', icon:'🔀', tag:'Маршрутизация',
+      desc:'Условная маршрутизация между нодами', agentFile:null,
+      ports:{in:['input'],out:['route_a','route_b','route_c']} },
+  ];
+
+  var SECTIONS = [
+    { key:'agent',  label:'🤖 Агенты' },
+    { key:'tool',   label:'🛠 Инструменты' },
+    { key:'system', label:'⚙️ Служебные' },
+  ];
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  var nodes = {};          // id -> node object
+  var connections = [];    // [{fromId,fromPort,toId,toPort}]
+  var nextNodeId = 1;
+  var selectedNodeId = null;
+  var configNodeId = null;
+  var zoomLevel = 1;
+  var isDraggingFromPort = null; // {nodeId, portName, type:'in'|'out', dotEl}
+  var dragState = null;    // {nodeId, startX, startY, mouseStartX, mouseStartY}
+
+  var canvasInner = document.getElementById('canvasInner');
+  var canvasViewport = document.getElementById('canvasViewport');
+  var canvasWrap = document.getElementById('canvasWrap');
+  var connectionsLayer = document.getElementById('connectionsLayer');
+  var connectionGroup = document.getElementById('connectionGroup');
+
+  // Auto-set canvas size
+  var CANVAS_W = 5000, CANVAS_H = 5000;
+  canvasInner.style.width = CANVAS_W + 'px';
+  canvasInner.style.height = CANVAS_H + 'px';
+
+  // ============================================================
+  // BUILD PALETTE
+  // ============================================================
+  function buildPalette() {
+    var list = document.getElementById('paletteList');
+    list.innerHTML = '';
+    SECTIONS.forEach(function(sec) {
+      var types = AGENT_TYPES.filter(function(t){ return t.section === sec.key; });
+      if (!types.length) return;
+      var hdr = document.createElement('div');
+      hdr.className = 'palette-section';
+      hdr.textContent = sec.label;
+      list.appendChild(hdr);
+      types.forEach(function(t){
+        var el = document.createElement('div');
+        el.className = 'palette-item';
+        el.draggable = true;
+        el.dataset.typeId = t.id;
+        el.innerHTML = '<span class="badge" style="background:'+t.color+'"></span>'+
+          '<span class="pi-label">'+t.label+'</span>'+
+          '<span class="pi-type">'+t.tag+'</span>';
+        el.addEventListener('dragstart', function(e) {
+          e.dataTransfer.setData('text/plain', t.id);
+          e.dataTransfer.effectAllowed = 'copy';
+          var ghost = document.getElementById('dragGhost');
+          ghost.textContent = '+ ' + t.label;
+          ghost.style.display = 'block';
+          e.dataTransfer.setDragImage(ghost, 10, 10);
+          setTimeout(function(){ ghost.style.display = 'none'; }, 0);
+        });
+        list.appendChild(el);
+      });
+    });
+  }
+  buildPalette();
+
+  // ============================================================
+  // CANVAS DRAG & DROP
+  // ============================================================
+  canvasWrap.addEventListener('dragover', function(e) { e.preventDefault(); });
+  canvasWrap.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var typeId = e.dataTransfer.getData('text/plain');
+    if (!typeId) return;
+    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
+    if (!type) return;
+    var rect = canvasWrap.getBoundingClientRect();
+    var x = (e.clientX - rect.left + canvasViewport.scrollLeft) / zoomLevel - 95;
+    var y = (e.clientY - rect.top + canvasViewport.scrollTop) / zoomLevel - 20;
+    x = Math.max(0, x); y = Math.max(0, y);
+    createNode(typeId, x, y);
+  });
+
+  // Prevent accidental drag on other elements
+  document.addEventListener('dragover', function(e){ e.preventDefault(); });
+  document.addEventListener('drop', function(e){ e.preventDefault(); });
+
+  // ============================================================
+  // CREATE / DELETE / DUPLICATE NODES
+  // ============================================================
+  function createNode(typeId, x, y, overrides) {
+    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
+    if (!type) return null;
+    var id = 'n' + (nextNodeId++);
+    var node = {
+      id: id,
+      typeId: typeId,
+      label: type.label,
+      desc: type.desc,
+      tag: type.tag || '',
+      color: type.color,
+      agentFile: type.agentFile,
+      ports: JSON.parse(JSON.stringify(type.ports)),
+      params: '{}',
+      x: x || 100,
+      y: y || 100,
+    };
+    if (overrides) {
+      if (overrides.label) node.label = overrides.label;
+      if (overrides.desc) node.desc = overrides.desc;
+      if (overrides.tag) node.tag = overrides.tag;
+      if (overrides.params) node.params = overrides.params;
+      if (overrides.x != null) node.x = overrides.x;
+      if (overrides.y != null) node.y = overrides.y;
+    }
+    nodes[id] = node;
+    renderNode(id);
+    updateNodeCount();
+    updateConnections();
+    return id;
+  }
+
+  function deleteNode(id) {
+    if (!nodes[id]) return;
+    // Remove connections involving this node
+    connections = connections.filter(function(c){
+      return c.fromId !== id && c.toId !== id;
+    });
+    // Remove DOM
+    var el = document.getElementById('node-' + id);
+    if (el) el.remove();
+    delete nodes[id];
+    if (selectedNodeId === id) selectedNodeId = null;
+    if (configNodeId === id) closeConfig();
+    updateNodeCount();
+    updateConnections();
+  }
+
+  function duplicateNode(id) {
+    var src = nodes[id];
+    if (!src) return;
+    var newId = createNode(src.typeId, src.x + 30, src.y + 30, {
+      label: src.label + ' (copy)',
+      desc: src.desc,
+      tag: src.tag,
+      params: src.params,
+    });
+    if (newId) showToast('Дублирована нода: ' + src.label, 'info');
+  }
+
+  function clearAll() {
+    if (Object.keys(nodes).length === 0) return;
+    if (!confirm('Очистить весь холст?')) return;
+    Object.keys(nodes).forEach(function(id){ deleteNode(id); });
+    connections = [];
+    updateConnections();
+    selectedNodeId = null;
+    if (configNodeId) { closeConfig(); }
+    showToast('Холст очищен', 'info');
+  }
+
+  // ============================================================
+  // RENDER NODE
+  // ============================================================
+  function renderNode(id) {
+    var node = nodes[id];
+    if (!node) return;
+    var existing = document.getElementById('node-' + id);
+    if (existing) existing.remove();
+
+    var el = document.createElement('div');
+    el.className = 'node node-type-' + node.typeId;
+    el.id = 'node-' + id;
+    el.style.left = node.x + 'px';
+    el.style.top = node.y + 'px';
+    el.dataset.nodeId = id;
+
+    // Header
+    var hdr = document.createElement('div');
+    hdr.className = 'node-header';
+    hdr.innerHTML = '<span class="node-title">'+escapeHtml(node.label)+'</span>'+
+      '<span class="node-actions"><button class="node-config-btn" title="Настроить" data-action="config">⚙️</button></span>';
+    el.appendChild(hdr);
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'node-body';
+    body.textContent = node.desc || node.tag || '';
+    body.title = node.desc || '';
+    el.appendChild(body);
+
+    // Input ports
+    if (node.ports.in && node.ports.in.length) {
+      node.ports.in.forEach(function(pname){
+        var port = document.createElement('div');
+        port.className = 'node-port';
+        port.dataset.portName = pname;
+        port.dataset.portDir = 'in';
+        port.innerHTML = '<span class="dot" data-port="'+pname+'"></span><span class="node-port-label">'+pname+'</span>';
+        port.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+        el.appendChild(port);
+      });
+    }
+
+    // Output ports
+    if (node.ports.out && node.ports.out.length) {
+      node.ports.out.forEach(function(pname){
+        var port = document.createElement('div');
+        port.className = 'node-port output';
+        port.dataset.portName = pname;
+        port.dataset.portDir = 'out';
+        port.style.justifyContent = 'flex-end';
+        port.innerHTML = '<span class="node-port-label">'+pname+'</span><span class="dot" data-port="'+pname+'" style="border-color:#f8a"></span>';
+        port.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+        el.appendChild(port);
+      });
+    }
+
+    // Events
+    el.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      // Ignore if target is a button or dot
+      var t = e.target;
+      if (t.tagName === 'BUTTON' || t.classList.contains('dot') || t.closest('.node-actions')) return;
+      selectNode(id);
+      startDrag(e, id);
+    });
+
+    el.addEventListener('dblclick', function(e) {
+      openConfig(id);
+    });
+
+    // Config button
+    el.querySelector('.node-config-btn').addEventListener('click', function(e) {
+      e.stopPropagation();
+      openConfig(id);
+    });
+
+    canvasInner.appendChild(el);
+  }
+
+  // ============================================================
+  // NODE DRAG
+  // ============================================================
+  function startDrag(e, nodeId) {
+    var node = nodes[nodeId];
+    if (!node) return;
+    dragState = {
+      nodeId: nodeId,
+      startX: node.x,
+      startY: node.y,
+      mouseStartX: e.clientX,
+      mouseStartY: e.clientY,
+    };
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragState) return;
+    var dx = (e.clientX - dragState.mouseStartX) / zoomLevel;
+    var dy = (e.clientY - dragState.mouseStartY) / zoomLevel;
+    var node = nodes[dragState.nodeId];
+    if (!node) { dragState = null; return; }
+    node.x = Math.max(0, dragState.startX + dx);
+    node.y = Math.max(0, dragState.startY + dy);
+    var el = document.getElementById('node-' + dragState.nodeId);
+    if (el) {
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+    }
+    updateConnections();
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (dragState) {
+      // Only clear — no "end drag" logic needed
+      dragState = null;
+    }
+    if (isDraggingFromPort) {
+      // Try to connect to a port under cursor
+      finishPortDrag(e);
+    }
+  });
+
+  // ============================================================
+  // PORT DRAG CONNECTIONS
+  // ============================================================
+  document.addEventListener('mousedown', function(e) {
+    var dot = e.target.closest('.dot');
+    if (!dot || !dot.closest('.node-port')) return;
+    var portEl = dot.closest('.node-port');
+    var nodeEl = portEl.closest('.node');
+    if (!nodeEl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var nodeId = nodeEl.dataset.nodeId;
+    var portName = portEl.dataset.portName;
+    var dir = portEl.dataset.portDir;
+    if (dir === 'in') return; // только из output в input
+    isDraggingFromPort = {
+      nodeId: nodeId,
+      portName: portName,
+      type: dir,
+      dotEl: dot,
+      mouseStartX: e.clientX,
+      mouseStartY: e.clientY,
+    };
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDraggingFromPort) return;
+    // Draw temp line
+    var tempLine = connectionsLayer.querySelector('.temp-line');
+    if (!tempLine) {
+      tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      tempLine.classList.add('temp-line');
+      connectionsLayer.appendChild(tempLine);
+    }
+    var wrapRect = canvasWrap.getBoundingClientRect();
+    var x1 = isDraggingFromPort.mouseStartX;
+    var y1 = isDraggingFromPort.mouseStartY;
+    var x2 = e.clientX;
+    var y2 = e.clientY;
+    var path = bezierPath(x1 - wrapRect.left, y1 - wrapRect.top, x2 - wrapRect.left, y2 - wrapRect.top, true);
+    tempLine.setAttribute('d', path);
+  });
+
+  function finishPortDrag(e) {
+    var tempLine = connectionsLayer.querySelector('.temp-line');
+    if (tempLine) tempLine.remove();
+
+    var target = document.elementFromPoint(e.clientX, e.clientY);
+    if (target) {
+      var dot = target.closest('.dot');
+      var portEl = dot ? dot.closest('.node-port') : null;
+      if (portEl) {
+        var targetDir = portEl.dataset.portDir;
+        var targetNodeId = portEl.closest('.node').dataset.nodeId;
+        var targetPort = portEl.dataset.portName;
+        // Validate: target must be an input port, different node
+        if (targetDir === 'in' && targetNodeId !== isDraggingFromPort.nodeId) {
+          addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
+        } else if (targetDir === 'out') {
+          showToast('Соединять можно только выход → вход', 'error');
+        }
+      }
+    }
+    isDraggingFromPort = null;
+  }
+
+  function addConnection(fromId, fromPort, toId, toPort) {
+    // Prevent duplicate
+    var dup = connections.some(function(c){
+      return c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort;
+    });
+    if (dup) { showToast('Соединение уже существует', 'error'); return; }
+    connections.push({ fromId: fromId, fromPort: fromPort, toId: toId, toPort: toPort });
+    updateConnections();
+    showToast('Соединение создано', 'success');
+  }
+
+  function removeConnection(fromId, fromPort, toId, toPort) {
+    connections = connections.filter(function(c){
+      return !(c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort);
+    });
+    updateConnections();
+  }
+
+  // ============================================================
+  // DRAW SVG CONNECTIONS
+  // ============================================================
+  function updateConnections() {
+    // Clear
+    connectionGroup.innerHTML = '';
+
+    connections.forEach(function(c){
+      var fromPort = getPortEl(c.fromId, c.fromPort, 'out');
+      var toPort = getPortEl(c.toId, c.toPort, 'in');
+      if (!fromPort || !toPort) return;
+
+      var fromRect = fromPort.getBoundingClientRect();
+      var toRect = toPort.getBoundingClientRect();
+      var wrapRect = canvasWrap.getBoundingClientRect();
+
+      var x1 = fromRect.left + fromRect.width/2 - wrapRect.left + canvasViewport.scrollLeft;
+      var y1 = fromRect.top + fromRect.height/2 - wrapRect.top + canvasViewport.scrollTop;
+      var x2 = toRect.left + toRect.width/2 - wrapRect.left + canvasViewport.scrollTop;
+      var y2 = toRect.top + toRect.height/2 - wrapRect.top + canvasViewport.scrollTop;
+
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.classList.add('connection');
+      path.setAttribute('d', bezierPath(x1, y1, x2, y2));
+      path.dataset.fromId = c.fromId;
+      path.dataset.fromPort = c.fromPort;
+      path.dataset.toId = c.toId;
+      path.dataset.toPort = c.toPort;
+
+      // Click to delete
+      path.addEventListener('click', function(e) {
+        e.stopPropagation();
+        removeConnection(c.fromId, c.fromPort, c.toId, c.toPort);
+      });
+
+      connectionGroup.appendChild(path);
+    });
+  }
+
+  function getPortEl(nodeId, portName, dir) {
+    var nodeEl = document.getElementById('node-' + nodeId);
+    if (!nodeEl) return null;
+    var portEl = nodeEl.querySelector('.node-port[data-port-name="'+portName+'"][data-port-dir="'+dir+'"]');
+    if (!portEl) return null;
+    return portEl.querySelector('.dot');
+  }
+
+  function bezierPath(x1, y1, x2, y2, absolute) {
+    var dx = Math.abs(x2 - x1) * 0.5;
+    if (dx < 40) dx = 40;
+    if (absolute) {
+      // Convert viewport-relative coordinates
+      var s = canvasViewport.scrollLeft;
+      var t = canvasViewport.scrollTop;
+      return 'M'+(x1)+','+(y1)+' C'+(x1+dx)+','+(y1)+' '+(x2-dx)+','+(y2)+' '+(x2)+','+(y2);
+    }
+    return 'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2;
+  }
+
+  // ============================================================
+  // SELECT / DESELECT
+  // ============================================================
+  function selectNode(id) {
+    // Deselect all
+    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+    selectedNodeId = id;
+    var el = document.getElementById('node-' + id);
+    if (el) el.classList.add('selected');
+  }
+
+  document.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.node') || e.target.closest('.config-overlay') || e.target.closest('.context-menu')) return;
+    if (e.target.closest('.dot') && isDraggingFromPort) return;
+    hideContextMenu();
+    // Deselect
+    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+    selectedNodeId = null;
+  });
+
+  // ============================================================
+  // CONFIG PANEL
+  // ============================================================
+  function openConfig(id) {
+    var node = nodes[id];
+    if (!node) return;
+    configNodeId = id;
+    var overlay = document.getElementById('configOverlay');
+    document.getElementById('configTitle').textContent = '⚙️ ' + node.label;
+    document.getElementById('cfgName').value = node.label;
+    document.getElementById('cfgType').value = AGENT_TYPES.find(function(t){ return t.id === node.typeId; })?.label || node.typeId;
+    document.getElementById('cfgDesc').value = node.desc || '';
+    document.getElementById('cfgTag').value = node.tag || '';
+    document.getElementById('cfgParams').value = node.params || '{}';
+
+    var openBtn = document.getElementById('cfgOpenAgent');
+    if (node.agentFile) {
+      openBtn.style.display = 'inline-flex';
+      openBtn.href = node.agentFile;
+    } else {
+      openBtn.style.display = 'none';
+    }
+
+    overlay.classList.add('open');
+  }
+
+  function closeConfig() {
+    document.getElementById('configOverlay').classList.remove('open');
+    configNodeId = null;
+  }
+
+  function saveConfig() {
+    var id = configNodeId;
+    if (!id || !nodes[id]) return;
+    var node = nodes[id];
+    node.label = document.getElementById('cfgName').value.trim() || node.label;
+    node.desc = document.getElementById('cfgDesc').value.trim();
+    node.tag = document.getElementById('cfgTag').value.trim();
+    var paramsRaw = document.getElementById('cfgParams').value.trim();
+    if (paramsRaw) {
+      try { JSON.parse(paramsRaw); node.params = paramsRaw; }
+      catch(e) { showToast('Ошибка: параметры не являются валидным JSON', 'error'); return; }
+    } else {
+      node.params = '{}';
+    }
+    // Re-render
+    renderNode(id);
+    updateConnections();
+    closeConfig();
+    showToast('Нода обновлена: ' + node.label, 'success');
+  }
+
+  // Config panel buttons
+  document.getElementById('configClose').addEventListener('click', closeConfig);
+  document.getElementById('cfgCancel').addEventListener('click', closeConfig);
+  document.getElementById('cfgSave').addEventListener('click', saveConfig);
+  document.getElementById('cfgDelete').addEventListener('click', function() {
+    if (configNodeId && confirm('Удалить ноду ' + nodes[configNodeId]?.label + '?')) {
+      deleteNode(configNodeId);
+      closeConfig();
+    }
+  });
+
+  // ============================================================
+  // CONTEXT MENU
+  // ============================================================
+  var contextTargetId = null;
+
+  document.addEventListener('contextmenu', function(e) {
+    var nodeEl = e.target.closest('.node');
+    if (!nodeEl) { hideContextMenu(); return; }
+    e.preventDefault();
+    contextTargetId = nodeEl.dataset.nodeId;
+    selectNode(contextTargetId);
+    var menu = document.getElementById('contextMenu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+  });
+
+  document.getElementById('contextMenu').addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var action = btn.dataset.action;
+    var id = contextTargetId;
+    hideContextMenu();
+    if (!id || !nodes[id]) return;
+    switch (action) {
+      case 'config': openConfig(id); break;
+      case 'duplicate': duplicateNode(id); break;
+      case 'delete': deleteNode(id); break;
+      case 'open':
+        var n = nodes[id];
+        if (n.agentFile) window.open(n.agentFile, '_blank');
+        else showToast('Для этой ноды нет отдельной страницы', 'info');
+        break;
+    }
+  });
+
+  function hideContextMenu() {
+    document.getElementById('contextMenu').style.display = 'none';
+    contextTargetId = null;
+  }
+
+  // ============================================================
+  // ZOOM
+  // ============================================================
+  function setZoom(level) {
+    zoomLevel = Math.max(0.2, Math.min(3, level));
+    canvasInner.style.transform = 'scale(' + zoomLevel + ')';
+    document.getElementById('zoomDisplay').textContent = Math.round(zoomLevel * 100) + '%';
+  }
+
+  document.getElementById('btnZoomIn').addEventListener('click', function(){ setZoom(zoomLevel + 0.2); });
+  document.getElementById('btnZoomOut').addEventListener('click', function(){ setZoom(zoomLevel - 0.2); });
+  document.getElementById('btnZoomReset').addEventListener('click', function(){ setZoom(1); });
+
+  canvasWrap.addEventListener('wheel', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(zoomLevel + delta);
+    }
+  }, { passive: false });
+
+  // ============================================================
+  // AUTO LAYOUT (simple grid)
+  // ============================================================
+  function autoLayout() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) return;
+    var cols = Math.ceil(Math.sqrt(ids.length));
+    var spacingX = 220;
+    var spacingY = 180;
+    var startX = 50;
+    var startY = 50;
+    ids.forEach(function(id, i){
+      var node = nodes[id];
+      if (!node) return;
+      node.x = startX + (i % cols) * spacingX;
+      node.y = startY + Math.floor(i / cols) * spacingY;
+      var el = document.getElementById('node-' + id);
+      if (el) {
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+      }
+    });
+    updateConnections();
+    showToast('Авторасположение выполнено', 'info');
+  }
+
+  document.getElementById('btnAutoLayout').addEventListener('click', autoLayout);
+
+  // ============================================================
+  // SAVE / LOAD JSON
+  // ============================================================
+  function saveJSON() {
+    var data = {
+      version: 2,
+      timestamp: new Date().toISOString(),
+      nodes: {},
+      connections: connections,
+      nextNodeId: nextNodeId,
+    };
+    Object.keys(nodes).forEach(function(id){
+      var n = nodes[id];
+      data.nodes[id] = {
+        typeId: n.typeId,
+        label: n.label,
+        desc: n.desc,
+        tag: n.tag,
+        params: n.params,
+        x: n.x,
+        y: n.y,
+      };
+    });
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'node-editor-schema.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Схема сохранена', 'success');
+  }
+
+  function loadJSON(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = JSON.parse(e.target.result);
+        if (!data.nodes) { showToast('Ошибка: неверный формат файла', 'error'); return; }
+
+        // Clear existing
+        Object.keys(nodes).forEach(function(id){ deleteNode(id); });
+        connections = [];
+
+        // Load nodes
+        Object.keys(data.nodes).forEach(function(id){
+          var ndata = data.nodes[id];
+          if (!data.nodes) return;
+          createNode(ndata.typeId, ndata.x, ndata.y, {
+            label: ndata.label,
+            desc: ndata.desc,
+            tag: ndata.tag,
+            params: ndata.params,
+          });
+        });
+
+        // Map old IDs to new IDs — simple sequential IDs
+        // Since we just created them in order, we can map sequentially
+        var oldIds = Object.keys(data.nodes);
+        var newIds = Object.keys(nodes);
+        if (data.connections) {
+          data.connections.forEach(function(c){
+            var ciFrom = oldIds.indexOf(c.fromId);
+            var ciTo = oldIds.indexOf(c.toId);
+            if (ciFrom >= 0 && ciTo >= 0 && newIds[ciFrom] && newIds[ciTo]) {
+              connections.push({
+                fromId: newIds[ciFrom],
+                fromPort: c.fromPort,
+                toId: newIds[ciTo],
+                toPort: c.toPort,
+              });
+            }
+          });
+        }
+
+        if (data.nextNodeId) nextNodeId = data.nextNodeId;
+        updateConnections();
+        updateNodeCount();
+        showToast('Схема загружена (' + Object.keys(nodes).length + ' нод)', 'success');
+      } catch(err) {
+        showToast('Ошибка загрузки: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  document.getElementById('btnSave').addEventListener('click', saveJSON);
+  document.getElementById('btnLoad').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
+  document.getElementById('fileInput').addEventListener('change', loadJSON);
+  document.getElementById('btnClear').addEventListener('click', clearAll);
+
+  // ============================================================
+  // EXPORT TO n8n
+  // ============================================================
+  function exportConfig() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) {
+      showToast('Добавьте хотя бы одну ноду на холст', 'error');
+      return;
+    }
+
+    var data = {
+      version: 2,
+      name: 'GigaChat Workflow — Node Editor',
+      generatedAt: new Date().toISOString(),
+      nodes: {},
+      connections: connections,
+    };
+
+    ids.forEach(function(id){
+      var n = nodes[id];
+      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
+      data.nodes[id] = {
+        type: n.typeId,
+        label: n.label,
+        description: n.desc,
+        tag: n.tag,
+        webhook_url: type && type.agentFile ? GigaChat.webhookUrl(type.id) : null,
+        agent_file: n.agentFile,
+        params: (function(){
+          try { return JSON.parse(n.params || '{}'); } catch(e) { return {}; }
+        })(),
+      };
+    });
+
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'n8n-workflow-config.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Экспорт n8n выполнен', 'success');
+  }
+
+  document.getElementById('btnExport').addEventListener('click', exportConfig);
+
+  // ============================================================
+  // KEYBOARD SHORTCUTS
+  // ============================================================
+  document.addEventListener('keydown', function(e) {
+    // Esc — close config / context menu / deselect
+    if (e.key === 'Escape') {
+      if (document.getElementById('configOverlay').classList.contains('open')) {
+        closeConfig(); return;
+      }
+      hideContextMenu();
+      document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+      selectedNodeId = null;
+      return;
+    }
+
+    // Delete / Backspace — delete selected node
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      deleteNode(selectedNodeId);
+      e.preventDefault();
+      return;
+    }
+
+    // Ctrl+S — save
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      saveJSON();
+      return;
+    }
+
+    // Ctrl+Z — zoom in
+    if ((e.ctrlKey || e.metaKey) && e.key === '=') {
+      e.preventDefault();
+      setZoom(zoomLevel + 0.2);
+      return;
+    }
+    // Ctrl+- — zoom out
+    if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+      e.preventDefault();
+      setZoom(zoomLevel - 0.2);
+      return;
+    }
+    // Ctrl+0 — reset zoom
+    if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      e.preventDefault();
+      setZoom(1);
+      return;
+    }
+  });
+
+  // ============================================================
+  // HELPER FUNCTIONS
+  // ============================================================
+  function escapeHtml(text) {
+    if (text == null) return '';
+    var div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+  }
+
+  function updateNodeCount() {
+    var count = Object.keys(nodes).length;
+    document.getElementById('nodeCount').textContent = count + ' нод' + (count === 1 ? 'а' : (count >= 2 && count <= 4 ? 'ы' : ''));
+  }
+
+  function showToast(msg, type) {
+    type = type || 'info';
+    var container = document.getElementById('toastContainer');
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(function(){ el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2500);
+    setTimeout(function(){ el.remove(); }, 3000);
+  }
+
+  // ============================================================
+  // RECALCULATE CONNECTIONS ON SCROLL / RESIZE
+  // ============================================================
+  function scheduleRedraw() {
+    if (window._redrawPending) return;
+    window._redrawPending = true;
+    requestAnimationFrame(function(){
+      window._redrawPending = false;
+      updateConnections();
+    });
+  }
+
+  canvasViewport.addEventListener('scroll', scheduleRedraw);
+  window.addEventListener('resize', scheduleRedraw);
+
+  // Redraw connections when nodes are dragged (also handled by mousemove)
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  function initEditor() {
+    // Apply platform theme — inject the same CSS styles as other tools
+    GigaChat.injectToolCss();
+    // Start with zoom reset
+    setZoom(1);
+    // Draw updates periodically
+    setInterval(updateConnections, 2000);
+    showToast('Node Editor готов. Перетащите агенты на холст!', 'info');
+  }
+
+  // Expose for debugging
+  window.__nodeEditor = {
+    nodes: nodes,
+    connections: connections,
+    AGENT_TYPES: AGENT_TYPES,
+    createNode: createNode,
+    deleteNode: deleteNode,
+    saveJSON: saveJSON,
+    exportConfig: exportConfig,
+    autoLayout: autoLayout,
+  };
+
+})();
+</script>
+</body>
+</html>

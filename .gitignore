@@ -17,7 +17,6 @@ node_modules/
 
 # Python venv и кэш
 venv/
-.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -46,5 +45,3 @@ ocr-server/_tmp_venv/
 plane/
 !Plane/
 !Plane/**
-
-# Файлы > 50 МБ — через Git LFS (torch, модели easyocr)
