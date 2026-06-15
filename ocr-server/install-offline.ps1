@@ -1,14 +1,16 @@
-﻿# =============================================================================
+# =============================================================================
 # Устанавливает OCR-сервер на офисном ПК БЕЗ ИНТЕРНЕТА из локальных wheel-файлов.
 #
 # КОГДА запускать: на ОФИСНОМ ПК.
 # ЧТО нужно: рядом со скриптом должны лежать:
 #            - requirements.txt
 #            - server.py
-#            - папка wheels/ (с .whl-файлами) или wheels.zip
+#            - папка wheels/ (с .whl-файлами) ИЛИ ../wheels/ (на уровень выше)
+#              ИЛИ ocr-wheels.zip / wheels.zip
 #            - папка easyocr_models/ (модели для EasyOCR ~150 MB)
+#              ИЛИ ocr-easyocr-models.zip / easyocr_models.zip (на уровень выше)
 # ЧТО делает:
-#   1. При необходимости распаковывает wheels.zip.
+#   1. Ищет wheels: сначала ./wheels, потом ../wheels, потом zip-архивы.
 #   2. Создаёт venv, ставит зависимости из ./wheels БЕЗ интернета.
 #   3. Копирует модели EasyOCR в C:\models\easyocr (или OCR_EASYOCR_DIR).
 #
@@ -23,77 +25,125 @@ Write-Host "==> Проверка Python..."
 $pythonVersion = python --version 2>&1
 Write-Host "    $pythonVersion"
 
-# Поддерживаем два имени для wheels — ocr-wheels.zip (с Release) и wheels.zip (локальный)
-# Также принимаем уже распакованную папку wheels/ (если zip-а нет, но папка есть)
-$wheelsZipCandidates = @("ocr-wheels.zip", "wheels.zip")
-$wheelsZip = $wheelsZipCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+# ---- Ищем wheels ----
+# Приоритет: 1) ./wheels  2) ../wheels (корень GigaChat-main)  3) zip-архивы
+$wheelsPath = $null
 
 if (Test-Path "wheels") {
-    Write-Host "    wheels/: уже есть (распакован)"
-} elseif ($wheelsZip) {
-    Write-Host ""
-    Write-Host "==> Найден $wheelsZip — распаковываю в wheels/..."
-    Expand-Archive -Path $wheelsZip -DestinationPath . -Force
+    $wc = (Get-ChildItem "wheels" -Filter "*.whl" -File).Count
+    if ($wc -gt 0) {
+        $wheelsPath = Join-Path $scriptDir "wheels"
+        Write-Host "    wheels/: найден ($wc .whl)"
+    }
+}
 
-    # Если zip содержал .whl в корне (не в подпапке wheels) — собираем их вручную
-    if (-not (Test-Path "wheels")) {
-        $looseWhls = Get-ChildItem -Filter "*.whl" -File
-        if ($looseWhls.Count -gt 0) {
-            New-Item -ItemType Directory -Force -Path "wheels" | Out-Null
-            foreach ($f in $looseWhls) {
-                Move-Item -Path $f.FullName -Destination "wheels\" -Force
+if (-not $wheelsPath) {
+    $parentWheels = Join-Path $scriptDir "..\wheels"
+    if (Test-Path $parentWheels) {
+        $wc = (Get-ChildItem $parentWheels -Filter "*.whl" -File).Count
+        if ($wc -gt 0) {
+            $wheelsPath = $parentWheels
+            Write-Host "    ../wheels/: найден ($wc .whl, в корне проекта)"
+        }
+    }
+}
+
+if (-not $wheelsPath) {
+    # Пробуем zip-архивы
+    $wheelsZipCandidates = @("ocr-wheels.zip", "wheels.zip",
+                             "..\ocr-wheels.zip", "..\wheels.zip")
+    foreach ($zip in $wheelsZipCandidates) {
+        $zipPath = Join-Path $scriptDir $zip
+        if (Test-Path $zipPath) {
+            Write-Host ""
+            Write-Host "==> Найден $zip — распаковываю в wheels/..."
+            Expand-Archive -Path $zipPath -DestinationPath $scriptDir -Force
+            if (Test-Path "wheels") {
+                $wheelsPath = Join-Path $scriptDir "wheels"
+                break
+            }
+            # Если zip содержал .whl в корне — собираем их вручную
+            $looseWhls = Get-ChildItem -Path $scriptDir -Filter "*.whl" -File
+            if ($looseWhls.Count -gt 0) {
+                New-Item -ItemType Directory -Force -Path "wheels" | Out-Null
+                foreach ($f in $looseWhls) {
+                    Move-Item -Path $f.FullName -Destination "wheels\" -Force
+                }
+                $wheelsPath = Join-Path $scriptDir "wheels"
+                break
             }
         }
     }
 }
 
-# Аналогично для моделей EasyOCR
-$modelsZipCandidates = @("ocr-easyocr-models.zip", "easyocr_models.zip")
-$modelsZip = $modelsZipCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+# ---- Ищем модели EasyOCR ----
+$modelsPath = $null
 
 if (Test-Path "easyocr_models") {
-    Write-Host "    easyocr_models/: уже есть (распакована)"
-} elseif ($modelsZip) {
-    Write-Host ""
-    Write-Host "==> Найден $modelsZip — распаковываю в easyocr_models/..."
-    Expand-Archive -Path $modelsZip -DestinationPath . -Force
+    $modelsPath = Join-Path $scriptDir "easyocr_models"
+    Write-Host "    easyocr_models/: уже есть"
+}
 
-    # Если zip содержал .pth в корне (не в подпапке) — собираем их
-    if (-not (Test-Path "easyocr_models")) {
-        $loosePths = Get-ChildItem -Filter "*.pth" -File
-        if ($loosePths.Count -gt 0) {
-            New-Item -ItemType Directory -Force -Path "easyocr_models" | Out-Null
-            foreach ($f in $loosePths) {
-                Move-Item -Path $f.FullName -Destination "easyocr_models\" -Force
+if (-not $modelsPath) {
+    $parentModels = Join-Path $scriptDir "..\easyocr_models"
+    if (Test-Path $parentModels) {
+        $modelsPath = $parentModels
+        Write-Host "    ../easyocr_models/: найден (в корне проекта)"
+    }
+}
+
+if (-not $modelsPath) {
+    $modelsZipCandidates = @("ocr-easyocr-models.zip", "easyocr_models.zip",
+                             "..\ocr-easyocr-models.zip", "..\easyocr_models.zip")
+    foreach ($zip in $modelsZipCandidates) {
+        $zipPath = Join-Path $scriptDir $zip
+        if (Test-Path $zipPath) {
+            Write-Host ""
+            Write-Host "==> Найден $zip — распаковываю в easyocr_models/..."
+            Expand-Archive -Path $zipPath -DestinationPath $scriptDir -Force
+            if (Test-Path "easyocr_models") {
+                $modelsPath = Join-Path $scriptDir "easyocr_models"
+                break
+            }
+            $loosePths = Get-ChildItem -Path $scriptDir -Filter "*.pth" -File
+            if ($loosePths.Count -gt 0) {
+                New-Item -ItemType Directory -Force -Path "easyocr_models" | Out-Null
+                foreach ($f in $loosePths) {
+                    Move-Item -Path $f.FullName -Destination "easyocr_models\" -Force
+                }
+                $modelsPath = Join-Path $scriptDir "easyocr_models"
+                break
             }
         }
     }
 }
 
+# ---- Проверка ----
 Write-Host ""
 Write-Host "==> Проверка файлов бандла..."
 $missing = @()
 if (-not (Test-Path "requirements.txt"))   { $missing += "requirements.txt" }
 if (-not (Test-Path "server.py"))           { $missing += "server.py" }
-if (-not (Test-Path "wheels"))              { $missing += "wheels/ (или ocr-wheels.zip из GitHub Releases)" }
-if (-not (Test-Path "easyocr_models"))      { $missing += "easyocr_models/ (или ocr-easyocr-models.zip из GitHub Releases)" }
+if (-not $wheelsPath)                       { $missing += "wheels/ (ни внутри ocr-server, ни в корне проекта)" }
+if (-not $modelsPath)                       { $missing += "easyocr_models/ (ни внутри, ни в корне проекта)" }
 
 if ($missing.Count -gt 0) {
     Write-Host ""
     Write-Host "ОШИБКА: в текущей папке не хватает файлов:" -ForegroundColor Red
     foreach ($m in $missing) { Write-Host "  - $m" -ForegroundColor Red }
     Write-Host ""
-    Write-Host "Скачай ocr-wheels.zip и ocr-easyocr-models.zip из GitHub Releases:" -ForegroundColor Yellow
+    Write-Host "Скачай wheels и модели из GitHub Releases:" -ForegroundColor Yellow
     Write-Host "  https://github.com/Jorden-maker/GigaChat/releases/latest" -ForegroundColor Yellow
-    Write-Host "и положи рядом со скриптом."
+    Write-Host ""
+    Write-Host "Положи ocr-wheels.zip и ocr-easyocr-models.zip в папку ocr-server/"
     exit 1
 }
 
-$wheelCount = (Get-ChildItem -Path "wheels" -Filter "*.whl").Count
+$wheelCount = (Get-ChildItem -Path $wheelsPath -Filter "*.whl").Count
 Write-Host "    requirements.txt: OK"
 Write-Host "    server.py:        OK"
-Write-Host "    wheels:           $wheelCount .whl файлов"
-Write-Host "    easyocr_models:   OK"
+Write-Host "    wheels:           $wheelCount .whl файлов ($wheelsPath)"
+Write-Host "    easyocr_models:   OK ($modelsPath)"
 
 if ($wheelCount -lt 10) {
     Write-Host ""
@@ -116,7 +166,7 @@ Write-Host "==> Активация..."
 
 Write-Host ""
 Write-Host "==> Установка зависимостей из локальных wheels (без интернета)..."
-python -m pip install --no-index --find-links=wheels --upgrade pip
+python -m pip install --no-index --find-links=$wheelsPath --upgrade pip
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ОШИБКА: не удалось обновить pip. Возможно, нет pip в бандле или битый wheel." -ForegroundColor Red
@@ -126,20 +176,20 @@ if ($LASTEXITCODE -ne 0) {
 
 # Ставим сначала numpy (ядро), потом torch (тяжёлый), потом остальное
 Write-Host "  -> Шаг 1/3: numpy..."
-python -m pip install --no-index --find-links=wheels numpy==1.26.4
+python -m pip install --no-index --find-links=$wheelsPath numpy==1.26.4
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ОШИБКА: numpy не установился." -ForegroundColor Red
     exit 1
 }
 
 Write-Host "  -> Шаг 2/3: torch + torchvision..."
-python -m pip install --no-index --find-links=wheels torch==2.12.0 torchvision==0.27.0
+python -m pip install --no-index --find-links=$wheelsPath torch==2.12.0 torchvision==0.27.0
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "ПРЕДУПРЕЖДЕНИЕ: torch не установился. EasyOCR будет недоступен (только PyMuPDF)." -ForegroundColor Yellow
+    Write-Host "ПРЕДУПРЕЖДЕНИЕ: torch не установился. EasyOCR будет недоступен (только PyMuPDF для PDF с текстовым слоем)." -ForegroundColor Yellow
 }
 
 Write-Host "  -> Шаг 3/3: остальные зависимости..."
-python -m pip install --no-index --find-links=wheels -r requirements.txt
+python -m pip install --no-index --find-links=$wheelsPath -r requirements.txt
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
@@ -155,8 +205,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Копируем модели EasyOCR в стандартное место (C:\models\easyocr).
-# Если папка уже существует — не трогаем, чтобы не затирать пользовательские настройки.
+# Копируем модели EasyOCR в C:\models\easyocr.
 $targetModelDir = "C:\models\easyocr"
 Write-Host ""
 Write-Host "==> Копирование моделей EasyOCR в $targetModelDir..."
@@ -166,7 +215,7 @@ if (Test-Path $targetModelDir) {
     Write-Host "    Если нужно переустановить — удали $targetModelDir и запусти заново."
 } else {
     New-Item -ItemType Directory -Force -Path $targetModelDir | Out-Null
-    Copy-Item -Path "easyocr_models\*" -Destination $targetModelDir -Recurse -Force
+    Copy-Item -Path "$modelsPath\*" -Destination $targetModelDir -Recurse -Force
     $copiedFiles = (Get-ChildItem $targetModelDir -Recurse -File).Count
     Write-Host "    Скопировано $copiedFiles файлов."
 }
@@ -182,8 +231,8 @@ Write-Host " 1. Запусти сервер двойным кликом по:"
 Write-Host "      start.bat" -ForegroundColor Cyan
 Write-Host ""
 Write-Host " 2. В новом окне PowerShell проверь, что отвечает:"
-Write-Host "      curl http://localhost:8055/status" -ForegroundColor Cyan
+Write-Host "      curl http://130.100.94.119:8055/status" -ForegroundColor Cyan
 Write-Host ""
 Write-Host " 3. Тест извлечения текста из PDF:"
-Write-Host "      curl -X POST -F `"file=@some.pdf`" http://localhost:8055/extract" -ForegroundColor Cyan
+Write-Host "      curl -X POST -F `"file=@some.pdf`" http://130.100.94.119:8055/extract" -ForegroundColor Cyan
 Write-Host "=============================================================" -ForegroundColor Green

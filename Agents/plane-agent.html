@@ -9417,6 +9417,11 @@
                     alert('Ошибка генерации: ' + (err && err.message || String(err)));
                 });
             }
+            // Export modal functions globally (used by onclick= in HTML)
+            window.gcExportPlanOpen = gcExportPlanOpen;
+            window.gcCloseExportModal = gcCloseExportModal;
+            window.gcExportUpdateSummary = gcExportUpdateSummary;
+            window.gcExportPlanDo = gcExportPlanDo;
         }
         document.addEventListener('DOMContentLoaded', _planeInitOnce);
         _planeInitOnce();
