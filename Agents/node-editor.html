@@ -658,20 +658,34 @@ html{overflow-y:hidden!important}
     var tempLine = connectionsLayer.querySelector('.temp-line');
     if (tempLine) tempLine.remove();
 
+    // Сначала пробуем elementFromPoint (быстро), если не сработало — перебор всех .dot
     var target = document.elementFromPoint(e.clientX, e.clientY);
-    if (target) {
-      var dot = target.closest('.dot');
-      var portEl = dot ? dot.closest('.node-port') : null;
-      if (portEl) {
-        var targetDir = portEl.dataset.portDir;
-        var targetNodeId = portEl.closest('.node').dataset.nodeId;
-        var targetPort = portEl.dataset.portName;
-        // Validate: target must be an input port, different node
-        if (targetDir === 'in' && targetNodeId !== isDraggingFromPort.nodeId) {
-          addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
-        } else if (targetDir === 'out') {
-          showToast('Соединять можно только выход → вход', 'error');
+    var dot = target ? target.closest('.dot') : null;
+    var portEl = dot ? dot.closest('.node-port') : null;
+
+    // Fallback: если elementFromPoint не нашёл (например, SVG перекрывает), ищем по координатам
+    if (!portEl) {
+      var allDots = document.querySelectorAll('.node-port[data-port-dir="in"] .dot');
+      allDots.forEach(function(d){
+        var r = d.getBoundingClientRect();
+        var cx = r.left + r.width / 2;
+        var cy = r.top + r.height / 2;
+        var dist = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2));
+        if (dist < 15) {
+          portEl = d.closest('.node-port');
         }
+      });
+    }
+
+    if (portEl) {
+      var targetDir = portEl.dataset.portDir;
+      var targetNodeId = portEl.closest('.node').dataset.nodeId;
+      var targetPort = portEl.dataset.portName;
+      // Validate: target must be an input port, different node
+      if (targetDir === 'in' && targetNodeId !== isDraggingFromPort.nodeId) {
+        addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
+      } else if (targetDir === 'out') {
+        showToast('Соединять можно только выход → вход', 'error');
       }
     }
     isDraggingFromPort = null;
