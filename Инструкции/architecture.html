@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Архитектура GigaChat</title>
+<style>
+  @page { size: A4 landscape; margin: 0.8cm; }
+  body { font-family: 'Calibri', 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #000; }
+  h1 { font-size: 15pt; margin: 0 0 3px 0; }
+  h2 { font-size: 12pt; border-bottom: 1px solid #333; padding-bottom: 2px; margin: 12px 0 6px 0; }
+  h3 { font-size: 10.5pt; margin: 8px 0 4px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 5px 0; font-size: 8.5pt; }
+  th, td { border: 1px solid #444; padding: 2px 4px; text-align: left; }
+  th { background: #d9d9d9; font-weight: bold; }
+  code { font-family: 'Consolas', 'Courier New', monospace; font-size: 8pt; background: #f0f0f0; padding: 1px 3px; }
+  pre { font-family: 'Consolas', 'Courier New', monospace; font-size: 7.5pt; background: #f5f5f5; border: 1px solid #bbb; padding: 4px; margin: 3px 0; white-space: pre-wrap; }
+  .arch { margin: 8px 0; padding: 6px; border: 1px solid #bbb; background: #fafafa; }
+  .node { display: inline-block; border: 2px solid; border-radius: 6px; padding: 6px 10px; margin: 3px; text-align: center; background: #fff; min-width: 90px; }
+  .node-caddy { border-color: #b8860b; background: #fff8dc; }
+  .node-web { border-color: #2a6eab; background: #e6f0fa; }
+  .node-python { border-color: #666; background: #f0f0f0; }
+  .node-n8n { border-color: #28a745; background: #e9f7ef; }
+  .node-ext { border-color: #999; background: #f9f9f9; border-style: dashed; }
+  .node-plane { border-color: #dc3545; background: #fde8ea; }
+  .layer { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; }
+  .layer-label { font-size: 7.5pt; color: #888; width: 100%; text-align: center; margin: 5px 0 2px 0; }
+  .arrow { font-size: 14px; line-height: 1.2; text-align: center; margin: 2px 0; }
+  .flow-box { margin: 4px 0; }
+  .flow-box table { margin: 0; }
+</style>
+</head><body>
+
+<h1>Архитектура платформы GigaChat</h1>
+<p><strong>Дата:</strong> 16.06.2026 &nbsp;|&nbsp; <strong>IP-адреса:</strong> корпоративная LAN</p>
+
+<!-- ============================================================ -->
+<h2>1. Состав системы</h2>
+
+<table>
+<tr><th>N</th><th>Модуль</th><th>Тип</th><th>IP</th><th>Порт</th><th>Зависимости</th><th>Назначение</th></tr>
+<tr><td>1</td><td><b>Caddy</b></td><td>Reverse Proxy</td><td>130.100.94.119</td><td>8765</td><td>Caddyfile</td><td>Раздача статики, прокси API</td></tr>
+<tr><td>2</td><td><b>Platform</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy</td><td>Главная страница портала</td></tr>
+<tr><td>3</td><td><b>Chat Agent</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, GigaChat API</td><td>Чат с LLM</td></tr>
+<tr><td>4</td><td><b>RAG Agent</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, Embedding, GigaChat</td><td>Поиск по документам</td></tr>
+<tr><td>5</td><td><b>Compliance Agent</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, GigaChat API</td><td>Комплаенс-проверка</td></tr>
+<tr><td>6</td><td><b>Document Loader</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, Qdrant</td><td>Загрузка документов</td></tr>
+<tr><td>7</td><td><b>Text Extractor</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, OCR Server</td><td>Извлечение текста/таблиц из PDF</td></tr>
+<tr><td>8</td><td><b>Prompt Engineer</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, GigaChat API</td><td>Инженерия промптов</td></tr>
+<tr><td>9</td><td><b>File Merger</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy</td><td>Склейка файлов</td></tr>
+<tr><td>10</td><td><b>Math Agent</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, Pyodide</td><td>Математические вычисления</td></tr>
+<tr><td>11</td><td><b>OCR Search FIO</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, OCR Server</td><td>Поиск ФИО в сканах</td></tr>
+<tr><td>12</td><td><b>Node Editor</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy</td><td>Визуальный конструктор агентов</td></tr>
+<tr><td>13</td><td><b>Plane Agent</b></td><td>HTML</td><td>130.100.94.119</td><td>8765</td><td>Caddy, Plane.so API</td><td>Интеграция с Plane.so</td></tr>
+<tr><td>14</td><td><b>OCR Server</b></td><td>Python (FastAPI)</td><td>130.100.94.119</td><td>8055</td><td>Python 3.12, venv</td><td>Распознавание текста</td></tr>
+<tr><td>15</td><td><b>Embedding Server</b></td><td>Python (FastAPI)</td><td>127.0.0.1</td><td>8001</td><td>Python, HuggingFace</td><td>Векторизация текста</td></tr>
+<tr><td>16</td><td><b>n8n</b></td><td>Node.js</td><td>130.100.92.170</td><td>5678</td><td>Node.js, n8n</td><td>Workflow automation</td></tr>
+</table>
+
+<h3>Внешние системы</h3>
+<table>
+<tr><th>Система</th><th>Доступ</th><th>Назначение</th></tr>
+<tr><td><b>GigaChat API</b></td><td>gigachat.devices.sberbank.ru (HTTP, внешний)</td><td>LLM для чата, RAG, комплаенса</td></tr>
+<tr><td><b>Plane.so</b></td><td>app.plane.so (HTTP, внешний)</td><td>Управление задачами</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>2. Схема взаимодействия (потоки данных)</h2>
+
+<div class="arch">
+
+<div class="layer-label">УРОВЕНЬ ПОЛЬЗОВАТЕЛЯ</div>
+<div class="layer">
+  <div class="node node-caddy">
+    <b>Браузер пользователя</b><br>
+    <span style="font-size:7pt">HTTP/1.1 клиент</span>
+  </div>
+</div>
+
+<div class="arrow">
+  ↓ GET /index.html, /*.html, /node-editor, /plane-agent, /api/*<br>
+  ↑ HTML, CSS, JS, JSON (ответы)
+</div>
+
+<div class="layer-label">УРОВЕНЬ ВЕБ-СЕРВЕРА (130.100.94.119:8765)</div>
+<div class="layer">
+  <div class="node node-caddy" style="min-width:120px">
+    <b>Caddy</b><br>
+    <span style="font-size:7pt">Reverse Proxy</span><br>
+    <span style="font-size:7pt;color:#888">Статика / прокси API</span>
+  </div>
+</div>
+
+<div class="arrow">
+  ↓ статика из файлов<br>
+  ↑ HTML, CSS, JS
+</div>
+
+<div class="layer">
+  <div class="node node-web">Platform<br><span style="font-size:7pt">GigaChat-Platform.html</span></div>
+  <div class="node node-web">Chat Agent<br><span style="font-size:7pt">chat-agent.html</span></div>
+  <div class="node node-web">RAG Agent<br><span style="font-size:7pt">rag-agent.html</span></div>
+  <div class="node node-web">Compliance<br><span style="font-size:7pt">compliance-agent.html</span></div>
+  <div class="node node-web">Doc Loader<br><span style="font-size:7pt">document-loader.html</span></div>
+  <div class="node node-web">Text Extractor<br><span style="font-size:7pt">text-extractor.html</span></div>
+  <div class="node node-web">Prompt Eng<br><span style="font-size:7pt">prompt-engineer.html</span></div>
+  <div class="node node-web">File Merger<br><span style="font-size:7pt">file-merger.html</span></div>
+  <div class="node node-web">Math Agent<br><span style="font-size:7pt">math-agent.html</span></div>
+  <div class="node node-web">OCR FIO<br><span style="font-size:7pt">OCR-search-FIO.html</span></div>
+  <div class="node node-web">Node Editor<br><span style="font-size:7pt">node-editor.html</span></div>
+  <div class="node node-plane">Plane Agent<br><span style="font-size:7pt">plane-agent.html</span></div>
+</div>
+
+<div class="layer-label">ИСХОДЯЩИЕ ЗАПРОСЫ ИЗ БРАУЗЕРА</div>
+<div class="flow-box">
+<table>
+<tr><th>Агент</th><th>Куда запрос</th><th>Метод</th><th>Формат данных (запрос)</th><th>Формат ответа</th></tr>
+
+<tr>
+  <td>Chat</td>
+  <td><b> GigaChat API</b> (внешний)</td>
+  <td>POST</td>
+  <td><code>{"model":"GigaChat","messages":[{"role":"user","content":"текст"}]}</code></td>
+  <td><code>{"choices":[{"message":{"content":"ответ"}}]}</code></td>
+</tr>
+
+<tr>
+  <td>RAG</td>
+  <td>GigaChat API + Embedding Server</td>
+  <td>POST</td>
+  <td><code>{"input":"текст","type":"query"}</code></td>
+  <td><code>{"embedding":[...],"dim":1024}</code></td>
+</tr>
+
+<tr>
+  <td>Compliance</td>
+  <td>GigaChat API</td>
+  <td>POST</td>
+  <td><code>{"model":"GigaChat","messages":[...]}</code></td>
+  <td><code>{"choices":[...]}</code></td>
+</tr>
+
+<tr>
+  <td>Doc Loader</td>
+  <td><b> Qdrant</b> (БД векторов)</td>
+  <td>POST</td>
+  <td><code>{"points":[{"id":"...","vector":[...],"payload":{...}}]</code></td>
+  <td><code>{"status":"ok"}</code></td>
+</tr>
+
+<tr>
+  <td>Text Extractor</td>
+  <td><b> OCR Server :8055</b></td>
+  <td>POST</td>
+  <td><code>multipart/form-data (file)</code></td>
+  <td><code>{"pages":3,"text":"...","ocr_used":true}</code></td>
+</tr>
+
+<tr>
+  <td>OCR FIO</td>
+  <td>OCR Server :8055</td>
+  <td>POST</td>
+  <td><code>multipart/form-data (file)</code></td>
+  <td><code>{"fio":"Иванов И.И.","confidence":0.95}</code></td>
+</tr>
+
+<tr>
+  <td>Any Agent</td>
+  <td><b> n8n webhook :5678</b></td>
+  <td>POST</td>
+  <td><code>{"message":"...","session_id":"...","token":"..."}</code></td>
+  <td><code>{"response":"..."}</code></td>
+</tr>
+
+<tr>
+  <td>Plane Agent</td>
+  <td><b> Plane.so API</b> (внешний)</td>
+  <td>GET/POST</td>
+  <td><code>JSON (issues, projects)</code></td>
+  <td><code>JSON</code></td>
+</tr>
+
+</table>
+</div>
+
+<div class="layer-label">СЕРВЕРНЫЙ УРОВЕНЬ</div>
+<div class="layer">
+  <div class="node node-python">
+    <b>OCR Server</b><br>
+    <span style="font-size:7pt">130.100.94.119:8055</span><br>
+    <span style="font-size:7pt">/extract, /extract-table, /status</span>
+  </div>
+  <div class="node node-python">
+    <b>Embedding Server</b><br>
+    <span style="font-size:7pt">127.0.0.1:8001</span><br>
+    <span style="font-size:7pt">/embed, /embed_batch</span>
+  </div>
+  <div class="node node-n8n">
+    <b>n8n</b><br>
+    <span style="font-size:7pt">130.100.92.170:5678</span><br>
+    <span style="font-size:7pt">Webhook, HTTP Request, Code</span>
+  </div>
+</div>
+
+<div class="layer-label">ИСХОДЯЩИЕ ЗАПРОСЫ ИЗ n8n</div>
+<div class="flow-box">
+<table>
+<tr><th>От n8n</th><th>Куда</th><th>Метод</th><th>Формат запроса</th><th>Формат ответа</th></tr>
+<tr><td>HTTP Request node</td><td><b>OCR Server :8055</b></td><td>POST</td><td><code>multipart/form-data</code></td><td><code>{"text":"..."}</code></td></tr>
+<tr><td>HTTP Request node</td><td><b>HTML-агент (через Caddy)</b></td><td>POST</td><td><code>{"message":"...","session_id":"..."}</code></td><td><code>{"response":"..."}</code></td></tr>
+<tr><td>HTTP Request node</td><td><b>GigaChat API</b></td><td>POST</td><td><code>{"model":"GigaChat","messages":[...]}</code></td><td><code>{"choices":[...]}</code></td></tr>
+</table>
+</div>
+
+<div class="layer-label">ВНЕШНИЕ СИСТЕМЫ</div>
+<div class="layer">
+  <div class="node node-ext"><b>GigaChat API</b><br><span style="font-size:7pt">gigachat.devices.sberbank.ru:443</span></div>
+  <div class="node node-plane"><b>Plane.so</b><br><span style="font-size:7pt">app.plane.so:443</span></div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2>3. Детальные потоки данных (по сценариям)</h2>
+
+<h3>3.1. Чат с LLM</h3>
+<pre>
+Браузер → GET chat-agent.html (Caddy) → браузер загружает страницу
+Браузер → POST https://gigachat.devices.sberbank.ru/api/v1/chat/completions
+  Request:  {"model":"GigaChat","messages":[{"role":"user","content":"Привет"}]}
+  Response: {"choices":[{"message":{"role":"assistant","content":"Здравствуйте!"}}]}
+</pre>
+
+<h3>3.2. Распознавание документа (OCR)</h3>
+<pre>
+Браузер → GET text-extractor.html (Caddy) → загрузка страницы
+Браузер → POST http://130.100.94.119:8055/extract [multipart: file=@scan.pdf]
+  Response: {"pages":5,"text":"Извлеченный текст...","ocr_used":true,"processing_time_ms":3200}
+Браузер отображает текст пользователю
+</pre>
+
+<h3>3.3. n8n Workflow (импорт из Node Editor)</h3>
+<pre>
+Node Editor → экспорт в JSON → импорт в n8n UI
+
+Workflow:
+  Webhook (POST /gigachat-workflow)
+    ↓ {"message":"...", "session_id":"...", "token":"..."}
+  Code (Парсинг запроса)
+    ↓ {"valid":1, "text":"...", "session_id":"...", "token":"..."}
+  HTTP Request (агент, через Caddy)
+    ↓ {"response":"..."}
+  Respond to Webhook
+    ↓ {"response":"..."}
+
+Цепочка строится ПО СВЯЗЯМ с холста Node Editor.
+</pre>
+
+<h3>3.4. Экспорт плана из Plane.so</h3>
+<pre>
+Plane Agent → GET tasks from Plane.so API (за период)
+Plane Agent → генерация .docx (JSZip на стороне браузера)
+Браузер → скачивание plan-YYYY-MM-DD.docx
+  Формат .docx: таблица с днями, темами, расписанием задач
+</pre>
+
+<!-- ============================================================ -->
+<h2>4. Типовые структуры данных (примеры JSON)</h2>
+
+<h3>4.1. OCR запрос/ответ</h3>
+<pre>POST /extract
+Content-Type: multipart/form-data
+Body: file=@document.pdf
+
+200 OK
+{
+  "filename": "document.pdf",
+  "pages": 3,
+  "text": "Полный текст документа...",
+  "ocr_used": true,
+  "processing_time_ms": 1523
+}</pre>
+
+<h3>4.2. GigaChat API</h3>
+<pre>POST /api/v1/chat/completions
+Authorization: Bearer &lt;token&gt;
+{
+  "model": "GigaChat",
+  "messages": [
+    {"role": "system", "content": "Ты полезный ассистент."},
+    {"role": "user",   "content": "Напиши краткий отчет."}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 1024
+}
+
+200 OK
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "Вот краткий отчет..."
+    },
+    "index": 0
+  }],
+  "usage": {
+    "prompt_tokens": 25,
+    "completion_tokens": 150,
+    "total_tokens": 175
+  }
+}</pre>
+
+<h3>4.3. Embedding</h3>
+<pre>POST /embed
+{"input": "Текст для векторизации", "type": "passage"}
+
+200 OK
+{"embedding": [0.0123, -0.0456, ...], "dim": 1024, "model": "intfloat/multilingual-e5-large"}
+
+POST /embed_batch
+{"input": ["текст1", "текст2"], "type": "passage"}
+
+200 OK
+{"data": [{"embedding": [...]}, {"embedding": [...]}], "dim": 1024}
+</pre>
+
+<h3>4.4. n8n Workflow JSON (экспорт)</h3>
+<pre>{
+  "name": "GigaChat Workflow",
+  "nodes": [
+    {"id": "wh-1", "name": "Webhook",
+     "type": "n8n-nodes-base.webhook",
+     "typeVersion": 2.1,
+     "position": [120, 200],
+     "parameters": {"httpMethod": "POST", "path": "gigachat-workflow"}},
+
+    {"id": "prs-2", "name": "Парсинг запроса",
+     "type": "n8n-nodes-base.code",
+     "typeVersion": 2,
+     "position": [460, 200],
+     "parameters": {"jsCode": "const body = $input.first().json.body || {}; ..."}},
+
+    {"id": "rsp-3", "name": "Ответ",
+     "type": "n8n-nodes-base.respondToWebhook",
+     "typeVersion": 1,
+     "position": [1180, 200],
+     "parameters": {"respondWith": "json"}}
+  ],
+  "connections": {
+    "wh-1":  {"main": [[{"node": "prs-2", "type": "main", "index": 0}]]},
+    "prs-2": {"main": [[{"node": "rsp-3", "type": "main", "index": 0}]]}
+  }
+}</pre>
+
+<h3>4.5. Webhook к HTML-агенту (через Caddy)</h3>
+<pre>POST /api/chat
+{
+  "message": "Запрос от n8n",
+  "session_id": "wf-12345",
+  "token": ""
+}
+
+200 OK
+{"response": "Ответ от агента"}</pre>
+
+<!-- ============================================================ -->
+<h2>5. Протоколы и транспорт</h2>
+
+<table>
+<tr><th>Участники</th><th>Протокол</th><th>Порт</th><th>Примечание</th></tr>
+<tr><td>Браузер ↔ Caddy</td><td>HTTP/1.1</td><td>8765</td><td>Только LAN</td></tr>
+<tr><td>Браузер ↔ OCR Server</td><td>HTTP/1.1</td><td>8055</td><td>Прямое соединение или через Caddy</td></tr>
+<tr><td>Браузер ↔ n8n</td><td>HTTP/1.1</td><td>5678</td><td>Прямое соединение</td></tr>
+<tr><td>HTML-агент ↔ GigaChat API</td><td>HTTPS</td><td>443</td><td>Внешний, через корпоративный шлюз</td></tr>
+<tr><td>Plane Agent ↔ Plane.so</td><td>HTTPS</td><td>443</td><td>Внешний, через корпоративный шлюз</td></tr>
+<tr><td>n8n ↔ OCR Server</td><td>HTTP/1.1</td><td>8055</td><td>LAN</td></tr>
+<tr><td>n8n ↔ HTML-агент (через Caddy)</td><td>HTTP/1.1</td><td>8765</td><td>LAN</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>6. Запуск компонентов</h2>
+
+<table>
+<tr><th>Компонент</th><th>Способ запуска</th><th>Зависимости</th><th>Проверка</th></tr>
+<tr><td>Caddy</td><td>GigaChat-Start.bat</td><td>Caddyfile, папка Agents/</td><td>Открыть http://130.100.94.119:8765/</td></tr>
+<tr><td>OCR Server</td><td>C:\ocr-server\start.bat</td><td>Python 3.12, venv, wheels, easyocr_models</td><td>curl :8055/status</td></tr>
+<tr><td>n8n</td><td>n8n start</td><td>Node.js, n8n</td><td>Открыть http://130.100.92.170:5678</td></tr>
+<tr><td>Embedding Server</td><td>embedding-server\start.bat</td><td>Python, модель e5-large</td><td>curl :8001</td></tr>
+</table>
+
+</body></html>
