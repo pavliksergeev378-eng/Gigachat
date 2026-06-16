@@ -9297,7 +9297,10 @@
             }
             function _gcEscapeXml(s) {
                 if (s == null) return '';
-                return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                // Удаляем запрещённые в XML 1.0 символы (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F, кроме \t\r\n)
+                return String(s)
+                    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF￾￿]/g, '')
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
             async function _gcBuildDocx(bodyXml) {
                 // Минимальный .docx пакет: [Content_Types].xml, _rels/.rels, word/document.xml
@@ -9412,7 +9415,7 @@
                 gcCloseExportModal();
                 // Асинхронная генерация
                 _gcGeneratePlanDocx(from, to, includeDesc).then(function(ok){
-                    if (ok) setTimeout(function(){ alert('План экспортирован: ' + dateFrom + '.docx'); }, 50);
+                    if (ok) setTimeout(function(){ alert('План экспортирован: ' + from + '.docx'); }, 50);
                 }).catch(function(err){
                     alert('Ошибка генерации: ' + (err && err.message || String(err)));
                 });
