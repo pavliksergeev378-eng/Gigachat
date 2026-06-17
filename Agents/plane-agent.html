@@ -9189,7 +9189,7 @@
                 if (!days.length) { alert('Нет данных для экспорта.'); return; }
 
                 // Генерируем XML для .docx
-                var RS = String.fromCharCode(30); // разделитель как в импорте
+                var RS = ''; // Record Separator — разделитель строк в ячейке (как в импорте)
                 // Формируем строки таблицы: заголовок (дни), темы, расписание
                 var dayCells = [];
                 var themeCells = [];
@@ -9226,8 +9226,8 @@
                 // Строим OOXML
                 var bodyXml = '<w:body>';
                 // Заголовок — год (как в импорте парсится из текста вне таблицы)
-                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t>' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
-                bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>' + _gcEscapeXml('Неделя: ' + _gcFormatDateRu(start) + ' – ' + _gcFormatDateRu(end)) + '</w:t></w:r></w:p>';
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('Неделя: ' + _gcFormatDateRu(start) + ' – ' + _gcFormatDateRu(end)) + '</w:t></w:r></w:p>';
 
                 // Таблица
                 var tblXml = '<w:tbl>';
@@ -9291,15 +9291,25 @@
             }
             function _gcTblCell(text, bold) {
                 var props = bold
-                    ? '<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>' + text + '</w:t></w:r>'
-                    : '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>' + text + '</w:t></w:r>';
+                    ? '<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>'
+                    : '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>';
                 return '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + props + '</w:tc>';
             }
             function _gcEscapeXml(s) {
                 if (s == null) return '';
                 // Удаляем запрещённые в XML 1.0 символы (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F, кроме \t\r\n)
-                return String(s)
-                    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF￾￿]/g, '')
+                // U+FFFE и U+FFFF — non-characters, ломают регекс в некоторых браузерах → заменяем по коду
+                var result = '';
+                var str = String(s);
+                for (var _gi = 0; _gi < str.length; _gi++) {
+                    var _gc = str.charCodeAt(_gi);
+                    if (_gc === 0x09 || _gc === 0x0A || _gc === 0x0D ||
+                        (_gc >= 0x20 && _gc <= 0xD7FF) ||
+                        (_gc >= 0xE000 && _gc <= 0xFFFD)) {
+                        result += str[_gi];
+                    }
+                }
+                return result
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
             async function _gcBuildDocx(bodyXml) {

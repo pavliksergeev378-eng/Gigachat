@@ -646,11 +646,13 @@ html{overflow-y:hidden!important}
       connectionsLayer.appendChild(tempLine);
     }
     var wrapRect = canvasWrap.getBoundingClientRect();
-    var x1 = isDraggingFromPort.mouseStartX;
-    var y1 = isDraggingFromPort.mouseStartY;
-    var x2 = e.clientX;
-    var y2 = e.clientY;
-    var path = bezierPath(x1 - wrapRect.left, y1 - wrapRect.top, x2 - wrapRect.left, y2 - wrapRect.top, true);
+    // Координаты внутри SVG (canvasInner) с учётом transform: scale()
+    // scrollLeft/scrollTop в пикселях холста (unscaled)
+    var x1 = (isDraggingFromPort.mouseStartX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+    var y1 = (isDraggingFromPort.mouseStartY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+    var x2 = (e.clientX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+    var y2 = (e.clientY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+    var path = bezierPath(x1, y1, x2, y2);
     tempLine.setAttribute('d', path);
   });
 
@@ -658,34 +660,30 @@ html{overflow-y:hidden!important}
     var tempLine = connectionsLayer.querySelector('.temp-line');
     if (tempLine) tempLine.remove();
 
-    // Сначала пробуем elementFromPoint (быстро), если не сработало — перебор всех .dot
-    var target = document.elementFromPoint(e.clientX, e.clientY);
-    var dot = target ? target.closest('.dot') : null;
-    var portEl = dot ? dot.closest('.node-port') : null;
+    // Ищем входной порт строго по bounding-координатам (elementFromPoint
+    // не работает под SVG даже с pointer-events:none — он возвращает
+    // элемент SVG, а не `.dot` под ним). Поэтому используем только fallback.
+    var allDots = document.querySelectorAll('.node-port .dot');
+    var bestPort = null;
+    var bestDist = 20; // радиус захвата
+    allDots.forEach(function(d){
+      var portEl = d.closest('.node-port');
+      if (!portEl || portEl.dataset.portDir !== 'in') return;
+      var r = d.getBoundingClientRect();
+      var cx = r.left + r.width / 2;
+      var cy = r.top + r.height / 2;
+      var dist = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2));
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPort = portEl;
+      }
+    });
 
-    // Fallback: если elementFromPoint не нашёл (например, SVG перекрывает), ищем по координатам
-    if (!portEl) {
-      var allDots = document.querySelectorAll('.node-port[data-port-dir="in"] .dot');
-      allDots.forEach(function(d){
-        var r = d.getBoundingClientRect();
-        var cx = r.left + r.width / 2;
-        var cy = r.top + r.height / 2;
-        var dist = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2));
-        if (dist < 15) {
-          portEl = d.closest('.node-port');
-        }
-      });
-    }
-
-    if (portEl) {
-      var targetDir = portEl.dataset.portDir;
-      var targetNodeId = portEl.closest('.node').dataset.nodeId;
-      var targetPort = portEl.dataset.portName;
-      // Validate: target must be an input port, different node
-      if (targetDir === 'in' && targetNodeId !== isDraggingFromPort.nodeId) {
+    if (bestPort) {
+      var targetNodeId = bestPort.closest('.node').dataset.nodeId;
+      var targetPort = bestPort.dataset.portName;
+      if (targetNodeId !== isDraggingFromPort.nodeId) {
         addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
-      } else if (targetDir === 'out') {
-        showToast('Соединять можно только выход → вход', 'error');
       }
     }
     isDraggingFromPort = null;
@@ -719,16 +717,24 @@ html{overflow-y:hidden!important}
     connections.forEach(function(c){
       var fromPort = getPortEl(c.fromId, c.fromPort, 'out');
       var toPort = getPortEl(c.toId, c.toPort, 'in');
-      if (!fromPort || !toPort) return;
+      if (!fromPort || !toPort) {
+        // Важно: если порты не найдены — соединение не рисуется.
+        // Удаляем "мёртвое" соединение, чтобы не захламлять массив.
+        console.warn('Connection skipped — port not found', c);
+        return;
+      }
 
+      // getBoundingClientRect выдаёт координаты с учётом transform: scale().
+      // Чтобы получить координаты внутри canvasInner (SVG-слой), делим на zoomLevel,
+      // а scroll уже в unscaled-координатах (scrollLeft/scrollTop не масштабируются).
       var fromRect = fromPort.getBoundingClientRect();
       var toRect = toPort.getBoundingClientRect();
       var wrapRect = canvasWrap.getBoundingClientRect();
 
-      var x1 = fromRect.left + fromRect.width/2 - wrapRect.left + canvasViewport.scrollLeft;
-      var y1 = fromRect.top + fromRect.height/2 - wrapRect.top + canvasViewport.scrollTop;
-      var x2 = toRect.left + toRect.width/2 - wrapRect.left + canvasViewport.scrollLeft;
-      var y2 = toRect.top + toRect.height/2 - wrapRect.top + canvasViewport.scrollTop;
+      var x1 = (fromRect.left + fromRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+      var y1 = (fromRect.top + fromRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+      var x2 = (toRect.left + toRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+      var y2 = (toRect.top + toRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
 
       var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.classList.add('connection');
@@ -756,15 +762,9 @@ html{overflow-y:hidden!important}
     return portEl.querySelector('.dot');
   }
 
-  function bezierPath(x1, y1, x2, y2, absolute) {
+  function bezierPath(x1, y1, x2, y2) {
     var dx = Math.abs(x2 - x1) * 0.5;
     if (dx < 40) dx = 40;
-    if (absolute) {
-      // Convert viewport-relative coordinates
-      var s = canvasViewport.scrollLeft;
-      var t = canvasViewport.scrollTop;
-      return 'M'+(x1)+','+(y1)+' C'+(x1+dx)+','+(y1)+' '+(x2-dx)+','+(y2)+' '+(x2)+','+(y2);
-    }
     return 'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2;
   }
 
