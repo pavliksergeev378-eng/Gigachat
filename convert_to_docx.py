@@ -116,31 +116,35 @@ def md_to_docx(md_path, docx_path):
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
  <w:style w:type="paragraph" w:styleId="Normal" w:default="1">
  <w:name w:val="Normal"/>
- <w:rPr><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
+ <w:rPr><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
+ </w:style>
+ <w:style w:type="character" w:styleId="DefaultParagraphFont" w:default="1">
+ <w:name w:val="Default Paragraph Font"/>
+ <w:rPr><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
  <w:style w:type="paragraph" w:styleId="Heading1">
  <w:name w:val="heading 1"/>
- <w:rPr><w:b/><w:sz w:val="36"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
+ <w:rPr><w:b/><w:sz w:val="36"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
  <w:style w:type="paragraph" w:styleId="Heading2">
  <w:name w:val="heading 2"/>
- <w:rPr><w:b/><w:sz w:val="30"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
+ <w:rPr><w:b/><w:sz w:val="30"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
  <w:style w:type="paragraph" w:styleId="Heading3">
  <w:name w:val="heading 3"/>
- <w:rPr><w:b/><w:sz w:val="26"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
+ <w:rPr><w:b/><w:sz w:val="26"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
  <w:style w:type="paragraph" w:styleId="Heading4">
  <w:name w:val="heading 4"/>
- <w:rPr><w:b/><w:sz w:val="24"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
+ <w:rPr><w:b/><w:sz w:val="24"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
  <w:style w:type="paragraph" w:styleId="Heading5">
  <w:name w:val="heading 5"/>
- <w:rPr><w:b/><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
+ <w:rPr><w:b/><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
  <w:style w:type="paragraph" w:styleId="ListParagraph">
  <w:name w:val="List Paragraph"/>
- <w:rPr><w:sz w:val="22"/></w:rPr>
+ <w:rPr><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>
  </w:style>
 </w:styles>'''
 
@@ -163,27 +167,30 @@ def md_to_docx(md_path, docx_path):
             continue
         if ptype in heading_styles:
             text_esc = escape(text)
-            xml = '<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr><w:r><w:t>%s</w:t></w:r></w:p>' % (heading_styles[ptype], text_esc)
+            xml = '<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>' % heading_styles[ptype]
+            xml += '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % text_esc
             body_parts.append(xml)
             continue
         if ptype == 'bullet':
             text_esc = escape(text)
-            xml = '<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr><w:ind w:left="360"/></w:pPr><w:r><w:t>%s</w:t></w:r></w:p>' % text_esc
+            xml = '<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr><w:ind w:left="360"/></w:pPr>'
+            xml += '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % text_esc
             body_parts.append(xml)
             continue
         if ptype == 'ordered':
             text_esc = escape(text)
-            xml = '<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:ind w:left="360"/></w:pPr><w:r><w:t>%s</w:t></w:r></w:p>' % text_esc
+            xml = '<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:ind w:left="360"/></w:pPr>'
+            xml += '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % text_esc
             body_parts.append(xml)
             continue
         if ptype == 'table':
             text_esc = escape(text)
-            xml = '<w:p><w:r><w:t>%s</w:t></w:r></w:p>' % text_esc
+            xml = '<w:p><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % text_esc
             body_parts.append(xml)
             continue
         if ptype == 'normal':
             text_esc = escape(text)
-            xml = '<w:p><w:r><w:t>%s</w:t></w:r></w:p>' % text_esc
+            xml = '<w:p><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % text_esc
             body_parts.append(xml)
             continue
 

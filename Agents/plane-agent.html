@@ -9226,8 +9226,8 @@
                 // Строим OOXML
                 var bodyXml = '<w:body>';
                 // Заголовок — год (как в импорте парсится из текста вне таблицы)
-                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
-                bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('Неделя: ' + _gcFormatDateRu(start) + ' – ' + _gcFormatDateRu(end)) + '</w:t></w:r></w:p>';
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('Неделя: ' + _gcFormatDateRu(start) + ' – ' + _gcFormatDateRu(end)) + '</w:t></w:r></w:p>';
 
                 // Таблица
                 var tblXml = '<w:tbl>';
@@ -9290,9 +9290,10 @@
                 return true;
             }
             function _gcTblCell(text, bold) {
+                var font = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>';
                 var props = bold
-                    ? '<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>'
-                    : '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>';
+                    ? '<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/>' + font + '<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>'
+                    : '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr>' + font + '<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>';
                 return '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + props + '</w:tc>';
             }
             function _gcEscapeXml(s) {
@@ -9313,21 +9314,52 @@
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
             async function _gcBuildDocx(bodyXml) {
-                // Минимальный .docx пакет: [Content_Types].xml, _rels/.rels, word/document.xml
+                // Полный .docx пакет: [Content_Types].xml, _rels/.rels,
+                // word/_rels/document.xml.rels, word/document.xml, word/styles.xml, word/numbering.xml
                 var pkg = new JSZip();
                 pkg.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
                     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
                     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
                     '<Default Extension="xml" ContentType="application/xml"/>' +
                     '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+                    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+                    '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
                     '</Types>');
                 pkg.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
                     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
                     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
                     '</Relationships>');
+                pkg.file('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+                    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+                    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
+                    '</Relationships>');
                 pkg.file('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-                    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+                    '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"' +
+                    ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"' +
+                    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
+                    ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
+                    ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">' +
                     bodyXml + '</w:document>');
+                pkg.file('word/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+                    '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
+                    '<w:name w:val="Normal"/>' +
+                    '<w:rPr><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>' +
+                    '</w:style>' +
+                    '<w:style w:type="character" w:styleId="DefaultParagraphFont" w:default="1">' +
+                    '<w:name w:val="Default Paragraph Font"/>' +
+                    '<w:rPr><w:sz w:val="22"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr>' +
+                    '</w:style>' +
+                    '</w:styles>');
+                pkg.file('word/numbering.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+                    '<w:abstractNum w:abstractNumId="0">' +
+                    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/>' +
+                    '<w:lvlText w:val="•"/><w:lvlJc w:val="left"/></w:lvl>' +
+                    '</w:abstractNum>' +
+                    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+                    '</w:numbering>');
                 return await pkg.generateAsync({ type: 'arraybuffer', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
             }
             // Главная функция — открыть модалку выбора дат
