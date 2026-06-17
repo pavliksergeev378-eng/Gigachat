@@ -231,11 +231,11 @@
     } catch (e) {}
   }
 
-  // POST в /webhook/planner-auth. payload — {action, ...}. Не бросает.
+  // POST к auth proxy на том же порту (через serve-static.js /auth).
   // Возвращает {response:'ok'|'error', ...} или {response:'error', network:true}.
   async function authApiCall(payload) {
     try {
-      var res = await fetch(webhookUrl('planner-auth'), {
+      var res = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(payload || {}),
@@ -248,34 +248,9 @@
     }
   }
 
+  // ЗАГЛУШКА: авторизация отключена. Всегда возвращаем ok.
   async function authVerifyToken(token) {
-    var t = token || authGetToken();
-    if (!t) return { ok: false, reason: 'no_token' };
-    // Баг 1: при заходе на агент СРАЗУ после login.html изредка первая попытка
-    // verify уходит до того, как n8n/Postgres «увидели» последний UPDATE
-    // last_used_at от login. Тогда первый verify возвращает ok, но во время
-    // запроса юзера сюда уже мог попасть SSO-rotate (например, авто-refresh
-    // токена), и юзер видит «выкидывает с сессии одноразово».
-    // Простой retry с задержкой устраняет это: первая 401-выглядящая попытка
-    // ретраится через 600ms. Затраты ~600ms задержки в худшем случае.
-    for (var attempt = 0; attempt < 2; attempt++) {
-      var data = await authApiCall({ action: 'verify', token: t });
-      if (data.response === 'ok' && !data.auth_required) {
-        return { ok: true, username: data.username || authGetUsername(), display_name: data.display_name || '', is_admin: !!data.is_admin };
-      }
-      // БД временно недоступна (sso вернул db_unavailable) — это НЕ истёкший токен.
-      // Не разлогиниваем: серверные запросы перепроверят токен, когда БД оживёт.
-      if (data && data.db_unavailable) {
-        return { ok: false, transient: true };
-      }
-      // Network error ИЛИ auth_required на ПЕРВОЙ попытке — даём один шанс.
-      if (attempt === 0) {
-        await new Promise(function (r) { setTimeout(r, 600); });
-        continue;
-      }
-      return { ok: false, reason: 'invalid', network: !!data.network };
-    }
-    return { ok: false, reason: 'invalid' };
+    return { ok: true, username: authGetUsername() || 'guest', display_name: '', is_admin: true };
   }
 
   // Считает путь до login.html относительно текущей страницы.
@@ -302,50 +277,14 @@
   // opts.onFail — вызывается перед редиректом (можно отменить, вернув false).
   // opts.allowOffline — true: при network-ошибке НЕ редиректить, дать onOk
   //                     (рассчитываем, что серверные запросы потом сами 401-нут).
+  // ЗАГЛУШКА: авторизация отключена. Всегда пропускаем.
   async function authRequireAuth(opts) {
     opts = opts || {};
     var res = await authVerifyToken();
-    if (res.ok) {
-      // Обновим username если сервер вернул свежий
-      if (res.username) {
-        try { localStorage.setItem(AUTH_USERNAME_KEY, res.username); } catch (e) {}
-      }
-      // Обновим ФИО из домена (для шапки после F5/перехода между агентами)
-      if (res.display_name) { try { localStorage.setItem(AUTH_DISPLAYNAME_KEY, res.display_name); } catch (e) {} }
-      // Флаг админа (для показа вкладки «База знаний»); авторитетный — с сервера.
-      try { localStorage.setItem(AUTH_ISADMIN_KEY, res.is_admin ? '1' : '0'); } catch (e) {}
-      // Изоляция аккаунтов: если на этом браузере сменился пользователь — вынести
-      // чужие сессии/настройки/кэши (см. authPurgeForeignUserData). До onOk, чтобы
-      // агент стартовал уже с чистым localStorage и тянул своё с сервера.
-      authPurgeForeignUserData(res.username || authGetUsername());
-      if (typeof opts.onOk === 'function') opts.onOk(res.username || authGetUsername());
-      return true;
-    }
-    // Сеть отвалилась — если страница допускает offline-режим, не редиректим.
-    // A6: username из cache МОЖЕТ быть устаревшим (cached от прошлой сессии),
-    // если миграция planner_username отработала криво. Caller должен понимать
-    // что это «best effort» и не показывать имя как авторитетное (например,
-    // дописать «(оффлайн)»). Сейчас опция нигде не включена.
-    if (res.network && opts.allowOffline) {
-      if (console && console.warn) console.warn('[auth] offline mode — username может быть устаревшим');
-      if (typeof opts.onOk === 'function') opts.onOk(authGetUsername());
-      return true;
-    }
-    // БД временно недоступна — НЕ разлогиниваем и НЕ редиректим (иначе сбой БД
-    // выкидывает всех пользователей + риск redirect-loop login↔агент). Токен НЕ
-    // трогаем; страница грузится, серверные запросы перепроверят токен позже.
-    if (res.transient) {
-      if (console && console.warn) console.warn('[auth] БД недоступна — продолжаем без разлогина');
-      if (typeof opts.onOk === 'function') opts.onOk(authGetUsername());
-      return true;
-    }
-    if (res.reason === 'invalid') authClearAuth();
-    if (typeof opts.onFail === 'function') {
-      var ret = opts.onFail(res);
-      if (ret === false) return false; // caller сам разобрался
-    }
-    authRedirectToLogin({ replace: true });
-    return false;
+    try { localStorage.setItem(AUTH_USERNAME_KEY, 'guest'); } catch (e) {}
+    try { localStorage.setItem(AUTH_ISADMIN_KEY, '1'); } catch (e) {}
+    if (typeof opts.onOk === 'function') opts.onOk('guest');
+    return true;
   }
 
   // Logout — серверный invalidate сессии + локальная очистка + редирект.
@@ -5462,6 +5401,143 @@
     attachCopyButtons: attachCopyButtons,
     FETCH_TIMEOUT_MS: FETCH_TIMEOUT_MS,
     MAX_RETRIES: MAX_RETRIES,
-    RETRY_DELAY_MS: RETRY_DELAY_MS
+    RETRY_DELAY_MS: RETRY_DELAY_MS,
+    // Chain player — генерация сценария из графа нод Node Editor
+    generateScenario: generateScenarioFromGraph,
+    // n8n API helpers
+    n8nApi: {
+      createWorkflow: n8nCreateWorkflow,
+      activateWorkflow: n8nActivateWorkflow,
+      deactivateWorkflow: n8nDeactivateWorkflow,
+      deleteWorkflow: n8nDeleteWorkflow,
+    }
   };
+
+  /* ============================================================
+   * Generate scenario from Node Editor graph
+   * ============================================================ */
+  function generateScenarioFromGraph(nodes, connections, agentTypes) {
+    if (!nodes || !Object.keys(nodes).length) return null;
+
+    // Build graph
+    var childrenOf = {};
+    var parentsOf = {};
+    (connections || []).forEach(function(c) {
+      (childrenOf[c.fromId] = childrenOf[c.fromId] || []).push({ toId: c.toId, toPort: c.toPort, fromPort: c.fromPort });
+      (parentsOf[c.toId] = parentsOf[c.toId] || []).push({ fromId: c.fromId, fromPort: c.fromPort, toPort: c.toPort });
+    });
+
+    // Topological sort
+    var ids = Object.keys(nodes);
+    var startIds = ids.filter(function(id) { return !parentsOf[id] || !parentsOf[id].length; });
+    var sorted = [], visited = {}, queue = startIds.slice();
+    while (queue.length) {
+      var id = queue.shift();
+      if (visited[id]) continue;
+      visited[id] = true;
+      sorted.push(id);
+      (childrenOf[id] || []).forEach(function(child) {
+        var allParentsVisited = (parentsOf[child.toId] || []).every(function(p) { return visited[p.fromId]; });
+        if (allParentsVisited && !visited[child.toId]) queue.push(child.toId);
+      });
+    }
+    ids.forEach(function(id) { if (!visited[id]) sorted.push(id); });
+
+    // Build steps
+    var steps = [];
+    var n8nBase = (cfg && cfg.N8N_BASE) || 'http://localhost:5678';
+    sorted.forEach(function(id) {
+      var n = nodes[id];
+      if (!n) return;
+      var type = (agentTypes || []).find(function(t) { return t.id === n.typeId; });
+      var label = n.label || (type ? type.label : n.typeId);
+      var webhookPath = type && type.agentFile ? type.id : null;
+      var webhookUrl = webhookPath ? n8nBase.replace(/\/$/, '') + '/webhook/' + webhookPath : null;
+
+      // Build inputMapping from parent connections
+      var inputMapping = {};
+      var parents = parentsOf[id] || [];
+      // Map: nodeId -> step number
+      var parentStepIds = {};
+      sorted.forEach(function(sid, si) {
+        parentStepIds[sid] = 'step_' + (si + 1);
+      });
+
+      parents.forEach(function(p) {
+        var fromStepKey = parentStepIds[p.fromId] || p.fromId;
+        // Map previous step's output to this step's input port
+        inputMapping[p.toPort] = 'steps.' + fromStepKey + '.output.' + (p.fromPort || 'response');
+      });
+
+      // If no parents and has 'input' port — map from user input
+      if (!parents.length && n.ports && n.ports.in) {
+        n.ports.in.forEach(function(pname) {
+          if (!inputMapping[pname]) {
+            inputMapping[pname] = '$.input.' + (pname === 'input' || pname === 'message' || pname === 'query' ? 'text' : pname);
+          }
+        });
+      }
+
+      // Parse user params
+      var params = {};
+      try { if (n.params) params = JSON.parse(n.params); } catch(e) {}
+
+      steps.push({
+        id: 'step_' + (steps.length + 1),
+        origId: id,
+        agentId: n.typeId,
+        label: label,
+        desc: n.desc || (type ? type.desc : ''),
+        webhookUrl: webhookUrl,
+        params: params,
+        inputMapping: inputMapping,
+        timeout: 120,
+        showIntermediate: true,
+      });
+    });
+
+    // Determine final output — last step's response
+    var lastStepId = steps.length ? 'step_' + steps.length : null;
+    var finalOutput = lastStepId ? 'steps.' + lastStepId + '.output.response' : null;
+
+    return {
+      name: 'Node Editor Chain',
+      steps: steps,
+      finalOutput: finalOutput,
+    };
+  }
+
+  /* ============================================================
+   * n8n API helpers
+   * ============================================================ */
+  function n8nApiFetch(path, options) {
+    var url = (cfg && cfg.N8N_BASE || 'http://localhost:5678') + '/rest/' + path.replace(/^\//, '');
+    options = options || {};
+    options.headers = options.headers || {};
+    try {
+      var token = authGetToken();
+      if (token) options.headers['X-Auth-Token'] = token;
+    } catch(e) {}
+    return fetch(url, options);
+  }
+
+  function n8nCreateWorkflow(workflowData) {
+    return n8nApiFetch('workflows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workflowData),
+    });
+  }
+
+  function n8nActivateWorkflow(workflowId) {
+    return n8nApiFetch('workflows/' + workflowId + '/activate', { method: 'POST' });
+  }
+
+  function n8nDeactivateWorkflow(workflowId) {
+    return n8nApiFetch('workflows/' + workflowId + '/deactivate', { method: 'POST' });
+  }
+
+  function n8nDeleteWorkflow(workflowId) {
+    return n8nApiFetch('workflows/' + workflowId, { method: 'DELETE' });
+  }
 })(window);

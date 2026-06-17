@@ -171,6 +171,35 @@ html{overflow-y:hidden!important}
 /* ===== CANVAS DOTS ===== */
 .canvas-inner{background-image:radial-gradient(circle,#2a2a4e 1px,transparent 1px);background-size:24px 24px}
 
+/* ===== RUN MODAL ===== */
+.run-modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:3000;display:none;align-items:center;justify-content:center}
+.run-modal-overlay.open{display:flex}
+.run-modal{background:var(--bg-palette);border:1px solid var(--border);border-radius:12px;width:480px;max-width:90vw;box-shadow:0 12px 48px rgba(0,0,0,0.5);overflow:hidden}
+.run-modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.run-modal-header h3{font-size:15px;font-weight:600;color:var(--accent)}
+.run-modal-header button{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px}
+.run-modal-header button:hover{color:#fff}
+.run-modal-body{padding:20px}
+.run-modal-body label{display:block;font-size:13px;color:var(--text-primary);margin-bottom:12px;cursor:pointer}
+.run-modal-body label input[type="radio"]{accent-color:var(--accent);margin-right:8px}
+.run-modal-body .run-summary{background:var(--bg-palette-item);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px}
+.run-modal-body .run-summary .run-chain-viz{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.run-modal-body .run-summary .run-chain-viz .rcv-node{padding:4px 10px;background:var(--bg-card,var(--bg-body));border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--text-primary)}
+.run-modal-body .run-summary .run-chain-viz .rcv-arrow{color:var(--text-muted);font-size:12px}
+.run-modal-body .run-progress{margin-top:12px;display:none}
+.run-modal-body .run-progress.show{display:block}
+.run-modal-body .run-progress .rp-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:8px}
+.run-modal-body .run-progress .rp-bar .rp-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s;width:0%}
+.run-modal-body .run-progress .rp-label{font-size:11px;color:var(--text-secondary)}
+.run-modal-body .run-result{margin-top:12px;display:none}
+.run-modal-body .run-result.show{display:block}
+.run-modal-body .run-result .rr-box{padding:10px 12px;background:var(--bg-palette-item);border:1px solid var(--border);border-radius:8px;word-break:break-all;font-size:12px;color:var(--text-primary)}
+.run-modal-body .run-result .rr-box a{color:var(--accent)}
+.run-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.run-footer button{padding:8px 20px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px;transition:0.15s}
+.run-footer button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.run-footer button.primary:hover{background:var(--accent-hover)}
+.run-footer button:hover{background:var(--border)}
 /* ===== OPEN NODE BTN ===== */
 .open-node-btn{margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 10px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--port-color);border-radius:4px;cursor:pointer;transition:0.15s;text-decoration:none}
 .open-node-btn:hover{background:var(--border);border-color:var(--port-color);color:#fff}
@@ -185,6 +214,10 @@ html{overflow-y:hidden!important}
     <button id="btnSave" title="Сохранить схему (Ctrl+S)">💾 Save</button>
     <button id="btnLoad" title="Загрузить схему">📂 Load</button>
     <input type="file" id="fileInput" accept=".json">
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnRun" title="Запустить цепочку" style="background:var(--accent);color:#fff;border-color:var(--accent)">▶ Run</button>
   </div>
   <div class="tb-sep"></div>
   <div class="tb-group">
@@ -262,21 +295,116 @@ html{overflow-y:hidden!important}
   <button data-action="delete" class="danger">🗑 Удалить</button>
 </div>
 
+<!-- RUN MODAL -->
+<div class="run-modal-overlay" id="runModal" style="display:none">
+  <div class="run-modal">
+    <div class="run-header">
+      <span style="font-weight:600;font-size:1.1em">▶ Запуск цепочки</span>
+      <button class="run-close-btn" id="runModalClose">✕</button>
+    </div>
+    <div class="run-body">
+      <div class="run-progress" id="runProgress">
+        <div class="run-step-info">Подготовка сценария...</div>
+        <div class="run-spinner"></div>
+      </div>
+      <div class="run-result" id="runResult" style="display:none">
+        <div class="run-result-icon" id="runResultIcon">✅</div>
+        <div class="run-result-title" id="runResultTitle">Готово</div>
+        <div class="run-result-msg" id="runResultMsg"></div>
+        <div class="run-result-url" id="runResultUrl" style="display:none">
+          <label>Ссылка на workflow:</label>
+          <input type="text" readonly id="runResultUrlInput" style="width:100%;margin-top:4px">
+        </div>
+      </div>
+    </div>
+    <div class="run-footer">
+      <button class="run-mode-btn" id="runModeLocal" style="background:var(--accent);color:#fff;border-color:var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;border:none;cursor:pointer">🚀 Запустить локально</button>
+      <button class="run-mode-btn" id="runModeN8n" style="background:transparent;color:var(--accent);border:1px solid var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer">☁️ Экспорт в n8n</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toastContainer"></div>
+
+<style>
+/* Run modal */
+.run-modal-overlay {
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.5);z-index:2000;
+  display:flex;align-items:center;justify-content:center;
+}
+.run-modal {
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;
+  box-shadow:0 8px 32px rgba(0,0,0,0.3);
+}
+.run-header {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--border);
+}
+.run-close-btn {
+  background:none;border:none;font-size:1.2em;cursor:pointer;
+  color:var(--text);opacity:0.6;padding:4px 8px;border-radius:4px;
+}
+.run-close-btn:hover { opacity:1; background:var(--bg-hover); }
+.run-body {
+  padding:20px;
+}
+.run-progress {
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding:32px 0;
+}
+.run-step-info { color:var(--text-dim); font-size:0.95em; }
+.run-spinner {
+  width:32px;height:32px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg) } }
+.run-result {
+  text-align:center;padding:16px 0;
+}
+.run-result-icon { font-size:2.5em; margin-bottom:8px; }
+.run-result-title { font-weight:600; font-size:1.1em; margin-bottom:4px; }
+.run-result-msg { color:var(--text-dim); font-size:0.9em; margin-bottom:12px; }
+.run-result-url {
+  text-align:left;margin-top:12px;padding:12px;
+  background:var(--bg-hover);border-radius:var(--radius);
+}
+.run-result-url label { font-size:0.85em; color:var(--text-dim); }
+.run-result-url input {
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;padding:6px 8px;color:var(--text);font-size:0.85em;
+}
+.run-footer {
+  display:flex;gap:10px;padding:16px 20px;
+  border-top:1px solid var(--border);
+}
+.run-footer .run-mode-btn:hover { opacity:0.9; }
+.run-footer .run-mode-btn:active { transform:scale(0.98); }
+</style>
 
 <script>
 (function(){
   'use strict';
 
   // ============================================================
-  // AUTH — интегрируемся с платформой
+  // BOOT — авторизация отключена
   // ============================================================
-  GigaChat.auth.requireAuth({
-    onOk: function(username) {
-      initEditor();
-    }
-  });
+  (function _bootNodeEditor() {
+    var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+    var ctrl = new AbortController();
+    var timer = setTimeout(function(){ ctrl.abort(); }, 3000);
+    fetch(n8nBase + '/healthz', { method: 'HEAD', signal: ctrl.signal })
+      .then(function() {
+        clearTimeout(timer);
+        initEditor();
+      })
+      .catch(function() {
+        clearTimeout(timer);
+        initEditor();
+      });
+  })();
 
   // ============================================================
   // AGENT TYPES — полный справочник для текущей платформы
@@ -527,7 +655,6 @@ html{overflow-y:hidden!important}
         port.dataset.portName = pname;
         port.dataset.portDir = 'in';
         port.innerHTML = '<span class="dot" data-port="'+pname+'"></span><span class="node-port-label">'+pname+'</span>';
-        port.addEventListener('mousedown', function(e) { e.stopPropagation(); });
         el.appendChild(port);
       });
     }
@@ -541,7 +668,6 @@ html{overflow-y:hidden!important}
         port.dataset.portDir = 'out';
         port.style.justifyContent = 'flex-end';
         port.innerHTML = '<span class="node-port-label">'+pname+'</span><span class="dot" data-port="'+pname+'" style="border-color:#f8a"></span>';
-        port.addEventListener('mousedown', function(e) { e.stopPropagation(); });
         el.appendChild(port);
       });
     }
@@ -549,9 +675,9 @@ html{overflow-y:hidden!important}
     // Events
     el.addEventListener('mousedown', function(e) {
       if (e.button !== 0) return;
-      // Ignore if target is a button or dot
+      // Ignore if target is a button or inside a port (dot or label)
       var t = e.target;
-      if (t.tagName === 'BUTTON' || t.classList.contains('dot') || t.closest('.node-actions')) return;
+      if (t.tagName === 'BUTTON' || t.closest('.node-port') || t.closest('.node-actions')) return;
       selectNode(id);
       startDrag(e, id);
     });
@@ -601,13 +727,15 @@ html{overflow-y:hidden!important}
   });
 
   document.addEventListener('mouseup', function(e) {
-    if (dragState) {
-      // Only clear — no "end drag" logic needed
-      dragState = null;
-    }
     if (isDraggingFromPort) {
+      console.log('[ND] mouseup — isDraggingFromPort present, calling finishPortDrag');
       // Try to connect to a port under cursor
       finishPortDrag(e);
+    } else {
+      if (dragState) console.log('[ND] mouseup — dragState present, clearing');
+    }
+    if (dragState) {
+      dragState = null;
     }
   });
 
@@ -625,7 +753,8 @@ html{overflow-y:hidden!important}
     var nodeId = nodeEl.dataset.nodeId;
     var portName = portEl.dataset.portName;
     var dir = portEl.dataset.portDir;
-    if (dir === 'in') return; // только из output в input
+    console.log('[ND] mousedown on port:', nodeId, portName, dir);
+    if (dir === 'in') { console.log('[ND] input port — ignored'); return; } // только из output в input
     isDraggingFromPort = {
       nodeId: nodeId,
       portName: portName,
@@ -634,10 +763,12 @@ html{overflow-y:hidden!important}
       mouseStartX: e.clientX,
       mouseStartY: e.clientY,
     };
+    console.log('[ND] isDraggingFromPort SET:', isDraggingFromPort);
   });
 
   document.addEventListener('mousemove', function(e) {
     if (!isDraggingFromPort) return;
+    if (!isDraggingFromPort.mouseStartX) { console.warn('[ND] isDraggingFromPort has no mouseStartX'); return; }
     // Draw temp line
     var tempLine = connectionsLayer.querySelector('.temp-line');
     if (!tempLine) {
@@ -660,12 +791,15 @@ html{overflow-y:hidden!important}
     var tempLine = connectionsLayer.querySelector('.temp-line');
     if (tempLine) tempLine.remove();
 
+    console.log('[ND] finishPortDrag — mouseup at', e.clientX, e.clientY);
+
     // Ищем входной порт строго по bounding-координатам (elementFromPoint
     // не работает под SVG даже с pointer-events:none — он возвращает
     // элемент SVG, а не `.dot` под ним). Поэтому используем только fallback.
     var allDots = document.querySelectorAll('.node-port .dot');
     var bestPort = null;
     var bestDist = 20; // радиус захвата
+    console.log('[ND] checking', allDots.length, 'dots');
     allDots.forEach(function(d){
       var portEl = d.closest('.node-port');
       if (!portEl || portEl.dataset.portDir !== 'in') return;
@@ -676,26 +810,34 @@ html{overflow-y:hidden!important}
       if (dist < bestDist) {
         bestDist = dist;
         bestPort = portEl;
+        console.log('[ND] best so far:', bestPort.dataset.portName, 'dist:', dist);
       }
     });
 
     if (bestPort) {
       var targetNodeId = bestPort.closest('.node').dataset.nodeId;
       var targetPort = bestPort.dataset.portName;
+      console.log('[ND] found target:', targetNodeId, targetPort);
       if (targetNodeId !== isDraggingFromPort.nodeId) {
         addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
+      } else {
+        console.log('[ND] same node — skipped');
       }
+    } else {
+      console.log('[ND] no target port found');
     }
     isDraggingFromPort = null;
   }
 
   function addConnection(fromId, fromPort, toId, toPort) {
+    console.log('[ND] addConnection:', fromId, fromPort, '->', toId, toPort);
     // Prevent duplicate
     var dup = connections.some(function(c){
       return c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort;
     });
     if (dup) { showToast('Соединение уже существует', 'error'); return; }
     connections.push({ fromId: fromId, fromPort: fromPort, toId: toId, toPort: toPort });
+    console.log('[ND] connections after push:', connections.length);
     updateConnections();
     showToast('Соединение создано', 'success');
   }
@@ -714,13 +856,14 @@ html{overflow-y:hidden!important}
     // Clear
     connectionGroup.innerHTML = '';
 
+    console.log('[ND] updateConnections, count:', connections.length);
     connections.forEach(function(c){
       var fromPort = getPortEl(c.fromId, c.fromPort, 'out');
       var toPort = getPortEl(c.toId, c.toPort, 'in');
       if (!fromPort || !toPort) {
         // Важно: если порты не найдены — соединение не рисуется.
         // Удаляем "мёртвое" соединение, чтобы не захламлять массив.
-        console.warn('Connection skipped — port not found', c);
+        console.warn('[ND] Connection skipped — port not found', c, 'fromPort:', fromPort, 'toPort:', toPort);
         return;
       }
 
@@ -1084,9 +1227,10 @@ html{overflow-y:hidden!important}
   // ============================================================
   // EXPORT AS n8n WORKFLOW (последовательная цепочка по связям)
   // ============================================================
-  function exportN8nWorkflow() {
+  function exportN8nWorkflow(silent) {
     var ids = Object.keys(nodes);
     if (!ids.length) {
+      if (silent) return '';
       showToast('Добавьте хотя бы одну ноду на холст', 'error');
       return;
     }
@@ -1102,6 +1246,7 @@ html{overflow-y:hidden!important}
     // Находим стартовые ноды (те, у кого нет родителей)
     var startIds = ids.filter(function(id){ return !parentsOf[id] || !parentsOf[id].length; });
     if (!startIds.length) {
+      if (silent) return '';
       showToast('Нет начальных нод (нужно соединение выход -> вход)', 'error');
       return;
     }
@@ -1239,6 +1384,7 @@ html{overflow-y:hidden!important}
     });
 
     if (!agentNodeInfos.length) {
+      if (silent) return '';
       showToast('Не удалось создать ноды агентов', 'error');
       return;
     }
@@ -1318,7 +1464,10 @@ html{overflow-y:hidden!important}
       tags: []
     };
 
-    var blob = new Blob([JSON.stringify(workflow, null, 2)], { type: 'application/json' });
+    var jsonStr = JSON.stringify(workflow, null, 2);
+    if (silent) return jsonStr;
+
+    var blob = new Blob([jsonStr], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
@@ -1329,6 +1478,206 @@ html{overflow-y:hidden!important}
   }
 
   document.getElementById('btnExportN8nWorkflow').addEventListener('click', exportN8nWorkflow);
+
+  // ============================================================
+  // RUN CHAIN (▶ Run)
+  // ============================================================
+  var runModalEl = document.getElementById('runModal');
+  var btnRun = document.getElementById('btnRun');
+  var btnRunModalClose = document.getElementById('runModalClose');
+  var btnRunModeLocal = document.getElementById('runModeLocal');
+  var btnRunModeN8n = document.getElementById('runModeN8n');
+
+  function openRunModal() {
+    runModalEl.style.display = 'flex';
+    document.getElementById('runProgress').style.display = 'flex';
+    document.getElementById('runResult').style.display = 'none';
+    // enable buttons
+    btnRunModeLocal.disabled = false;
+    btnRunModeN8n.disabled = false;
+    btnRunModeLocal.style.opacity = '1';
+    btnRunModeN8n.style.opacity = '1';
+    btnRunModeLocal.style.pointerEvents = '';
+    btnRunModeN8n.style.pointerEvents = '';
+  }
+
+  function closeRunModal() {
+    runModalEl.style.display = 'none';
+  }
+
+  function showRunResult(icon, title, msgOpts) {
+    document.getElementById('runProgress').style.display = 'none';
+    var resultDiv = document.getElementById('runResult');
+    resultDiv.style.display = 'block';
+    document.getElementById('runResultIcon').textContent = icon;
+    document.getElementById('runResultTitle').textContent = title;
+    if (typeof msgOpts === 'string') {
+      document.getElementById('runResultMsg').textContent = msgOpts;
+    } else if (msgOpts) {
+      document.getElementById('runResultMsg').textContent = msgOpts.msg || '';
+      var urlDiv = document.getElementById('runResultUrl');
+      if (msgOpts.url) {
+        urlDiv.style.display = 'block';
+        document.getElementById('runResultUrlInput').value = msgOpts.url;
+      } else {
+        urlDiv.style.display = 'none';
+      }
+    }
+  }
+
+  btnRun.addEventListener('click', function() {
+    if (!Object.keys(nodes).length) {
+      showToast('Сначала добавьте агентов на холст', 'error');
+      return;
+    }
+    openRunModal();
+  });
+
+  btnRunModalClose.addEventListener('click', closeRunModal);
+  runModalEl.addEventListener('click', function(e) {
+    if (e.target === runModalEl) closeRunModal();
+  });
+
+  function generateScenarioAndRun() {
+    if (!GigaChat.generateScenario) {
+      showRunResult('❌', 'Ошибка', 'Функция generateScenario недоступна. Проверьте загрузку _shared.js');
+      showToast('generateScenario недоступна', 'error');
+      btnRunModeLocal.disabled = false;
+      btnRunModeN8n.disabled = false;
+      btnRunModeLocal.style.opacity = '1';
+      btnRunModeN8n.style.opacity = '1';
+      btnRunModeLocal.style.pointerEvents = '';
+      btnRunModeN8n.style.pointerEvents = '';
+      return;
+    }
+    var steps = GigaChat.generateScenario(nodes, connections, AGENT_TYPES);
+    if (!steps || !steps.length) {
+      showRunResult('❌', 'Ошибка', 'Не удалось построить сценарий. Проверьте соединения между нодами.');
+      showToast('Не удалось построить сценарий', 'error');
+      return;
+    }
+    // Mark local mode in progress
+    btnRunModeLocal.disabled = true;
+    btnRunModeN8n.disabled = true;
+    btnRunModeLocal.style.opacity = '0.5';
+    btnRunModeN8n.style.opacity = '0.5';
+    btnRunModeLocal.style.pointerEvents = 'none';
+    btnRunModeN8n.style.pointerEvents = 'none';
+
+    document.querySelector('.run-step-info').textContent =
+      'Сценарий готов: ' + steps.length + ' шагов. Открываем chain-player...';
+
+    // Encode full scenario (with name + steps + finalOutput) as base64
+    var jsonStr = JSON.stringify(steps);
+    var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+    var chainUrl = window.location.href.replace(/\/[^/]*$/, '/chain-player.html') + '#scenario=' + encodeURIComponent(b64);
+
+    setTimeout(function() {
+      showRunResult('✅', 'Сценарий готов',
+        { msg: steps.length + ' шагов. Цепочка открывается в chain-player.' });
+      window.open(chainUrl, '_blank');
+      // re-enable after 2s
+      setTimeout(function() {
+        btnRunModeLocal.disabled = false;
+        btnRunModeN8n.disabled = false;
+        btnRunModeLocal.style.opacity = '1';
+        btnRunModeN8n.style.opacity = '1';
+        btnRunModeLocal.style.pointerEvents = '';
+        btnRunModeN8n.style.pointerEvents = '';
+      }, 2000);
+    }, 300);
+  }
+
+  btnRunModeLocal.addEventListener('click', generateScenarioAndRun);
+
+  btnRunModeN8n.addEventListener('click', function() {
+    // n8n mode — create workflow via API
+    btnRunModeLocal.disabled = true;
+    btnRunModeN8n.disabled = true;
+    btnRunModeLocal.style.opacity = '0.5';
+    btnRunModeN8n.style.opacity = '0.5';
+    btnRunModeLocal.style.pointerEvents = 'none';
+    btnRunModeN8n.style.pointerEvents = 'none';
+
+    document.querySelector('.run-step-info').textContent = 'Создание workflow в n8n...';
+
+    try {
+      var workflowJson = exportN8nWorkflow(true); // silent mode — returns JSON string
+      var parsed;
+      try { parsed = JSON.parse(workflowJson); } catch(e) { parsed = null; }
+
+      var name = 'Chain: ' + (nodes.map(function(n) {
+        var typeId = n.dataset.agentTypeId || 'agent';
+        for (var k in AGENT_TYPES) {
+          if (AGENT_TYPES[k].id === typeId) return AGENT_TYPES[k].label;
+        }
+        return typeId;
+      }).join(' → ') || 'Untitled');
+
+      if (typeof GigaChat.n8nApi !== 'undefined' && GigaChat.n8nApi.createWorkflow) {
+        var n8nWorkflowData = {
+          name: name,
+          nodes: parsed && parsed.nodes ? parsed.nodes : [],
+          connections: parsed && parsed.connections ? parsed.connections : {},
+          settings: {},
+          staticData: null,
+          tags: []
+        };
+
+        GigaChat.n8nApi.createWorkflow(n8nWorkflowData).then(function(result) {
+          var wfId = result && (result.id || result.data && result.data.id);
+          if (wfId) {
+            // Try to activate
+            return GigaChat.n8nApi.activateWorkflow(wfId).then(function() {
+              var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+              var wfUrl = n8nBase + '/workflow/' + wfId;
+              showRunResult('✅', 'Workflow создан и активирован',
+                { msg: 'ID: ' + wfId, url: wfUrl });
+              showToast('Workflow #' + wfId + ' создан', 'success');
+            });
+          } else {
+            showRunResult('⚠️', 'Workflow создан (JSON)',
+              { msg: 'Ответ n8n: ' + JSON.stringify(result) });
+          }
+        }).catch(function(err) {
+          showRunResult('❌', 'Ошибка n8n', 'Не удалось создать workflow: ' + (err.message || err));
+          showToast('Ошибка n8n: ' + (err.message || err), 'error');
+        }).finally(function() {
+          btnRunModeLocal.disabled = false;
+          btnRunModeN8n.disabled = false;
+          btnRunModeLocal.style.opacity = '1';
+          btnRunModeN8n.style.opacity = '1';
+          btnRunModeLocal.style.pointerEvents = '';
+          btnRunModeN8n.style.pointerEvents = '';
+        });
+      } else {
+        // Fallback: download JSON
+        var blob = new Blob([workflowJson], {type: 'application/json'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'n8n-workflow.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showRunResult('⬇️', 'JSON скачан',
+          { msg: 'n8n API не настроен. Файл готов для ручного импорта.' });
+        btnRunModeLocal.disabled = false;
+        btnRunModeN8n.disabled = false;
+        btnRunModeLocal.style.opacity = '1';
+        btnRunModeN8n.style.opacity = '1';
+        btnRunModeLocal.style.pointerEvents = '';
+        btnRunModeN8n.style.pointerEvents = '';
+      }
+    } catch(e) {
+      showRunResult('❌', 'Ошибка', e.message || String(e));
+      showToast('Ошибка: ' + (e.message || e), 'error');
+      btnRunModeLocal.disabled = false;
+      btnRunModeN8n.disabled = false;
+      btnRunModeLocal.style.opacity = '1';
+      btnRunModeN8n.style.opacity = '1';
+      btnRunModeLocal.style.pointerEvents = '';
+      btnRunModeN8n.style.pointerEvents = '';
+    }
+  });
 
   // ============================================================
   // KEYBOARD SHORTCUTS
@@ -1427,6 +1776,7 @@ html{overflow-y:hidden!important}
   // INIT
   // ============================================================
   function initEditor() {
+    console.log('[ND] initEditor called');
     // Apply platform theme — inject the same CSS styles as other tools
     GigaChat.injectToolCss();
     // Start with zoom reset
@@ -1434,6 +1784,7 @@ html{overflow-y:hidden!important}
     // Draw updates periodically
     setInterval(updateConnections, 2000);
     showToast('Node Editor готов. Перетащите агенты на холст!', 'info');
+    console.log('[ND] initEditor done — handlers registered. isDraggingFromPort:', !!isDraggingFromPort, 'zoom:', zoomLevel);
   }
 
   // Expose for debugging
