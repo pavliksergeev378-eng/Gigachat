@@ -49,6 +49,7 @@ echo Langs:       %OCR_LANGS%
 echo EasyOCR dir: %OCR_EASYOCR_DIR%
 echo Endpoint:    http://localhost:%OCR_PORT%/extract
 echo Status:      http://localhost:%OCR_PORT%/status
+echo Tablicy:     avto-detekcija (Markdown)
 echo Stop:        Ctrl+C ili zakroj eto okno
 echo ===========================
 echo.

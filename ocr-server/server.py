@@ -4,9 +4,9 @@
 Делает то же, что коммерческий OCR-as-a-service, но полностью офлайн:
   - PDF: сначала пробует прямое извлечение через PyMuPDF (быстро, точно).
          Если в PDF мало текста — рендерит страницы как картинки и пропускает
-         через EasyOCR (для сканированных документов).
-  - DOCX: прямое извлечение через python-docx.
-  - Картинки (PNG/JPG/TIFF/BMP/WEBP): EasyOCR.
+         через EasyOCR с авто-детекцией таблиц (для сканированных документов).
+  - DOCX: прямое извлечение через python-docx с конвертацией таблиц в Markdown.
+  - Картинки (PNG/JPG/TIFF/BMP/WEBP): EasyOCR с авто-детекцией таблиц.
   - TXT/MD/CSV: просто читаем как UTF-8.
 
 n8n-workflow «organization-appeal» (и другие, использующие OCR) шлют файлы
@@ -35,7 +35,7 @@ API:
 
     POST /extract
         multipart: file=<binary>
-        resp: {"text": "...", "source": "pymupdf|pymupdf+easyocr|docx|easyocr|plain", "filename": "..."}
+        resp: {"text": "...", "source": "pymupdf|pymupdf+easyocr|pymupdf+easyocr+table|docx|docx+table|easyocr|easyocr+table|plain", "filename": "..."}
         Универсальный эндпоинт: PDF, DOCX, картинки, TXT — определяется по расширению.
 """
 
@@ -56,8 +56,9 @@ os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException
 
-# OpenCV импортируется один раз глобально (используется в детекции таблиц)
+# OpenCV и NumPy импортируются один раз глобально (используются в детекции таблиц)
 import cv2
+import numpy as np
 
 HOST = os.environ.get('OCR_HOST', '0.0.0.0')
 PORT = int(os.environ.get('OCR_PORT', '8055'))
@@ -414,48 +415,142 @@ def extract_pdf(data: bytes) -> tuple[str, str]:
         if len(text) >= PDF_MIN_TEXT:
             return text, 'pymupdf'
 
-        # Шаг 2: PDF без текстового слоя — рендерим страницы и OCR-им
-        log.info('PDF text too short (%d chars), falling back to EasyOCR', len(text))
+        # Шаг 2: PDF без текстового слоя — рендерим страницы и OCR-им с детекцией таблиц
+        log.info('PDF text too short (%d chars), falling back to EasyOCR with table detection', len(text))
+        from PIL import Image
         reader = get_easyocr()
         ocr_parts = []
+        table_count = 0
         for i, page in enumerate(doc):
             if i >= PDF_MAX_PAGES:
                 break
             # 2x — увеличенное разрешение для лучшего распознавания
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
             img_bytes = pix.tobytes('png')
-            # EasyOCR принимает numpy-array или путь к файлу
-            import numpy as np
-            from PIL import Image
             img = Image.open(io.BytesIO(img_bytes))
             arr = np.array(img)
+
+            # Пробуем детекцию таблицы
+            grid = detect_table_grid(arr)
+            if grid is not None:
+                rows, cols = grid
+                log.info('Page %d: table detected (%d rows × %d cols)',
+                         i + 1, len(rows) - 1, len(cols) - 1)
+                md = cells_to_markdown(arr, rows, cols, reader)
+                if md:
+                    ocr_parts.append(md)
+                    table_count += 1
+                    continue
+
+            # Fallback: обычный OCR для страницы
             result = reader.readtext(arr, detail=0, paragraph=True)
             ocr_parts.append('\n'.join(result))
-        full = '\n'.join(ocr_parts).strip()
-        return full, 'pymupdf+easyocr'
+        full = '\n\n---\n\n'.join(ocr_parts).strip()
+        source = 'pymupdf+easyocr+table' if table_count > 0 else 'pymupdf+easyocr'
+        return full, source
     finally:
         doc.close()
 
 
+def _docx_paragraph_text(p_xml) -> str:
+    """Извлекает полный текст из XML-элемента параграфа w:p."""
+    from docx.oxml.ns import qn
+    parts = []
+    for run in p_xml.iter(qn('w:r')):
+        for t in run.iter(qn('w:t')):
+            if t.text:
+                parts.append(t.text)
+    return ''.join(parts).strip()
+
+
+def _docx_table_to_markdown(tbl_xml) -> str:
+    """
+    Конвертирует XML-элемент w:tbl (таблица DOCX) в Markdown-таблицу.
+    Учитывает gridSpan для объединённых ячеек.
+    """
+    from docx.oxml.ns import qn
+    rows_xml = tbl_xml.findall(qn('w:tr'))
+    if len(rows_xml) < 2:
+        return ''
+
+    grid: list[list[str]] = []
+    max_cols = 0
+    for row_xml in rows_xml:
+        cells_xml = row_xml.findall(qn('w:tc'))
+        row_cells: list[str] = []
+        for cell_xml in cells_xml:
+            # Текст из всех параграфов в ячейке
+            cell_parts = []
+            for p in cell_xml.findall(qn('w:p')):
+                p_text = _docx_paragraph_text(p)
+                if p_text:
+                    cell_parts.append(p_text)
+            cell_text = '\n'.join(cell_parts).strip()
+            row_cells.append(cell_text)
+
+            # Обрабатываем gridSpan — добавляем пустые ячейки за объединённой
+            tc_pr = cell_xml.find(qn('w:tcPr'))
+            if tc_pr is not None:
+                grid_span = tc_pr.find(qn('w:gridSpan'))
+                if grid_span is not None:
+                    span_val = int(grid_span.get(qn('w:val'), '1'))
+                    for _ in range(span_val - 1):
+                        row_cells.append('')
+
+        if row_cells:
+            max_cols = max(max_cols, len(row_cells))
+            grid.append(row_cells)
+
+    if max_cols < 2 or len(grid) < 2:
+        return ''
+
+    # Выравниваем все строки по max_cols
+    for row in grid:
+        while len(row) < max_cols:
+            row.append('')
+
+    # Сборка Markdown
+    md_lines: list[str] = []
+    # Заголовок
+    md_lines.append('| ' + ' | '.join(grid[0]) + ' |')
+    # Разделитель
+    md_lines.append('| ' + ' | '.join(['---'] * max_cols) + ' |')
+    # Тело
+    for row in grid[1:]:
+        md_lines.append('| ' + ' | '.join(row) + ' |')
+
+    return '\n'.join(md_lines)
+
+
 def extract_docx(data: bytes) -> tuple[str, str]:
-    """DOCX: через python-docx (читаем параграфы + таблицы)."""
+    """DOCX: читаем параграфы и таблицы с сохранением структуры в Markdown."""
     import docx
     f = io.BytesIO(data)
     doc = docx.Document(f)
-    parts = []
-    for p in doc.paragraphs:
-        parts.append(p.text)
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                parts.append(cell.text)
-    text = '\n'.join(parts).strip()
-    return text, 'docx'
+    parts: list[str] = []
+    table_count = 0
+
+    # Идём по body XML, чтобы сохранить порядок параграфов и таблиц
+    body = doc.element.body
+    for child in body:
+        tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+        if tag == 'p':
+            text = _docx_paragraph_text(child)
+            if text:
+                parts.append(text)
+        elif tag == 'tbl':
+            table_count += 1
+            md = _docx_table_to_markdown(child)
+            if md:
+                parts.append(md)
+
+    text = '\n\n'.join(parts).strip()
+    source = 'docx+table' if table_count > 0 else 'docx'
+    return text, source
 
 
 def extract_image(data: bytes) -> tuple[str, str]:
-    """Картинки → EasyOCR."""
-    import numpy as np
+    """Картинки → детекция таблиц → EasyOCR (если таблицы нет — плоский текст)."""
     from PIL import Image
     reader = get_easyocr()
     img = Image.open(io.BytesIO(data))
@@ -463,6 +558,17 @@ def extract_image(data: bytes) -> tuple[str, str]:
     if img.mode not in ('RGB', 'L'):
         img = img.convert('RGB')
     arr = np.array(img)
+
+    # Пробуем детекцию таблицы
+    grid = detect_table_grid(arr)
+    if grid is not None:
+        rows, cols = grid
+        log.info('Table detected in image: %d rows × %d cols', len(rows) - 1, len(cols) - 1)
+        markdown = cells_to_markdown(arr, rows, cols, reader)
+        if markdown:
+            return markdown, 'easyocr+table'
+
+    # Fallback: обычный OCR
     result = reader.readtext(arr, detail=0, paragraph=True)
     text = '\n'.join(result).strip()
     return text, 'easyocr'
