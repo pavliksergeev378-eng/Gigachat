@@ -231,11 +231,11 @@
     } catch (e) {}
   }
 
-  // POST к auth proxy на том же порту (через serve-static.js /auth).
+  // POST в /webhook/planner-auth. payload — {action, ...}. Не бросает.
   // Возвращает {response:'ok'|'error', ...} или {response:'error', network:true}.
   async function authApiCall(payload) {
     try {
-      var res = await fetch('/auth', {
+      var res = await fetch(webhookUrl('planner-auth'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(payload || {}),
@@ -248,9 +248,34 @@
     }
   }
 
-  // ЗАГЛУШКА: авторизация отключена. Всегда возвращаем ok.
   async function authVerifyToken(token) {
-    return { ok: true, username: authGetUsername() || 'guest', display_name: '', is_admin: true };
+    var t = token || authGetToken();
+    if (!t) return { ok: false, reason: 'no_token' };
+    // Баг 1: при заходе на агент СРАЗУ после login.html изредка первая попытка
+    // verify уходит до того, как n8n/Postgres «увидели» последний UPDATE
+    // last_used_at от login. Тогда первый verify возвращает ok, но во время
+    // запроса юзера сюда уже мог попасть SSO-rotate (например, авто-refresh
+    // токена), и юзер видит «выкидывает с сессии одноразово».
+    // Простой retry с задержкой устраняет это: первая 401-выглядящая попытка
+    // ретраится через 600ms. Затраты ~600ms задержки в худшем случае.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      var data = await authApiCall({ action: 'verify', token: t });
+      if (data.response === 'ok' && !data.auth_required) {
+        return { ok: true, username: data.username || authGetUsername(), display_name: data.display_name || '', is_admin: !!data.is_admin };
+      }
+      // БД временно недоступна (sso вернул db_unavailable) — это НЕ истёкший токен.
+      // Не разлогиниваем: серверные запросы перепроверят токен, когда БД оживёт.
+      if (data && data.db_unavailable) {
+        return { ok: false, transient: true };
+      }
+      // Network error ИЛИ auth_required на ПЕРВОЙ попытке — даём один шанс.
+      if (attempt === 0) {
+        await new Promise(function (r) { setTimeout(r, 600); });
+        continue;
+      }
+      return { ok: false, reason: 'invalid', network: !!data.network };
+    }
+    return { ok: false, reason: 'invalid' };
   }
 
   // Считает путь до login.html относительно текущей страницы.
@@ -277,14 +302,50 @@
   // opts.onFail — вызывается перед редиректом (можно отменить, вернув false).
   // opts.allowOffline — true: при network-ошибке НЕ редиректить, дать onOk
   //                     (рассчитываем, что серверные запросы потом сами 401-нут).
-  // ЗАГЛУШКА: авторизация отключена. Всегда пропускаем.
   async function authRequireAuth(opts) {
     opts = opts || {};
     var res = await authVerifyToken();
-    try { localStorage.setItem(AUTH_USERNAME_KEY, 'guest'); } catch (e) {}
-    try { localStorage.setItem(AUTH_ISADMIN_KEY, '1'); } catch (e) {}
-    if (typeof opts.onOk === 'function') opts.onOk('guest');
-    return true;
+    if (res.ok) {
+      // Обновим username если сервер вернул свежий
+      if (res.username) {
+        try { localStorage.setItem(AUTH_USERNAME_KEY, res.username); } catch (e) {}
+      }
+      // Обновим ФИО из домена (для шапки после F5/перехода между агентами)
+      if (res.display_name) { try { localStorage.setItem(AUTH_DISPLAYNAME_KEY, res.display_name); } catch (e) {} }
+      // Флаг админа (для показа вкладки «База знаний»); авторитетный — с сервера.
+      try { localStorage.setItem(AUTH_ISADMIN_KEY, res.is_admin ? '1' : '0'); } catch (e) {}
+      // Изоляция аккаунтов: если на этом браузере сменился пользователь — вынести
+      // чужие сессии/настройки/кэши (см. authPurgeForeignUserData). До onOk, чтобы
+      // агент стартовал уже с чистым localStorage и тянул своё с сервера.
+      authPurgeForeignUserData(res.username || authGetUsername());
+      if (typeof opts.onOk === 'function') opts.onOk(res.username || authGetUsername());
+      return true;
+    }
+    // Сеть отвалилась — если страница допускает offline-режим, не редиректим.
+    // A6: username из cache МОЖЕТ быть устаревшим (cached от прошлой сессии),
+    // если миграция planner_username отработала криво. Caller должен понимать
+    // что это «best effort» и не показывать имя как авторитетное (например,
+    // дописать «(оффлайн)»). Сейчас опция нигде не включена.
+    if (res.network && opts.allowOffline) {
+      if (console && console.warn) console.warn('[auth] offline mode — username может быть устаревшим');
+      if (typeof opts.onOk === 'function') opts.onOk(authGetUsername());
+      return true;
+    }
+    // БД временно недоступна — НЕ разлогиниваем и НЕ редиректим (иначе сбой БД
+    // выкидывает всех пользователей + риск redirect-loop login↔агент). Токен НЕ
+    // трогаем; страница грузится, серверные запросы перепроверят токен позже.
+    if (res.transient) {
+      if (console && console.warn) console.warn('[auth] БД недоступна — продолжаем без разлогина');
+      if (typeof opts.onOk === 'function') opts.onOk(authGetUsername());
+      return true;
+    }
+    if (res.reason === 'invalid') authClearAuth();
+    if (typeof opts.onFail === 'function') {
+      var ret = opts.onFail(res);
+      if (ret === false) return false; // caller сам разобрался
+    }
+    authRedirectToLogin({ replace: true });
+    return false;
   }
 
   // Logout — серверный invalidate сессии + локальная очистка + редирект.

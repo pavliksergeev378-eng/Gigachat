@@ -6,7 +6,7 @@
 // Если n8n на этом же ПК, что и браузер — поставь 'localhost'.
 window.GIGACHAT_CONFIG = {
   // На работе: 'http://130.100.92.170:5678'. Локально: 'http://localhost:5678'
-  N8N_BASE: 'http://localhost:5678',
+  N8N_BASE: 'http://130.100.92.170:5678',
   // Pyodide для math-agent. Локальный бандл в Agents/lib/pyodide/
   // (скачать: см. README). Если файлов нет — math-agent сам подхватит
   // jsDelivr CDN, но первый запрос на математику пойдёт во внешнюю сеть.
