@@ -5573,16 +5573,31 @@
    * n8n API helpers
    * ============================================================ */
   function n8nApiFetch(path, options) {
-    var url = (cfg && cfg.N8N_BASE || 'http://localhost:5678') + '/rest/' + path.replace(/^\//, '');
-    options = options || {};
-    options.headers = options.headers || {};
-    try {
-      var token = authGetToken();
-      if (token) options.headers['X-Auth-Token'] = token;
-    } catch(e) {}
-    return fetch(url, options);
+	// Same-origin через Caddy reverse_proxy (решает CORS).
+	// Если n8n на том же хосте — прямой fetch (локальная разработка).
+	var n8nBase = (cfg && cfg.N8N_BASE || 'http://localhost:5678');
+	var url;
+	try {
+		var n8nOrigin = new URL(n8nBase).origin;
+		var pageOrigin = window.location.origin;
+		if (n8nOrigin === pageOrigin) {
+			// Один origin — прямой fetch
+			url = n8nBase + '/rest/' + path.replace(/^//, '');
+		} else {
+			// Разные origin — через Caddy proxy (same-origin)
+			url = pageOrigin + '/rest/' + path.replace(/^//, '');
+		}
+	} catch(e) {
+		url = n8nBase + '/rest/' + path.replace(/^//, '');
+	}
+	options = options || {};
+	options.headers = options.headers || {};
+	try {
+		var token = authGetToken();
+		if (token) options.headers['X-Auth-Token'] = token;
+	} catch(e) {}
+	return fetch(url, options);
   }
-
   // n8n API helpers, возвращающие JSON (автоматический .json() после fetch)
   function n8nFetchJson(path, options) {
     return n8nApiFetch(path, options).then(function(res) {

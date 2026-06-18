@@ -154,29 +154,49 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
   /* ============================================================
    * Парсинг сценария из URL
    * ============================================================ */
-  function parseScenario() {
+      function parseScenario() {
+    // Сначала проверяем sessionStorage (наиболее надёжный способ для window.open)
+    try {
+      var stored = sessionStorage.getItem('gc_scenario');
+      if (stored) {
+        sessionStorage.removeItem('gc_scenario'); // одноразовое чтение
+        return JSON.parse(stored);
+      }
+    } catch(e) {}
     // URL hash: #scenario=<base64>
     var hash = location.hash.replace(/^#/, '');
     if (hash) {
       try {
-        // Сначала decodeURIComponent (на случай если base64 содержит %-encoded символы)
         var hashDecoded = decodeURIComponent(hash);
-        // btoa/atob в браузере: для Unicode нужно decodeURIComponent(escape(raw))
-        var raw = atob(hashDecoded);
-        return JSON.parse(raw);
+        // Версия 1 (node-editor до фикса): btoa(unescape(encodeURIComponent(jsonStr)))
+        // Версия 2 (прямая): base64 без unicode-wrap
+        try {
+          var raw = atob(hashDecoded);
+          return JSON.parse(decodeURIComponent(escape(raw)));
+        } catch(e2) {
+          try {
+            var raw = atob(hashDecoded);
+            return JSON.parse(raw);
+          } catch(e3) {}
+        }
       } catch(e) {
         console.warn('[CP] Failed to parse hash scenario:', e);
         return null;
       }
     }
-    // Query: ?scenario=<base64> или ?workflow=<webhookUrl>
+    // Query: ?scenario=<base64> or ?workflow=<webhookUrl>
     var params = new URLSearchParams(location.search);
     var qs = params.get('scenario');
     if (qs) {
-      try { return JSON.parse(atob(qs)); } catch(e) { return null; }
+      try { return JSON.parse(decodeURIComponent(escape(atob(qs)))); } catch(e) {
+        try { return JSON.parse(atob(qs)); } catch(e2) {}
+      }
     }
-    // Если ничего нет — показываем демо-данные (для ручного тестирования)
+    // Nothing found -> show demo data
     return getDefaultScenario();
+  }
+  }
+
   }
 
   function getDefaultScenario() {

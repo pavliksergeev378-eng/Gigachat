@@ -1572,14 +1572,1320 @@ html{overflow-y:hidden!important}
     document.querySelector('.run-step-info').textContent =
       'Сценарий готов: ' + scenario.steps.length + ' шагов. Открываем chain-player...';
 
-    // Encode full scenario (with name + steps + finalOutput) as base64
+       // Сохраняем сценарий в sessionStorage (надёжнее, чем hash/base64)
+    // и открываем chain-player в новом окне
     var jsonStr = JSON.stringify(scenario);
-    var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
-    var chainUrl = window.location.href.replace(/\/[^/]*$/, '/chain-player.html') + '#scenario=' + encodeURIComponent(b64);
+    try { sessionStorage.setItem('gc_scenario', jsonStr); } catch(e) {}
+    var chainUrl = window.location.href.replace(//[^/]*$/, '/chain-player.html');
 
     setTimeout(function() {
       showRunResult('✅', 'Сценарий готов',
-        { msg: steps.length + ' шагов. Цепочка открывается в chain-player.' });
+        { msg: scenario.steps.length + ' шагов. Цепочка открывается в chain-player.' });
+      window.location.href = chainUrl;style="display:none">🔗 Открыть агента</a>
+    </div>
+  </div>
+  <div class="config-footer">
+    <button id="cfgDelete" style="background:transparent;color:var(--accent);border-color:rgba(233,69,96,0.3)">Удалить</button>
+    <button id="cfgCancel">Отмена</button>
+    <button class="primary" id="cfgSave">Сохранить</button>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="context-menu" id="contextMenu">
+  <button data-action="config">⚙️ Настроить</button>
+  <button data-action="duplicate">📋 Дублировать</button>
+  <button data-action="open">🔗 Открыть агента</button>
+  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+  <button data-action="delete" class="danger">🗑 Удалить</button>
+</div>
+
+<!-- RUN MODAL -->
+<div class="run-modal-overlay" id="runModal" style="display:none">
+  <div class="run-modal">
+    <div class="run-header">
+      <span style="font-weight:600;font-size:1.1em">▶ Запуск цепочки</span>
+      <button class="run-close-btn" id="runModalClose">✕</button>
+    </div>
+    <div class="run-body">
+      <div class="run-progress" id="runProgress">
+        <div class="run-step-info">Подготовка сценария...</div>
+        <div class="run-spinner"></div>
+      </div>
+      <div class="run-result" id="runResult" style="display:none">
+        <div class="run-result-icon" id="runResultIcon">✅</div>
+        <div class="run-result-title" id="runResultTitle">Готово</div>
+        <div class="run-result-msg" id="runResultMsg"></div>
+        <div class="run-result-url" id="runResultUrl" style="display:none">
+          <label>Ссылка на workflow:</label>
+          <input type="text" readonly id="runResultUrlInput" style="width:100%;margin-top:4px">
+        </div>
+      </div>
+    </div>
+    <div class="run-footer">
+      <button class="run-mode-btn" id="runModeLocal" style="background:var(--accent);color:#fff;border-color:var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;border:none;cursor:pointer">🚀 Запустить локально</button>
+      <button class="run-mode-btn" id="runModeN8n" style="background:transparent;color:var(--accent);border:1px solid var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer">☁️ Экспорт в n8n</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<style>
+/* Run modal */
+.run-modal-overlay {
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.5);z-index:2000;
+  display:flex;align-items:center;justify-content:center;
+}
+.run-modal {
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;
+  box-shadow:0 8px 32px rgba(0,0,0,0.3);
+}
+.run-header {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--border);
+}
+.run-close-btn {
+  background:none;border:none;font-size:1.2em;cursor:pointer;
+  color:var(--text);opacity:0.6;padding:4px 8px;border-radius:4px;
+}
+.run-close-btn:hover { opacity:1; background:var(--bg-hover); }
+.run-body {
+  padding:20px;
+}
+.run-progress {
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding:32px 0;
+}
+.run-step-info { color:var(--text-dim); font-size:0.95em; }
+.run-spinner {
+  width:32px;height:32px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg) } }
+.run-result {
+  text-align:center;padding:16px 0;
+}
+.run-result-icon { font-size:2.5em; margin-bottom:8px; }
+.run-result-title { font-weight:600; font-size:1.1em; margin-bottom:4px; }
+.run-result-msg { color:var(--text-dim); font-size:0.9em; margin-bottom:12px; }
+.run-result-url {
+  text-align:left;margin-top:12px;padding:12px;
+  background:var(--bg-hover);border-radius:var(--radius);
+}
+.run-result-url label { font-size:0.85em; color:var(--text-dim); }
+.run-result-url input {
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;padding:6px 8px;color:var(--text);font-size:0.85em;
+}
+.run-footer {
+  display:flex;gap:10px;padding:16px 20px;
+  border-top:1px solid var(--border);
+}
+.run-footer .run-mode-btn:hover { opacity:0.9; }
+.run-footer .run-mode-btn:active { transform:scale(0.98); }
+</style>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // BOOT — проверка авторизации, затем init
+  // ============================================================
+  (function _bootNodeEditor() {
+    GigaChat.auth.requireAuth({
+      onOk: function() {
+        document.documentElement.classList.remove('gc-pending-auth');
+        var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+        var ctrl = new AbortController();
+        var timer = setTimeout(function(){ ctrl.abort(); }, 3000);
+        fetch(n8nBase + '/healthz', { method: 'HEAD', signal: ctrl.signal })
+          .then(function() {
+            clearTimeout(timer);
+            initEditor();
+          })
+          .catch(function() {
+            clearTimeout(timer);
+            initEditor();
+          });
+      }
+    });
+  })();
+
+  // ============================================================
+  // AGENT TYPES — полный справочник для текущей платформы
+  // ============================================================
+  var AGENT_TYPES = [
+    // === АГЕНТЫ ===
+    { id:'chat',       label:'GigaChat Talk',    section:'agent', color:'#0984e3', icon:'💬', tag:'Диалог',
+      desc:'Свободный диалог с GigaChat', agentFile:'chat-agent.html',
+      ports:{in:['input','context'],out:['response']} },
+    { id:'rag',        label:'GigaChat Docs',    section:'agent', color:'#e17055', icon:'📄', tag:'Документы',
+      desc:'Поиск по документам, ответы на вопросы', agentFile:'rag-agent.html',
+      ports:{in:['query','docs'],out:['answer','sources']} },
+    { id:'math',       label:'GigaChat Math',    section:'agent', color:'#00b894', icon:'📐', tag:'Вычисления',
+      desc:'Решение задач, вычисления через Pyodide', agentFile:'math-agent.html',
+      ports:{in:['expression'],out:['result']} },
+    { id:'prompt',     label:'GigaChat Prompt',  section:'agent', color:'#6c5ce7', icon:'✏️', tag:'Промпты',
+      desc:'Создание, улучшение и оценка промптов', agentFile:'prompt-engineer.html',
+      ports:{in:['input','template'],out:['output']} },
+    { id:'plane',      label:'GigaChat Plane',   section:'agent', color:'#d63031', icon:'✈️', tag:'Проекты',
+      desc:'Управление проектами и задачами в Plane', agentFile:'plane-agent.html',
+      ports:{in:['request'],out:['result','error']} },
+    // === ИНСТРУМЕНТЫ ===
+    { id:'ocr',        label:'Поиск ФИО',        section:'tool', color:'#00cec9', icon:'🔍', tag:'Поиск',
+      desc:'Распознавание документов и поиск ФИО', agentFile:'OCR-search-FIO.html',
+      ports:{in:['image'],out:['text','fio']} },
+    { id:'ocrtable',   label:'OCR+Таблицы',      section:'tool', color:'#00cec9', icon:'📊', tag:'Таблицы',
+      desc:'Извлечение таблиц из изображений и PDF (post /extract-table)', agentFile:null,
+      ports:{in:['image'],out:['markdown','text']} },
+    { id:'docloader',  label:'Document Loader',  section:'tool', color:'#e17055', icon:'📁', tag:'Загрузка',
+      desc:'Загрузка файлов в базу данных', agentFile:'document-loader.html',
+      ports:{in:['file'],out:['content','meta']} },
+    { id:'textextract',label:'Text Extractor',   section:'tool', color:'#0984e3', icon:'📝', tag:'Извлечение',
+      desc:'PDF, Word, Excel, CSV — в чистый текст', agentFile:'text-extractor.html',
+      ports:{in:['document'],out:['text']} },
+    { id:'tablemerge', label:'Table Merger',     section:'tool', color:'#00b894', icon:'🔗', tag:'Таблицы',
+      desc:'Объединение таблиц из Word, Excel, CSV', agentFile:'table-merger.html',
+      ports:{in:['files'],out:['merged']} },
+    { id:'filemerge',  label:'File Merger',      section:'tool', color:'#f39c12', icon:'🗂️', tag:'Файлы',
+      desc:'Word, Excel, PDF, CSV и фото в один документ', agentFile:'file-merger.html',
+      ports:{in:['files'],out:['merged']} },
+    { id:'orgappeal',  label:'Организация обращения', section:'tool', color:'#d63031', icon:'📋', tag:'Обращения',
+      desc:'Извлечение ФИО, СНИЛС и 4-ступенчатая идентификация', agentFile:'organization-appeal.html',
+      ports:{in:['appeal'],out:['decision','status']} },
+    { id:'compliance', label:'Compliance Check',  section:'tool', color:'#27ae60', icon:'🛡️', tag:'Безопасность',
+      desc:'Анализ нарушений ИБ и подбор компенсирующих мер', agentFile:'compliance-agent.html',
+      ports:{in:['report'],out:['decision','measures']} },
+    // === СЛУЖЕБНЫЕ ===
+    { id:'router',     label:'Router',           section:'system',color:'#fdcb6e', icon:'🔀', tag:'Маршрутизация',
+      desc:'Условная маршрутизация между нодами', agentFile:null,
+      ports:{in:['input'],out:['route_a','route_b','route_c']} },
+  ];
+
+  var SECTIONS = [
+    { key:'agent',  label:'🤖 Агенты' },
+    { key:'tool',   label:'🛠 Инструменты' },
+    { key:'system', label:'⚙️ Служебные' },
+  ];
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  var nodes = {};          // id -> node object
+  var connections = [];    // [{fromId,fromPort,toId,toPort}]
+  var nextNodeId = 1;
+  var selectedNodeId = null;
+  var configNodeId = null;
+  var zoomLevel = 1;
+  var isDraggingFromPort = null; // {nodeId, portName, type:'in'|'out', dotEl}
+  var dragState = null;    // {nodeId, startX, startY, mouseStartX, mouseStartY}
+
+  var canvasInner = document.getElementById('canvasInner');
+  var canvasViewport = document.getElementById('canvasViewport');
+  var canvasWrap = document.getElementById('canvasWrap');
+  var connectionsLayer = document.getElementById('connectionsLayer');
+  var connectionGroup = document.getElementById('connectionGroup');
+
+  // Auto-set canvas size
+  var CANVAS_W = 5000, CANVAS_H = 5000;
+  canvasInner.style.width = CANVAS_W + 'px';
+  canvasInner.style.height = CANVAS_H + 'px';
+
+  // ============================================================
+  // BUILD PALETTE
+  // ============================================================
+  function buildPalette() {
+    var list = document.getElementById('paletteList');
+    list.innerHTML = '';
+    SECTIONS.forEach(function(sec) {
+      var types = AGENT_TYPES.filter(function(t){ return t.section === sec.key; });
+      if (!types.length) return;
+      var hdr = document.createElement('div');
+      hdr.className = 'palette-section';
+      hdr.textContent = sec.label;
+      list.appendChild(hdr);
+      types.forEach(function(t){
+        var el = document.createElement('div');
+        el.className = 'palette-item';
+        el.draggable = true;
+        el.dataset.typeId = t.id;
+        el.innerHTML = '<span class="badge" style="background:'+t.color+'"></span>'+
+          '<span class="pi-label">'+t.label+'</span>'+
+          '<span class="pi-type">'+t.tag+'</span>';
+        el.addEventListener('dragstart', function(e) {
+          e.dataTransfer.setData('text/plain', t.id);
+          e.dataTransfer.effectAllowed = 'copy';
+          var ghost = document.getElementById('dragGhost');
+          ghost.textContent = '+ ' + t.label;
+          ghost.style.display = 'block';
+          e.dataTransfer.setDragImage(ghost, 10, 10);
+          setTimeout(function(){ ghost.style.display = 'none'; }, 0);
+        });
+        list.appendChild(el);
+      });
+    });
+  }
+  buildPalette();
+
+  // ============================================================
+  // CANVAS DRAG & DROP
+  // ============================================================
+  canvasWrap.addEventListener('dragover', function(e) { e.preventDefault(); });
+  canvasWrap.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var typeId = e.dataTransfer.getData('text/plain');
+    if (!typeId) return;
+    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
+    if (!type) return;
+    var rect = canvasWrap.getBoundingClientRect();
+    var x = (e.clientX - rect.left + canvasViewport.scrollLeft) / zoomLevel - 95;
+    var y = (e.clientY - rect.top + canvasViewport.scrollTop) / zoomLevel - 20;
+    x = Math.max(0, x); y = Math.max(0, y);
+    createNode(typeId, x, y);
+  });
+
+  // Prevent accidental drag on other elements
+  document.addEventListener('dragover', function(e){ e.preventDefault(); });
+  document.addEventListener('drop', function(e){ e.preventDefault(); });
+
+  // ============================================================
+  // CREATE / DELETE / DUPLICATE NODES
+  // ============================================================
+  function createNode(typeId, x, y, overrides) {
+    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
+    if (!type) return null;
+    var id = 'n' + (nextNodeId++);
+    var node = {
+      id: id,
+      typeId: typeId,
+      label: type.label,
+      desc: type.desc,
+      tag: type.tag || '',
+      color: type.color,
+      agentFile: type.agentFile,
+      ports: JSON.parse(JSON.stringify(type.ports)),
+      params: '{}',
+      x: x || 100,
+      y: y || 100,
+    };
+    if (overrides) {
+      if (overrides.label) node.label = overrides.label;
+      if (overrides.desc) node.desc = overrides.desc;
+      if (overrides.tag) node.tag = overrides.tag;
+      if (overrides.params) node.params = overrides.params;
+      if (overrides.x != null) node.x = overrides.x;
+      if (overrides.y != null) node.y = overrides.y;
+    }
+    nodes[id] = node;
+    renderNode(id);
+    updateNodeCount();
+    updateConnections();
+    return id;
+  }
+
+  function deleteNode(id) {
+    if (!nodes[id]) return;
+    // Remove connections involving this node
+    connections = connections.filter(function(c){
+      return c.fromId !== id && c.toId !== id;
+    });
+    // Remove DOM
+    var el = document.getElementById('node-' + id);
+    if (el) el.remove();
+    delete nodes[id];
+    if (selectedNodeId === id) selectedNodeId = null;
+    if (configNodeId === id) closeConfig();
+    updateNodeCount();
+    updateConnections();
+  }
+
+  function duplicateNode(id) {
+    var src = nodes[id];
+    if (!src) return;
+    var newId = createNode(src.typeId, src.x + 30, src.y + 30, {
+      label: src.label + ' (copy)',
+      desc: src.desc,
+      tag: src.tag,
+      params: src.params,
+    });
+    if (newId) showToast('Дублирована нода: ' + src.label, 'info');
+  }
+
+  function clearAll() {
+    if (Object.keys(nodes).length === 0) return;
+    if (!confirm('Очистить весь холст?')) return;
+    Object.keys(nodes).forEach(function(id){ deleteNode(id); });
+    connections = [];
+    updateConnections();
+    selectedNodeId = null;
+    if (configNodeId) { closeConfig(); }
+    showToast('Холст очищен', 'info');
+  }
+
+  // ============================================================
+  // RENDER NODE
+  // ============================================================
+  function renderNode(id) {
+    var node = nodes[id];
+    if (!node) return;
+    var existing = document.getElementById('node-' + id);
+    if (existing) existing.remove();
+
+    var el = document.createElement('div');
+    el.className = 'node node-type-' + node.typeId;
+    el.id = 'node-' + id;
+    el.style.left = node.x + 'px';
+    el.style.top = node.y + 'px';
+    el.dataset.nodeId = id;
+
+    // Header
+    var hdr = document.createElement('div');
+    hdr.className = 'node-header';
+    hdr.innerHTML = '<span class="node-title">'+escapeHtml(node.label)+'</span>'+
+      '<span class="node-actions"><button class="node-config-btn" title="Настроить" data-action="config">⚙️</button></span>';
+    el.appendChild(hdr);
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'node-body';
+    body.textContent = node.desc || node.tag || '';
+    body.title = node.desc || '';
+    el.appendChild(body);
+
+    // Input ports
+    if (node.ports.in && node.ports.in.length) {
+      node.ports.in.forEach(function(pname){
+        var port = document.createElement('div');
+        port.className = 'node-port';
+        port.dataset.portName = pname;
+        port.dataset.portDir = 'in';
+        port.innerHTML = '<span class="dot" data-port="'+pname+'"></span><span class="node-port-label">'+pname+'</span>';
+        el.appendChild(port);
+      });
+    }
+
+    // Output ports
+    if (node.ports.out && node.ports.out.length) {
+      node.ports.out.forEach(function(pname){
+        var port = document.createElement('div');
+        port.className = 'node-port output';
+        port.dataset.portName = pname;
+        port.dataset.portDir = 'out';
+        port.style.justifyContent = 'flex-end';
+        port.innerHTML = '<span class="node-port-label">'+pname+'</span><span class="dot" data-port="'+pname+'" style="border-color:#f8a"></span>';
+        el.appendChild(port);
+      });
+    }
+
+    // Events
+    el.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      // Ignore if target is a button or inside a port (dot or label)
+      var t = e.target;
+      if (t.tagName === 'BUTTON' || t.closest('.node-port') || t.closest('.node-actions')) return;
+      selectNode(id);
+      startDrag(e, id);
+    });
+
+    el.addEventListener('dblclick', function(e) {
+      openConfig(id);
+    });
+
+    // Config button
+    el.querySelector('.node-config-btn').addEventListener('click', function(e) {
+      e.stopPropagation();
+      openConfig(id);
+    });
+
+    canvasInner.appendChild(el);
+  }
+
+  // ============================================================
+  // NODE DRAG
+  // ============================================================
+  function startDrag(e, nodeId) {
+    var node = nodes[nodeId];
+    if (!node) return;
+    dragState = {
+      nodeId: nodeId,
+      startX: node.x,
+      startY: node.y,
+      mouseStartX: e.clientX,
+      mouseStartY: e.clientY,
+    };
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragState) return;
+    var dx = (e.clientX - dragState.mouseStartX) / zoomLevel;
+    var dy = (e.clientY - dragState.mouseStartY) / zoomLevel;
+    var node = nodes[dragState.nodeId];
+    if (!node) { dragState = null; return; }
+    node.x = Math.max(0, dragState.startX + dx);
+    node.y = Math.max(0, dragState.startY + dy);
+    var el = document.getElementById('node-' + dragState.nodeId);
+    if (el) {
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+    }
+    updateConnections();
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (isDraggingFromPort) {
+      console.log('[ND] mouseup — isDraggingFromPort present, calling finishPortDrag');
+      // Try to connect to a port under cursor
+      finishPortDrag(e);
+    } else {
+      if (dragState) console.log('[ND] mouseup — dragState present, clearing');
+    }
+    if (dragState) {
+      dragState = null;
+    }
+  });
+
+  // ============================================================
+  // PORT DRAG CONNECTIONS
+  // ============================================================
+  document.addEventListener('mousedown', function(e) {
+    var dot = e.target.closest('.dot');
+    if (!dot || !dot.closest('.node-port')) return;
+    var portEl = dot.closest('.node-port');
+    var nodeEl = portEl.closest('.node');
+    if (!nodeEl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var nodeId = nodeEl.dataset.nodeId;
+    var portName = portEl.dataset.portName;
+    var dir = portEl.dataset.portDir;
+    console.log('[ND] mousedown on port:', nodeId, portName, dir);
+    if (dir === 'in') { console.log('[ND] input port — ignored'); return; } // только из output в input
+    isDraggingFromPort = {
+      nodeId: nodeId,
+      portName: portName,
+      type: dir,
+      dotEl: dot,
+      mouseStartX: e.clientX,
+      mouseStartY: e.clientY,
+    };
+    console.log('[ND] isDraggingFromPort SET:', isDraggingFromPort);
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDraggingFromPort) return;
+    if (!isDraggingFromPort.mouseStartX) { console.warn('[ND] isDraggingFromPort has no mouseStartX'); return; }
+    // Draw temp line
+    var tempLine = connectionsLayer.querySelector('.temp-line');
+    if (!tempLine) {
+      tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      tempLine.classList.add('temp-line');
+      connectionsLayer.appendChild(tempLine);
+    }
+    var wrapRect = canvasWrap.getBoundingClientRect();
+    // Координаты внутри SVG (canvasInner) с учётом transform: scale()
+    // scrollLeft/scrollTop в пикселях холста (unscaled)
+    var x1 = (isDraggingFromPort.mouseStartX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+    var y1 = (isDraggingFromPort.mouseStartY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+    var x2 = (e.clientX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+    var y2 = (e.clientY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+    var path = bezierPath(x1, y1, x2, y2);
+    tempLine.setAttribute('d', path);
+  });
+
+  function finishPortDrag(e) {
+    var tempLine = connectionsLayer.querySelector('.temp-line');
+    if (tempLine) tempLine.remove();
+
+    console.log('[ND] finishPortDrag — mouseup at', e.clientX, e.clientY);
+
+    // Ищем входной порт строго по bounding-координатам (elementFromPoint
+    // не работает под SVG даже с pointer-events:none — он возвращает
+    // элемент SVG, а не `.dot` под ним). Поэтому используем только fallback.
+    var allDots = document.querySelectorAll('.node-port .dot');
+    var bestPort = null;
+    var bestDist = 20; // радиус захвата
+    console.log('[ND] checking', allDots.length, 'dots');
+    allDots.forEach(function(d){
+      var portEl = d.closest('.node-port');
+      if (!portEl || portEl.dataset.portDir !== 'in') return;
+      var r = d.getBoundingClientRect();
+      var cx = r.left + r.width / 2;
+      var cy = r.top + r.height / 2;
+      var dist = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2));
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPort = portEl;
+        console.log('[ND] best so far:', bestPort.dataset.portName, 'dist:', dist);
+      }
+    });
+
+    if (bestPort) {
+      var targetNodeId = bestPort.closest('.node').dataset.nodeId;
+      var targetPort = bestPort.dataset.portName;
+      console.log('[ND] found target:', targetNodeId, targetPort);
+      if (targetNodeId !== isDraggingFromPort.nodeId) {
+        addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
+      } else {
+        console.log('[ND] same node — skipped');
+      }
+    } else {
+      console.log('[ND] no target port found');
+    }
+    isDraggingFromPort = null;
+  }
+
+  function addConnection(fromId, fromPort, toId, toPort) {
+    console.log('[ND] addConnection:', fromId, fromPort, '->', toId, toPort);
+    // Prevent duplicate
+    var dup = connections.some(function(c){
+      return c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort;
+    });
+    if (dup) { showToast('Соединение уже существует', 'error'); return; }
+    connections.push({ fromId: fromId, fromPort: fromPort, toId: toId, toPort: toPort });
+    console.log('[ND] connections after push:', connections.length);
+    updateConnections();
+    showToast('Соединение создано', 'success');
+  }
+
+  function removeConnection(fromId, fromPort, toId, toPort) {
+    connections = connections.filter(function(c){
+      return !(c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort);
+    });
+    updateConnections();
+  }
+
+  // ============================================================
+  // DRAW SVG CONNECTIONS
+  // ============================================================
+  function updateConnections() {
+    // Clear
+    connectionGroup.innerHTML = '';
+
+    console.log('[ND] updateConnections, count:', connections.length);
+    connections.forEach(function(c){
+      var fromPort = getPortEl(c.fromId, c.fromPort, 'out');
+      var toPort = getPortEl(c.toId, c.toPort, 'in');
+      if (!fromPort || !toPort) {
+        // Важно: если порты не найдены — соединение не рисуется.
+        // Удаляем "мёртвое" соединение, чтобы не захламлять массив.
+        console.warn('[ND] Connection skipped — port not found', c, 'fromPort:', fromPort, 'toPort:', toPort);
+        return;
+      }
+
+      // getBoundingClientRect выдаёт координаты с учётом transform: scale().
+      // Чтобы получить координаты внутри canvasInner (SVG-слой), делим на zoomLevel,
+      // а scroll уже в unscaled-координатах (scrollLeft/scrollTop не масштабируются).
+      var fromRect = fromPort.getBoundingClientRect();
+      var toRect = toPort.getBoundingClientRect();
+      var wrapRect = canvasWrap.getBoundingClientRect();
+
+      var x1 = (fromRect.left + fromRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+      var y1 = (fromRect.top + fromRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+      var x2 = (toRect.left + toRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+      var y2 = (toRect.top + toRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.classList.add('connection');
+      path.setAttribute('d', bezierPath(x1, y1, x2, y2));
+      path.dataset.fromId = c.fromId;
+      path.dataset.fromPort = c.fromPort;
+      path.dataset.toId = c.toId;
+      path.dataset.toPort = c.toPort;
+
+      // Click to delete
+      path.addEventListener('click', function(e) {
+        e.stopPropagation();
+        removeConnection(c.fromId, c.fromPort, c.toId, c.toPort);
+      });
+
+      connectionGroup.appendChild(path);
+    });
+  }
+
+  function getPortEl(nodeId, portName, dir) {
+    var nodeEl = document.getElementById('node-' + nodeId);
+    if (!nodeEl) return null;
+    var portEl = nodeEl.querySelector('.node-port[data-port-name="'+portName+'"][data-port-dir="'+dir+'"]');
+    if (!portEl) return null;
+    return portEl.querySelector('.dot');
+  }
+
+  function bezierPath(x1, y1, x2, y2) {
+    var dx = Math.abs(x2 - x1) * 0.5;
+    if (dx < 40) dx = 40;
+    return 'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2;
+  }
+
+  // ============================================================
+  // SELECT / DESELECT
+  // ============================================================
+  function selectNode(id) {
+    // Deselect all
+    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+    selectedNodeId = id;
+    var el = document.getElementById('node-' + id);
+    if (el) el.classList.add('selected');
+  }
+
+  document.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.node') || e.target.closest('.config-overlay') || e.target.closest('.context-menu')) return;
+    if (e.target.closest('.dot') && isDraggingFromPort) return;
+    hideContextMenu();
+    // Deselect
+    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+    selectedNodeId = null;
+  });
+
+  // ============================================================
+  // CONFIG PANEL
+  // ============================================================
+  function openConfig(id) {
+    var node = nodes[id];
+    if (!node) return;
+    configNodeId = id;
+    var overlay = document.getElementById('configOverlay');
+    document.getElementById('configTitle').textContent = '⚙️ ' + node.label;
+    document.getElementById('cfgName').value = node.label;
+    document.getElementById('cfgType').value = AGENT_TYPES.find(function(t){ return t.id === node.typeId; })?.label || node.typeId;
+    document.getElementById('cfgDesc').value = node.desc || '';
+    document.getElementById('cfgTag').value = node.tag || '';
+    document.getElementById('cfgParams').value = node.params || '{}';
+
+    var openBtn = document.getElementById('cfgOpenAgent');
+    if (node.agentFile) {
+      openBtn.style.display = 'inline-flex';
+      openBtn.href = node.agentFile;
+    } else {
+      openBtn.style.display = 'none';
+    }
+
+    overlay.classList.add('open');
+  }
+
+  function closeConfig() {
+    document.getElementById('configOverlay').classList.remove('open');
+    configNodeId = null;
+  }
+
+  function saveConfig() {
+    var id = configNodeId;
+    if (!id || !nodes[id]) return;
+    var node = nodes[id];
+    node.label = document.getElementById('cfgName').value.trim() || node.label;
+    node.desc = document.getElementById('cfgDesc').value.trim();
+    node.tag = document.getElementById('cfgTag').value.trim();
+    var paramsRaw = document.getElementById('cfgParams').value.trim();
+    if (paramsRaw) {
+      try { JSON.parse(paramsRaw); node.params = paramsRaw; }
+      catch(e) { showToast('Ошибка: параметры не являются валидным JSON', 'error'); return; }
+    } else {
+      node.params = '{}';
+    }
+    // Re-render
+    renderNode(id);
+    updateConnections();
+    closeConfig();
+    showToast('Нода обновлена: ' + node.label, 'success');
+  }
+
+  // Config panel buttons
+  document.getElementById('configClose').addEventListener('click', closeConfig);
+  document.getElementById('cfgCancel').addEventListener('click', closeConfig);
+  document.getElementById('cfgSave').addEventListener('click', saveConfig);
+  document.getElementById('cfgDelete').addEventListener('click', function() {
+    if (configNodeId && confirm('Удалить ноду ' + nodes[configNodeId]?.label + '?')) {
+      deleteNode(configNodeId);
+      closeConfig();
+    }
+  });
+
+  // ============================================================
+  // CONTEXT MENU
+  // ============================================================
+  var contextTargetId = null;
+
+  document.addEventListener('contextmenu', function(e) {
+    var nodeEl = e.target.closest('.node');
+    if (!nodeEl) { hideContextMenu(); return; }
+    e.preventDefault();
+    contextTargetId = nodeEl.dataset.nodeId;
+    selectNode(contextTargetId);
+    var menu = document.getElementById('contextMenu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+  });
+
+  document.getElementById('contextMenu').addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var action = btn.dataset.action;
+    var id = contextTargetId;
+    hideContextMenu();
+    if (!id || !nodes[id]) return;
+    switch (action) {
+      case 'config': openConfig(id); break;
+      case 'duplicate': duplicateNode(id); break;
+      case 'delete': deleteNode(id); break;
+      case 'open':
+        var n = nodes[id];
+        if (n.agentFile) window.open(n.agentFile, '_blank');
+        else showToast('Для этой ноды нет отдельной страницы', 'info');
+        break;
+    }
+  });
+
+  function hideContextMenu() {
+    document.getElementById('contextMenu').style.display = 'none';
+    contextTargetId = null;
+  }
+
+  // ============================================================
+  // ZOOM
+  // ============================================================
+  function setZoom(level) {
+    zoomLevel = Math.max(0.2, Math.min(3, level));
+    canvasInner.style.transform = 'scale(' + zoomLevel + ')';
+    document.getElementById('zoomDisplay').textContent = Math.round(zoomLevel * 100) + '%';
+  }
+
+  document.getElementById('btnZoomIn').addEventListener('click', function(){ setZoom(zoomLevel + 0.2); });
+  document.getElementById('btnZoomOut').addEventListener('click', function(){ setZoom(zoomLevel - 0.2); });
+  document.getElementById('btnZoomReset').addEventListener('click', function(){ setZoom(1); });
+
+  canvasWrap.addEventListener('wheel', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(zoomLevel + delta);
+    }
+  }, { passive: false });
+
+  // ============================================================
+  // AUTO LAYOUT (simple grid)
+  // ============================================================
+  function autoLayout() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) return;
+    var cols = Math.ceil(Math.sqrt(ids.length));
+    var spacingX = 220;
+    var spacingY = 180;
+    var startX = 50;
+    var startY = 50;
+    ids.forEach(function(id, i){
+      var node = nodes[id];
+      if (!node) return;
+      node.x = startX + (i % cols) * spacingX;
+      node.y = startY + Math.floor(i / cols) * spacingY;
+      var el = document.getElementById('node-' + id);
+      if (el) {
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+      }
+    });
+    updateConnections();
+    showToast('Авторасположение выполнено', 'info');
+  }
+
+  document.getElementById('btnAutoLayout').addEventListener('click', autoLayout);
+
+  // ============================================================
+  // SAVE / LOAD JSON
+  // ============================================================
+  function saveJSON() {
+    var data = {
+      version: 2,
+      timestamp: new Date().toISOString(),
+      nodes: {},
+      connections: connections,
+      nextNodeId: nextNodeId,
+    };
+    Object.keys(nodes).forEach(function(id){
+      var n = nodes[id];
+      data.nodes[id] = {
+        typeId: n.typeId,
+        label: n.label,
+        desc: n.desc,
+        tag: n.tag,
+        params: n.params,
+        x: n.x,
+        y: n.y,
+      };
+    });
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'node-editor-schema.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Схема сохранена', 'success');
+  }
+
+  function loadJSON(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = JSON.parse(e.target.result);
+        if (!data.nodes) { showToast('Ошибка: неверный формат файла', 'error'); return; }
+
+        // Clear existing
+        Object.keys(nodes).forEach(function(id){ deleteNode(id); });
+        connections = [];
+
+        // Load nodes
+        Object.keys(data.nodes).forEach(function(id){
+          var ndata = data.nodes[id];
+          if (!data.nodes) return;
+          createNode(ndata.typeId, ndata.x, ndata.y, {
+            label: ndata.label,
+            desc: ndata.desc,
+            tag: ndata.tag,
+            params: ndata.params,
+          });
+        });
+
+        // Map old IDs to new IDs — simple sequential IDs
+        // Since we just created them in order, we can map sequentially
+        var oldIds = Object.keys(data.nodes);
+        var newIds = Object.keys(nodes);
+        if (data.connections) {
+          data.connections.forEach(function(c){
+            var ciFrom = oldIds.indexOf(c.fromId);
+            var ciTo = oldIds.indexOf(c.toId);
+            if (ciFrom >= 0 && ciTo >= 0 && newIds[ciFrom] && newIds[ciTo]) {
+              connections.push({
+                fromId: newIds[ciFrom],
+                fromPort: c.fromPort,
+                toId: newIds[ciTo],
+                toPort: c.toPort,
+              });
+            }
+          });
+        }
+
+        if (data.nextNodeId) nextNodeId = data.nextNodeId;
+        updateConnections();
+        updateNodeCount();
+        showToast('Схема загружена (' + Object.keys(nodes).length + ' нод)', 'success');
+      } catch(err) {
+        showToast('Ошибка загрузки: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  document.getElementById('btnSave').addEventListener('click', saveJSON);
+  document.getElementById('btnLoad').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
+  document.getElementById('fileInput').addEventListener('change', loadJSON);
+  document.getElementById('btnClear').addEventListener('click', clearAll);
+
+  // ============================================================
+  // EXPORT TO n8n
+  // ============================================================
+  function exportConfig() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) {
+      showToast('Добавьте хотя бы одну ноду на холст', 'error');
+      return;
+    }
+
+    var data = {
+      version: 2,
+      name: 'GigaChat Workflow — Node Editor',
+      generatedAt: new Date().toISOString(),
+      nodes: {},
+      connections: connections,
+    };
+
+    ids.forEach(function(id){
+      var n = nodes[id];
+      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
+      data.nodes[id] = {
+        type: n.typeId,
+        label: n.label,
+        description: n.desc,
+        tag: n.tag,
+        webhook_url: type && type.agentFile ? GigaChat.webhookUrl(type.id) : null,
+        agent_file: n.agentFile,
+        params: (function(){
+          try { return JSON.parse(n.params || '{}'); } catch(e) { return {}; }
+        })(),
+      };
+    });
+
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'n8n-workflow-config.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Экспорт n8n выполнен', 'success');
+  }
+
+  document.getElementById('btnExport').addEventListener('click', exportConfig);
+
+  // ============================================================
+  // EXPORT AS n8n WORKFLOW (последовательная цепочка по связям)
+  // ============================================================
+  function exportN8nWorkflow(silent) {
+    var ids = Object.keys(nodes);
+    if (!ids.length) {
+      if (silent) return '';
+      showToast('Добавьте хотя бы одну ноду на холст', 'error');
+      return;
+    }
+
+    // Строим граф соединений: для каждой ноды находим предков и потомков
+    var childrenOf = {};  // nodeId -> массив {toId, toPort}
+    var parentsOf = {};   // nodeId -> массив {fromId, fromPort}
+    connections.forEach(function(c){
+      (childrenOf[c.fromId] = childrenOf[c.fromId] || []).push({ toId: c.toId, toPort: c.toPort });
+      (parentsOf[c.toId] = parentsOf[c.toId] || []).push({ fromId: c.fromId, fromPort: c.fromPort });
+    });
+
+    // Находим стартовые ноды (те, у кого нет родителей)
+    var startIds = ids.filter(function(id){ return !parentsOf[id] || !parentsOf[id].length; });
+    if (!startIds.length) {
+      if (silent) return '';
+      showToast('Нет начальных нод (нужно соединение выход -> вход)', 'error');
+      return;
+    }
+
+    // Топологическая сортировка (BFS от стартовых)
+    var sorted = [];
+    var visited = {};
+    var queue = startIds.slice();
+    while (queue.length) {
+      var id = queue.shift();
+      if (visited[id]) continue;
+      visited[id] = true;
+      sorted.push(id);
+      (childrenOf[id] || []).forEach(function(child){
+        // Добавляем потомка только если все его предки уже посещены
+        var allParentsVisited = (parentsOf[child.toId] || []).every(function(p){
+          return visited[p.fromId];
+        });
+        if (allParentsVisited && !visited[child.toId]) {
+          queue.push(child.toId);
+        }
+      });
+    }
+
+    // Добавляем ноды, не попавшие в топосорт (изолированные)
+    ids.forEach(function(id){
+      if (!visited[id]) sorted.push(id);
+    });
+
+    var n8nNodes = [];
+    var n8nConnections = {};
+    var connectorId = 1;
+    var baseX = 120;
+
+    // 1) Webhook-нода (вход)
+    var webhookNode = {
+      id: 'wh-' + connectorId++,
+      name: 'Webhook',
+      type: 'n8n-nodes-base.webhook',
+      typeVersion: 2.1,
+      position: [baseX, 200],
+      parameters: {
+        httpMethod: 'POST',
+        path: 'gigachat-workflow',
+        responseMode: 'lastNode',
+        options: {}
+      }
+    };
+    n8nNodes.push(webhookNode);
+
+    // 2) Code-нода парсинга
+    var parseNode = {
+      id: 'prs-' + connectorId++,
+      name: 'Парсинг запроса',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [baseX + 340, 200],
+      parameters: {
+        jsCode: [
+          'const body = $input.first().json.body || {};',
+          'const msg = (body.message || body.text || \'\').trim();',
+          'const sid = (body.session_id || \'default\').trim();',
+          'const tok = String((body.token || body.apiKey || \'\')).trim();',
+          '',
+          'if (!msg || msg.length < 2) {',
+          '  return [{json: {valid: 0, error: \'Введите сообщение\'}}];',
+          '}',
+          'return [{json: {valid: 1, text: msg, session_id: sid, token: tok}}];'
+        ].join('\n')
+      }
+    };
+    n8nNodes.push(parseNode);
+    n8nConnections['wh-' + (connectorId - 2)] = {
+      main: [[{ node: 'prs-' + (connectorId - 1), type: 'main', index: 0 }]]
+    };
+
+    // 3) Создаём ноды-агенты по топосорту с маппингом origId -> n8nId
+    var origToN8n = {};  // original nodeId -> n8n node id
+    var agentNodeInfos = []; // {origId, n8nId, idx}
+    sorted.forEach(function(id, idx) {
+      var n = nodes[id];
+      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
+      if (!type) return;
+
+      var webhookUrl = GigaChat.webhookUrl(type.id);
+      var n8nAgentId = 'ag-' + (connectorId++);
+
+      // Параметры для body (общие для всех агентов)
+      var paramsMap = [
+        { name: 'message', value: '={{ $json.text || $json.message }}' },
+        { name: 'session_id', value: '={{ $json.session_id }}' },
+        { name: 'token', value: '={{ $json.token }}' },
+        { name: 'body', value: '={{ $json }}' }
+      ];
+      try {
+        var userParams = JSON.parse(n.params || '{}');
+        Object.keys(userParams).forEach(function(k){
+          if (['message','session_id','token','body'].indexOf(k) < 0) {
+            paramsMap.push({ name: k, value: String(userParams[k]) });
+          }
+        });
+      } catch(e) {}
+
+      var agentNode = webhookUrl ? {
+        id: n8nAgentId,
+        name: n.label || type.label,
+        type: 'n8n-nodes-base.httpRequest',
+        typeVersion: 4.1,
+        position: [baseX + 340 + (idx + 1) * 360, 200],
+        parameters: {
+          url: webhookUrl,
+          method: 'POST',
+          authentication: 'none',
+          sendBody: true,
+          bodyParameters: { parameters: paramsMap },
+          options: { timeout: 120000 }
+        }
+      } : {
+        id: n8nAgentId,
+        name: n.label || type.label,
+        type: 'n8n-nodes-base.code',
+        typeVersion: 2,
+        position: [baseX + 340 + (idx + 1) * 360, 200],
+        parameters: {
+          jsCode: [
+            '// ' + (n.label || type.label) + ' (' + n.typeId + ')',
+            '// Параметры: ' + (n.params || '{}'),
+            'return $input.all();'
+          ].join('\n')
+        }
+      };
+      n8nNodes.push(agentNode);
+      origToN8n[id] = n8nAgentId;
+      agentNodeInfos.push({ origId: id, n8nId: n8nAgentId, idx: idx });
+    });
+
+    if (!agentNodeInfos.length) {
+      if (silent) return '';
+      showToast('Не удалось создать ноды агентов', 'error');
+      return;
+    }
+
+    // 4) Строим n8n-соединения ПО РЕАЛЬНЫМ СВЯЗЯМ с холста
+    //    parseNode -> первая нода (если у неё нет родителей)
+    //    Если у ноды есть родители на холсте -> соединяем fromId -> toId
+    //    Если у ноды НЕТ родителей -> соединяем parseNode -> эта нода
+    //    Ноды без детей -> соединяем -> Respond
+
+    var hasIncomingConnection = {}; // отслеживаем, кого уже соединили
+    connections.forEach(function(c) {
+      var fromN8n = origToN8n[c.fromId];
+      var toN8n = origToN8n[c.toId];
+      if (!fromN8n || !toN8n) return;
+      n8nConnections[fromN8n] = n8nConnections[fromN8n] || { main: [[], []] };
+      n8nConnections[fromN8n].main[0].push({ node: toN8n, type: 'main', index: 0 });
+      hasIncomingConnection[toN8n] = true;
+    });
+
+    // Ноды без входящих соединений (стартовые) -> соединяем с parseNode
+    agentNodeInfos.forEach(function(info) {
+      if (!hasIncomingConnection[info.n8nId]) {
+        n8nConnections[parseNode.id] = n8nConnections[parseNode.id] || { main: [[], []] };
+        n8nConnections[parseNode.id].main[0].push({ node: info.n8nId, type: 'main', index: 0 });
+        hasIncomingConnection[info.n8nId] = true;
+      }
+    });
+
+    // 5) Respond-нода (выход)
+    var respondId = 'rsp-' + connectorId++;
+    var respondNode = {
+      id: respondId,
+      name: 'Ответ',
+      type: 'n8n-nodes-base.respondToWebhook',
+      typeVersion: 1,
+      position: [baseX + 340 + (sorted.length + 1) * 360, 200],
+      parameters: {
+        respondWith: 'json',
+        responseBody: '={{ JSON.stringify($json) }}',
+        options: {
+          responseHeaders: {
+            entries: [
+              { name: 'Access-Control-Allow-Origin', value: '*' },
+              { name: 'Access-Control-Allow-Headers', value: 'Content-Type' }
+            ]
+          }
+        }
+      }
+    };
+    n8nNodes.push(respondNode);
+
+    // Ноды без исходящих соединений -> соединяем с Respond
+    var hasOutgoingConnection = {};
+    Object.keys(n8nConnections).forEach(function(fromId) {
+      (n8nConnections[fromId].main[0] || []).forEach(function(conn) {
+        hasOutgoingConnection[fromId] = true;
+      });
+    });
+    agentNodeInfos.forEach(function(info) {
+      if (!hasOutgoingConnection[info.n8nId]) {
+        n8nConnections[info.n8nId] = n8nConnections[info.n8nId] || { main: [[], []] };
+        n8nConnections[info.n8nId].main[0].push({ node: respondId, type: 'main', index: 0 });
+      }
+    });
+
+    var workflow = {
+      name: 'GigaChat Workflow',
+      nodes: n8nNodes,
+      connections: n8nConnections,
+      settings: {
+        timezone: 'Europe/Moscow',
+        saveManualExecutions: true,
+        callerPolicy: 'workflowsFromSameOwner'
+      },
+      staticData: null,
+      tags: []
+    };
+
+    var jsonStr = JSON.stringify(workflow, null, 2);
+    if (silent) return jsonStr;
+
+    var blob = new Blob([jsonStr], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'gigachat-workflow.n8n.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Workflow сгенерирован — импортируй в n8n UI (Settings -> Import)', 'success');
+  }
+
+  document.getElementById('btnExportN8nWorkflow').addEventListener('click', exportN8nWorkflow);
+
+  // ============================================================
+  // RUN CHAIN (▶ Run)
+  // ============================================================
+  var runModalEl = document.getElementById('runModal');
+  var btnRun = document.getElementById('btnRun');
+  var btnRunModalClose = document.getElementById('runModalClose');
+  var btnRunModeLocal = document.getElementById('runModeLocal');
+  var btnRunModeN8n = document.getElementById('runModeN8n');
+
+  function openRunModal() {
+    runModalEl.style.display = 'flex';
+    document.getElementById('runProgress').style.display = 'flex';
+    document.getElementById('runResult').style.display = 'none';
+    // enable buttons
+    btnRunModeLocal.disabled = false;
+    btnRunModeN8n.disabled = false;
+    btnRunModeLocal.style.opacity = '1';
+    btnRunModeN8n.style.opacity = '1';
+    btnRunModeLocal.style.pointerEvents = '';
+    btnRunModeN8n.style.pointerEvents = '';
+  }
+
+  function closeRunModal() {
+    runModalEl.style.display = 'none';
+  }
+
+  function showRunResult(icon, title, msgOpts) {
+    document.getElementById('runProgress').style.display = 'none';
+    var resultDiv = document.getElementById('runResult');
+    resultDiv.style.display = 'block';
+    document.getElementById('runResultIcon').textContent = icon;
+    document.getElementById('runResultTitle').textContent = title;
+    if (typeof msgOpts === 'string') {
+      document.getElementById('runResultMsg').textContent = msgOpts;
+    } else if (msgOpts) {
+      document.getElementById('runResultMsg').textContent = msgOpts.msg || '';
+      var urlDiv = document.getElementById('runResultUrl');
+      if (msgOpts.url) {
+        urlDiv.style.display = 'block';
+        document.getElementById('runResultUrlInput').value = msgOpts.url;
+      } else {
+        urlDiv.style.display = 'none';
+      }
+    }
+  }
+
+  btnRun.addEventListener('click', function() {
+    if (!Object.keys(nodes).length) {
+      showToast('Сначала добавьте агентов на холст', 'error');
+      return;
+    }
+    openRunModal();
+  });
+
+  btnRunModalClose.addEventListener('click', closeRunModal);
+  runModalEl.addEventListener('click', function(e) {
+    if (e.target === runModalEl) closeRunModal();
+  });
+
+  function generateScenarioAndRun() {
+    if (!GigaChat.generateScenario) {
+      showRunResult('❌', 'Ошибка', 'Функция generateScenario недоступна. Проверьте загрузку _shared.js');
+      showToast('generateScenario недоступна', 'error');
+      btnRunModeLocal.disabled = false;
+      btnRunModeN8n.disabled = false;
+      btnRunModeLocal.style.opacity = '1';
+      btnRunModeN8n.style.opacity = '1';
+      btnRunModeLocal.style.pointerEvents = '';
+      btnRunModeN8n.style.pointerEvents = '';
+      return;
+    }
+    var scenario = GigaChat.generateScenario(nodes, connections, AGENT_TYPES);
+    if (!scenario || !scenario.steps || !scenario.steps.length) {
+      showRunResult('❌', 'Ошибка', 'Не удалось построить сценарий. Проверьте соединения между нодами.');
+      showToast('Не удалось построить сценарий', 'error');
+      return;
+    }
+    // Mark local mode in progress
+    btnRunModeLocal.disabled = true;
+    btnRunModeN8n.disabled = true;
+    btnRunModeLocal.style.opacity = '0.5';
+    btnRunModeN8n.style.opacity = '0.5';
+    btnRunModeLocal.style.pointerEvents = 'none';
+    btnRunModeN8n.style.pointerEvents = 'none';
+
+    document.querySelector('.run-step-info').textContent =
+      'Сценарий готов: ' + scenario.steps.length + ' шагов. Открываем chain-player...';
+
+       // Сохраняем сценарий в sessionStorage (надёжнее, чем hash/base64)
+    // и открываем chain-player в новом окне
+    var jsonStr = JSON.stringify(scenario);
+    try { sessionStorage.setItem('gc_scenario', jsonStr); } catch(e) {}
+    var chainUrl = window.location.href.replace(//[^/]*$/, '/chain-player.html');
+
+    setTimeout(function() {
+      showRunResult('✅', 'Сценарий готов',
+        { msg: scenario.steps.length + ' шагов. Цепочка открывается в chain-player.' });
       window.open(chainUrl, '_blank');
       // re-enable after 2s
       setTimeout(function() {
@@ -1590,8 +2896,7 @@ html{overflow-y:hidden!important}
         btnRunModeLocal.style.pointerEvents = '';
         btnRunModeN8n.style.pointerEvents = '';
       }, 2000);
-    }, 300);
-  }
+    }, 300);  }
 
   btnRunModeLocal.addEventListener('click', generateScenarioAndRun);
 
