@@ -9259,16 +9259,16 @@
                 // Строка расписания
                 tblXml += '<w:tr>';
                 schedCells.forEach(function(cell){
-                    // Заменяем Record Separator на разрыв строки внутри ячейки
-                    var xmlCell = _gcEscapeXml(cell);
-                    // Разделяем по RS для multi-line в ячейке
+                    // Каждая строка — свой <w:p> внутри ячейки (правильный OOXML)
                     var parts = cell.split(RS);
-                    var cellXml = '';
-                    parts.forEach(function(p, pi){
-                        if (pi > 0) cellXml += '<w:br/>';
-                        cellXml += _gcEscapeXml(p);
-                    });
-                    tblXml += _gcTblCell(cellXml, false);
+                    var cellXml = parts.map(function(p){
+                        var escaped = _gcEscapeXml(p);
+                        var font = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>';
+                        return '<w:p><w:pPr><w:jc w:val="left"/></w:pPr>' +
+                            '<w:r><w:rPr>' + font + '<w:sz w:val="18"/></w:rPr>' +
+                            '<w:t xml:space="preserve">' + escaped + '</w:t></w:r></w:p>';
+                    }).join('');
+                    tblXml += '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + cellXml + '</w:tc>';
                 });
                 tblXml += '</w:tr>';
 
@@ -9291,10 +9291,14 @@
             }
             function _gcTblCell(text, bold) {
                 var font = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>';
-                var props = bold
-                    ? '<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/>' + font + '<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>'
-                    : '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr>' + font + '<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' + text + '</w:t></w:r>';
-                return '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + props + '</w:tc>';
+                if (bold) {
+                    return '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' +
+                        '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>' +
+                        '<w:r><w:rPr><w:b/>' + font + '<w:sz w:val="18"/></w:rPr>' +
+                        '<w:t xml:space="preserve">' + text + '</w:t></w:r></w:p></w:tc>';
+                }
+                return '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' +
+                    '<w:p>' + text + '</w:p></w:tc>';
             }
             function _gcEscapeXml(s) {
                 if (s == null) return '';
