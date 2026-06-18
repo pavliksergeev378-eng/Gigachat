@@ -9190,90 +9190,101 @@
 
                 // Генерируем XML для .docx
                 var RS = ''; // Record Separator — разделитель строк в ячейке (как в импорте)
-                // Формируем строки таблицы: заголовок (дни), темы, расписание
-                var dayCells = [];
-                var themeCells = [];
-                var schedCells = [];
-                var hasThemes = false;
-                days.forEach(function(d, idx){
-                    var label = d.dateLabel;
-                    dayCells.push(label);
-                    // Тема = первая задача (как тема дня), если есть
-                    var theme = d.tasks.length ? d.tasks[0].name : '';
-                    if (theme) hasThemes = true;
-                    themeCells.push(theme);
-                    // Расписание: все задачи
-                    var schedParts = d.tasks.map(function(t, ti){
-                        var prefix = (ti > 0 ? RS : '');
-                        // Пытаемся извлечь время из названия (формат "09:00–10:00 Название")
-                        var timeMatch = t.name.match(/^\(?\s*(\d{1,2}[:.]\d{2})\s*[–—\-]\s*(\d{1,2}[:.]\d{2})/);
-                        if (timeMatch) {
-                            var remainder = t.name.replace(timeMatch[0], '').trim();
-                            var fullName = remainder || t.name;
-                            var descAdd = t.desc ? ('\n' + t.desc) : '';
-                            return timeMatch[1] + '–' + timeMatch[2] + ' ' + fullName + descAdd;
-                        }
-                        // Без времени — просто имя
-                        return t.name + (t.desc ? ('\n' + t.desc) : '');
-                    });
-                    schedCells.push(schedParts.join(''));
-                });
-                if (!hasThemes) { themeCells = []; }
-
-                // Год из dateFrom
                 var year = new Date(dateFrom + 'T12:00:00').getFullYear();
+                var font = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>';
 
                 // Строим OOXML
                 var bodyXml = '<w:body>';
                 // Заголовок — год (как в импорте парсится из текста вне таблицы)
-                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
-                bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/></w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('Неделя: ' + _gcFormatDateRu(start) + ' – ' + _gcFormatDateRu(end)) + '</w:t></w:r></w:p>';
+                bodyXml += '<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/>' + font + '</w:rPr><w:t xml:space="preserve">' + _gcEscapeXml('План на ' + year + ' год') + '</w:t></w:r></w:p>';
 
-                // Таблица
-                var tblXml = '<w:tbl>';
-                tblXml += '<w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>' +
-                    '<w:top w:val="single" w:sz="4" w:color="333333"/>' +
-                    '<w:bottom w:val="single" w:sz="4" w:color="333333"/>' +
-                    '<w:left w:val="single" w:sz="4" w:color="333333"/>' +
-                    '<w:right w:val="single" w:sz="4" w:color="333333"/>' +
-                    '<w:insideH w:val="single" w:sz="4" w:color="333333"/>' +
-                    '<w:insideV w:val="single" w:sz="4" w:color="333333"/>' +
-                    '</w:tblBorders></w:tblPr>';
+                // Разбиваем дни на блоки по 7 (для читаемости в Word)
+                for (var blockStart = 0; blockStart < days.length; blockStart += 7) {
+                    var blockDays = days.slice(blockStart, blockStart + 7);
+                    if (blockDays.length < 1) continue;
 
-                // Строка дней
-                tblXml += '<w:tr>';
-                dayCells.forEach(function(cell){
-                    tblXml += _gcTblCell(_gcEscapeXml(cell), true);
-                });
-                tblXml += '</w:tr>';
+                    // Подзаголовок недели
+                    var firstDate = _gcFormatDateRu(new Date(blockDays[0].iso + 'T12:00:00'));
+                    var lastDate = _gcFormatDateRu(new Date(blockDays[blockDays.length - 1].iso + 'T12:00:00'));
+                    if (blockStart > 0) bodyXml += '<w:p><w:pPr><w:spacing w:after="60"/></w:pPr></w:p>';
+                    bodyXml += '<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/>' + font + '</w:rPr><w:t xml:space="preserve">' + _gcEscapeXml(firstDate + ' – ' + lastDate) + '</w:t></w:r></w:p>';
 
-                // Строка тем (если есть)
-                if (hasThemes) {
+                    // Собираем ячейки для этого блока
+                    var dayCells = [];
+                    var themeCells = [];
+                    var schedCells = [];
+                    var hasThemes = false;
+                    blockDays.forEach(function(d, idx){
+                        var label = d.dateLabel;
+                        dayCells.push(label);
+                        // Тема = первая задача (как тема дня), если есть
+                        var theme = d.tasks.length ? d.tasks[0].name : '';
+                        if (theme) hasThemes = true;
+                        themeCells.push(theme);
+                        // Расписание: все задачи
+                        var schedParts = d.tasks.map(function(t, ti){
+                            var prefix = (ti > 0 ? RS : '');
+                            // Пытаемся извлечь время из названия (формат "09:00–10:00 Название")
+                            var timeMatch = t.name.match(/^\(?\s*(\d{1,2}[:.]\d{2})\s*[\u2013\u2014\-]\s*(\d{1,2}[:.]\d{2})/);
+                            if (timeMatch) {
+                                var remainder = t.name.replace(timeMatch[0], '').trim();
+                                var fullName = remainder || t.name;
+                                var descAdd = t.desc ? ('\n' + t.desc) : '';
+                                return timeMatch[1] + '–' + timeMatch[2] + ' ' + fullName + descAdd;
+                            }
+                            // Без времени — просто имя
+                            return t.name + (t.desc ? ('\n' + t.desc) : '');
+                        });
+                        schedCells.push(schedParts.join(''));
+                    });
+                    if (!hasThemes) { themeCells = []; }
+
+                    // Таблица
+                    var tblXml = '<w:tbl>';
+                    tblXml += '<w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>' +
+                        '<w:top w:val="single" w:sz="4" w:color="333333"/>' +
+                        '<w:bottom w:val="single" w:sz="4" w:color="333333"/>' +
+                        '<w:left w:val="single" w:sz="4" w:color="333333"/>' +
+                        '<w:right w:val="single" w:sz="4" w:color="333333"/>' +
+                        '<w:insideH w:val="single" w:sz="4" w:color="333333"/>' +
+                        '<w:insideV w:val="single" w:sz="4" w:color="333333"/>' +
+                        '</w:tblBorders></w:tblPr>';
+
+                    // Строка дней
                     tblXml += '<w:tr>';
-                    themeCells.forEach(function(cell){
-                        tblXml += _gcTblCell(_gcEscapeXml(cell), false);
+                    dayCells.forEach(function(cell){
+                        tblXml += _gcTblCell(_gcEscapeXml(cell), true);
                     });
                     tblXml += '</w:tr>';
+
+                    // Строка тем (если есть)
+                    if (hasThemes) {
+                        tblXml += '<w:tr>';
+                        themeCells.forEach(function(cell){
+                            tblXml += _gcTblCell(_gcEscapeXml(cell), false);
+                        });
+                        tblXml += '</w:tr>';
+                    }
+
+                    // Строка расписания
+                    tblXml += '<w:tr>';
+                    schedCells.forEach(function(cell){
+                        // Каждая строка — свой <w:p> внутри ячейки (правильный OOXML)
+                        var parts = cell.split(RS);
+                        var cellXml = parts.map(function(p){
+                            var escaped = _gcEscapeXml(p);
+                            return '<w:p><w:pPr><w:jc w:val="left"/></w:pPr>' +
+                                '<w:r><w:rPr>' + font + '<w:sz w:val="18"/></w:rPr>' +
+                                '<w:t xml:space="preserve">' + escaped + '</w:t></w:r></w:p>';
+                        }).join('');
+                        tblXml += '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + cellXml + '</w:tc>';
+                    });
+                    tblXml += '</w:tr>';
+
+                    tblXml += '</w:tbl>';
+                    bodyXml += tblXml;
                 }
-
-                // Строка расписания
-                tblXml += '<w:tr>';
-                schedCells.forEach(function(cell){
-                    // Каждая строка — свой <w:p> внутри ячейки (правильный OOXML)
-                    var parts = cell.split(RS);
-                    var cellXml = parts.map(function(p){
-                        var escaped = _gcEscapeXml(p);
-                        var font = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>';
-                        return '<w:p><w:pPr><w:jc w:val="left"/></w:pPr>' +
-                            '<w:r><w:rPr>' + font + '<w:sz w:val="18"/></w:rPr>' +
-                            '<w:t xml:space="preserve">' + escaped + '</w:t></w:r></w:p>';
-                    }).join('');
-                    tblXml += '<w:tc><w:tcPr><w:tcW w:w="' + Math.round(7000 / 7) + '" w:type="dxa"/></w:tcPr>' + cellXml + '</w:tc>';
-                });
-                tblXml += '</w:tr>';
-
-                tblXml += '</w:tbl>';
-                bodyXml += tblXml + '</w:body>';
+                bodyXml += '</w:body>';
 
                 // Собираем .docx
                 var docxBuf = await _gcBuildDocx(bodyXml);
