@@ -51,4 +51,21 @@
 		output stderr
 		level ERROR
 	}
+
+	# Прокси healthz — решает CORS при проверке доступности n8n.
+	# Браузер на http://8765 видит запрос к /n8n-healthz — same-origin,
+	# CORS не нужен. Caddy проксирует на n8n /healthz.
+	@healthz path /n8n-healthz
+	reverse_proxy @healthz http://130.100.92.170:5678/healthz {
+		header_up Host {upstream_hostport}
+	}
+
+	# CORS-заголовки для n8n webhook'ов (кросс-доменные запросы от chain-player
+	# и Node Editor к n8n). Без них браузер блокирует POST из браузерного fetch.
+	# Добавляем ко всем ответам, т.к. n8n сам не отдаёт Access-Control-Allow-*.
+	header {
+		Access-Control-Allow-Origin "*"
+		Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type, X-Auth-Token"
+	}
 }
