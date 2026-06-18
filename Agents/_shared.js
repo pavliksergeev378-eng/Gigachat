@@ -5471,7 +5471,8 @@
       activateWorkflow: n8nActivateWorkflow,
       deactivateWorkflow: n8nDeactivateWorkflow,
       deleteWorkflow: n8nDeleteWorkflow,
-    }
+    },
+    n8nFetchJson: n8nFetchJson,
   };
 
   /* ============================================================
@@ -5582,8 +5583,16 @@
     return fetch(url, options);
   }
 
+  // n8n API helpers, возвращающие JSON (автоматический .json() после fetch)
+  function n8nFetchJson(path, options) {
+    return n8nApiFetch(path, options).then(function(res) {
+      if (!res.ok) return res.text().then(function(body) { throw new Error('HTTP ' + res.status + ': ' + (body || res.statusText).slice(0, 500)); });
+      return res.json();
+    });
+  }
+
   function n8nCreateWorkflow(workflowData) {
-    return n8nApiFetch('workflows', {
+    return n8nFetchJson('workflows', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(workflowData),
@@ -5591,7 +5600,7 @@
   }
 
   function n8nActivateWorkflow(workflowId) {
-    return n8nApiFetch('workflows/' + workflowId + '/activate', { method: 'POST' });
+    return n8nFetchJson('workflows/' + workflowId + '/activate', { method: 'POST' });
   }
 
   function n8nDeactivateWorkflow(workflowId) {
