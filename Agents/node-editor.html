@@ -1611,8 +1611,9 @@ html{overflow-y:hidden!important}
       var parsed;
       try { parsed = JSON.parse(workflowJson); } catch(e) { parsed = null; }
 
-      var name = 'Chain: ' + (nodes.map(function(n) {
-        var typeId = n.dataset.agentTypeId || 'agent';
+      var name = 'Chain: ' + (Object.keys(nodes).map(function(id) {
+        var n = nodes[id];
+        var typeId = n.typeId || 'agent';
         for (var k in AGENT_TYPES) {
           if (AGENT_TYPES[k].id === typeId) return AGENT_TYPES[k].label;
         }

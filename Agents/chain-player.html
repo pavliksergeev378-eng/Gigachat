@@ -510,13 +510,24 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
       setHeaderStatus('done', 'Готово');
       removeLoadingMsg();
 
-      // Try to extract final output
+      // Try to extract final output — ищем в outputs по пути
       var finalOutput = null;
-      if (scenario.finalOutput) {
-        var paths = scenario.finalOutput.split('.');
-        var lastData = result.results[result.results.length - 1]?.output;
-        if (lastData) {
-          finalOutput = paths.reduce(function(o, k){ return (o && o[k] !== undefined) ? o[k] : undefined; }, { steps: { last: lastData } });
+      if (scenario.finalOutput && result.results && result.results.length) {
+        // finalOutput = steps.step_1.output.response — берём из последнего шага
+        var lastResult = result.results[result.results.length - 1];
+        if (lastResult && lastResult.output) {
+          var paths = scenario.finalOutput.split('.');
+          // paths = ['steps', 'step_1', 'output', 'response']
+          // lastResult.output содержит { response: '...' }
+          // Срезаем 'steps.step_1.' — оставляем 'output.response'
+          if (paths.length >= 2) {
+            var innerPath = paths.slice(2).join('.');
+            finalOutput = innerPath.split('.').reduce(function(o, k){ return (o && o[k] !== undefined) ? o[k] : undefined; }, lastResult.output);
+          }
+          if (finalOutput === null || finalOutput === undefined) {
+            // fallback — просто текст ответа
+            finalOutput = extractText(lastResult.output);
+          }
         }
       }
       if (finalOutput === null || finalOutput === undefined) {
