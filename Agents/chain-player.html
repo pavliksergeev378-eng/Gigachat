@@ -277,9 +277,14 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
         var controller = new AbortController();
         var timeout = setTimeout(function(){ controller.abort(); }, (step.timeout || 120) * 1000);
 
+        // Добавляем токен авторизации в заголовки
+        var authHeaders = { 'Content-Type': 'application/json' };
+        var token = GigaChat.auth.getToken();
+        if (token) authHeaders['X-Auth-Token'] = token;
+
         return fetch(step.webhookUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify(stepInput),
           signal: controller.signal,
         }).then(function(res) {
@@ -602,26 +607,29 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
   var bootFlags = { n8nOnline: false, serverOnline: false };
 
   function boot() {
-    // Авторизация отключена. Просто проверяем n8n и запускаем.
-    var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+    // Проверка авторизации. Если токен невалидный — редирект на login.
+    GigaChat.auth.requireAuth({
+      onOk: function(username) {
+        // Проверка n8n
+        var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+        document.documentElement.classList.remove('gc-pending-auth');
 
-    document.documentElement.classList.remove('gc-pending-auth');
-
-    // Проверка n8n
-    var n8nCtrl = new AbortController();
-    var n8nTimer = setTimeout(function(){ n8nCtrl.abort(); }, 2000);
-    fetch(n8nBase + '/healthz', { method: 'HEAD', signal: n8nCtrl.signal })
-      .then(function() {
-        clearTimeout(n8nTimer);
-        bootFlags.n8nOnline = true;
-        initUI();
-      })
-      .catch(function() {
-        clearTimeout(n8nTimer);
-        bootFlags.n8nOnline = false;
-        console.log('[CP] n8n недоступен — работаем с симулированными ответами');
-        initUI();
-      });
+        var n8nCtrl = new AbortController();
+        var n8nTimer = setTimeout(function(){ n8nCtrl.abort(); }, 2000);
+        fetch(n8nBase + '/healthz', { method: 'HEAD', signal: n8nCtrl.signal })
+          .then(function() {
+            clearTimeout(n8nTimer);
+            bootFlags.n8nOnline = true;
+            initUI();
+          })
+          .catch(function() {
+            clearTimeout(n8nTimer);
+            bootFlags.n8nOnline = false;
+            console.log('[CP] n8n недоступен — работаем с симулированными ответами');
+            initUI();
+          });
+      }
+    });
   }
 
   boot();

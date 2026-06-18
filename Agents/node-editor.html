@@ -389,21 +389,26 @@ html{overflow-y:hidden!important}
   'use strict';
 
   // ============================================================
-  // BOOT — авторизация отключена
+  // BOOT — проверка авторизации, затем init
   // ============================================================
   (function _bootNodeEditor() {
-    var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
-    var ctrl = new AbortController();
-    var timer = setTimeout(function(){ ctrl.abort(); }, 3000);
-    fetch(n8nBase + '/healthz', { method: 'HEAD', signal: ctrl.signal })
-      .then(function() {
-        clearTimeout(timer);
-        initEditor();
-      })
-      .catch(function() {
-        clearTimeout(timer);
-        initEditor();
-      });
+    GigaChat.auth.requireAuth({
+      onOk: function() {
+        document.documentElement.classList.remove('gc-pending-auth');
+        var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+        var ctrl = new AbortController();
+        var timer = setTimeout(function(){ ctrl.abort(); }, 3000);
+        fetch(n8nBase + '/healthz', { method: 'HEAD', signal: ctrl.signal })
+          .then(function() {
+            clearTimeout(timer);
+            initEditor();
+          })
+          .catch(function() {
+            clearTimeout(timer);
+            initEditor();
+          });
+      }
+    });
   })();
 
   // ============================================================
@@ -1550,8 +1555,8 @@ html{overflow-y:hidden!important}
       btnRunModeN8n.style.pointerEvents = '';
       return;
     }
-    var steps = GigaChat.generateScenario(nodes, connections, AGENT_TYPES);
-    if (!steps || !steps.length) {
+    var scenario = GigaChat.generateScenario(nodes, connections, AGENT_TYPES);
+    if (!scenario || !scenario.steps || !scenario.steps.length) {
       showRunResult('❌', 'Ошибка', 'Не удалось построить сценарий. Проверьте соединения между нодами.');
       showToast('Не удалось построить сценарий', 'error');
       return;
@@ -1565,10 +1570,10 @@ html{overflow-y:hidden!important}
     btnRunModeN8n.style.pointerEvents = 'none';
 
     document.querySelector('.run-step-info').textContent =
-      'Сценарий готов: ' + steps.length + ' шагов. Открываем chain-player...';
+      'Сценарий готов: ' + scenario.steps.length + ' шагов. Открываем chain-player...';
 
     // Encode full scenario (with name + steps + finalOutput) as base64
-    var jsonStr = JSON.stringify(steps);
+    var jsonStr = JSON.stringify(scenario);
     var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
     var chainUrl = window.location.href.replace(/\/[^/]*$/, '/chain-player.html') + '#scenario=' + encodeURIComponent(b64);
 
