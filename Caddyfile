@@ -6,7 +6,7 @@
 # Порт нестандартный, чтобы не конфликтовать с n8n (5678), стандартным HTTP (80),
 # dev-серверами (3000/8000) и прочим. Если 8765 занят — поменять и тут, и в .bat.
 
-http://localhost:8765 {
+:8765 {
 	# Раздаём всё из папки, где лежит caddy.exe (корень проекта).
 	root * .
 	file_server
@@ -51,29 +51,4 @@ http://localhost:8765 {
 		output stderr
 		level ERROR
 	}
-
-	# Прокси healthz — решает CORS при проверке доступности n8n.
-	# Браузер на http://8765 видит запрос к /n8n-healthz — same-origin,
-	# CORS не нужен. Caddy проксирует на n8n /healthz.
-	@healthz path /n8n-healthz
-	reverse_proxy @healthz http://130.100.92.170:5678/healthz {
-		header_up Host {upstream_hostport}
-	}
-
-	# Прокси n8n REST API — решает CORS при создании workflow из Node Editor.
-	# Браузер на localhost:8765 видит same-origin запрос /rest/*,
-	# Caddy проксирует на n8n. CORS-заголовки не нужны.
-	@n8nRest path /rest/*
-	reverse_proxy @n8nRest http://130.100.92.170:5678 {
-		header_up Host {upstream_hostport}
-	}
-
-	# Прокси n8n webhook'ов (POST/GET из chain-player) — same-origin.
-	@n8nWebhook path /webhook* /webhook-trigger*
-	reverse_proxy @n8nWebhook http://130.100.92.170:5678 {
-		header_up Host {upstream_hostport}
-	}
-
-	# CORS-заголовки убраны: все кросс-доменные пути (rest, webhook, healthz)
-	# теперь идут через reverse_proxy same-origin.
 }

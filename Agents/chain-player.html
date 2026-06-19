@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chain Player — Запуск цепочки</title>
+  <!-- v14 FINAL: no automatic demo fallback; hard error if n8n proxy is unavailable -->
 <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
 <style>html{background:#1f1f1e}html[data-theme="light"]{background:#fdfdfc}html.gc-pending-auth .cp-layout{display:none !important}</style>
 <style>
@@ -195,9 +196,6 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
     // Nothing found -> show demo data
     return getDefaultScenario();
   }
-  }
-
-  }
 
   function getDefaultScenario() {
     // Демо сценарий для тестирования UI
@@ -228,11 +226,89 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
   }
 
   /* ============================================================
+   * Приведение n8n URL к локальному proxy-серверу
+   * ============================================================ */
+  function n8nProxyBase() {
+    var cfg = window.GIGACHAT_CONFIG || {};
+
+    // Явная настройка имеет максимальный приоритет.
+    if (cfg.N8N_PROXY_BASE) {
+      return String(cfg.N8N_PROXY_BASE).replace(/\/$/, '');
+    }
+
+    // ВАЖНО:
+    // Если страница открыта как http://130.100.94.119:8765,
+    // то http://localhost:8777 для браузера означает НЕ сервер,
+    // а компьютер пользователя. Поэтому proxy должен искаться на том же host,
+    // где открыта страница, но на порту 8777.
+    var host = window.location.hostname || 'localhost';
+    var protocol = window.location.protocol || 'http:';
+
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      return protocol + '//' + host + ':8777';
+    }
+
+    return 'http://localhost:8777';
+  }
+
+  function proxiedN8nUrl(url) {
+    if (!url) return url;
+    try {
+      var u = new URL(url, location.href);
+
+      // Страница остаётся на localhost:8765, а запросы к n8n идут через
+      // локальный proxy на localhost:8777.
+      if (
+        u.pathname.indexOf('/webhook') === 0 ||
+        u.pathname.indexOf('/webhook-trigger') === 0 ||
+        u.pathname.indexOf('/rest/') === 0
+      ) {
+        return n8nProxyBase() + u.pathname + u.search + u.hash;
+      }
+
+      return u.href;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  /* ============================================================
+   * Общие helpers для нормализации ответа webhook
+   * ВАЖНО: должны быть в верхней области видимости, потому что
+   * используются и ChainRunner, и отрисовкой ответа.
+   * ============================================================ */
+  function isPlainEmptyObject(obj) {
+    return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === 0;
+  }
+
+  function normalizeWebhookResponse(data) {
+    // n8n webhooks часто возвращают массив item'ов: [{json:{...}}]
+    if (Array.isArray(data)) {
+      if (data.length === 1) return normalizeWebhookResponse(data[0]);
+      return { items: data };
+    }
+
+    // n8n item wrapper
+    if (data && typeof data === 'object' && data.json && Object.keys(data).length <= 2) {
+      return normalizeWebhookResponse(data.json);
+    }
+
+    // Иногда полезная часть лежит в body/data/output
+    if (data && typeof data === 'object') {
+      if (data.body && typeof data.body === 'object') return normalizeWebhookResponse(data.body);
+      if (data.data && typeof data.data === 'object' && !data.response && !data.answer && !data.text) return normalizeWebhookResponse(data.data);
+    }
+
+    return data;
+  }
+
+  /* ============================================================
    * ChainRunner — исполняет цепочку шагов
    * ============================================================ */
   function createChainRunner(steps, callbacks) {
     var aborted = false;
-    var state = { outputs: {} };
+    var state = { outputs: {}, steps: {} };
+    var results = [];
 
     function getByPath(obj, path) {
       return path.split('.').reduce(function(o, k){ return (o && o[k] !== undefined) ? o[k] : undefined; }, obj);
@@ -255,10 +331,227 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
       return input;
     }
 
+    function pickTextFromValue(value) {
+      if (value == null) return '';
+      if (typeof value === 'string') return value;
+      if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+      if (Array.isArray(value)) return value.map(pickTextFromValue).filter(Boolean).join('\n');
+
+      if (typeof value === 'object') {
+        var preferred = [
+          // Смысловые поля для передачи между агентами.
+          // code/raw_result/stage специально НЕ используем как обычный ответ,
+          // иначе следующий агент получает Python-код вместо результата.
+          'response', 'answer', 'result', 'stdout',
+          'text', 'message', 'output', 'content', 'final', 'value'
+        ];
+
+        for (var i = 0; i < preferred.length; i++) {
+          var key = preferred[i];
+          if (value[key] != null) {
+            var picked = pickTextFromValue(value[key]);
+            if (picked) return picked;
+          }
+        }
+
+        // n8n иногда возвращает { json: {...} } или { body: {...} }
+        if (value.json != null) {
+          var jsonText = pickTextFromValue(value.json);
+          if (jsonText) return jsonText;
+        }
+        if (value.body != null) {
+          var bodyText = pickTextFromValue(value.body);
+          if (bodyText) return bodyText;
+        }
+        if (value.data != null) {
+          var dataText = pickTextFromValue(value.data);
+          if (dataText) return dataText;
+        }
+      }
+
+      return '';
+    }
+
+    function hasUsefulValue(value) {
+      if (value == null) return false;
+      if (typeof value === 'string') return value.trim() !== '';
+      if (typeof value === 'number' || typeof value === 'boolean') return true;
+      if (Array.isArray(value)) return value.some(hasUsefulValue);
+      if (typeof value === 'object') {
+        return Object.keys(value).some(function(k) { return hasUsefulValue(value[k]); });
+      }
+      return false;
+    }
+
+    function getPreviousStepOutput(idx) {
+      if (idx <= 0) return null;
+      var prevStep = steps[idx - 1];
+      if (!prevStep) return null;
+      return state.outputs[prevStep.id] || (state.steps[prevStep.id] && state.steps[prevStep.id].output) || null;
+    }
+
+    function getOriginalUserText() {
+      var input = state.input || {};
+      return pickTextFromValue(input.text) ||
+             pickTextFromValue(input.message) ||
+             pickTextFromValue(input.input) ||
+             pickTextFromValue(input.query) ||
+             pickTextFromValue(input);
+    }
+
+    function getLastResultTransferText() {
+      // Ищем последний нормальный смысловой текст выше по цепочке.
+      // Нужно для случая, когда текущий предыдущий агент вернул только:
+      // { response: "", code: "...", raw_result: "", stage: "execute" }.
+      for (var i = results.length - 1; i >= 0; i--) {
+        var item = results[i];
+        if (!item) continue;
+
+        var fromOutput = pickTextFromValue(item.output);
+        if (fromOutput) return fromOutput;
+
+        if (item.transferText && String(item.transferText).trim()) {
+          return String(item.transferText).trim();
+        }
+
+        if (item.input) {
+          var fromInput = pickTextFromValue(item.input.previous_text) ||
+                          pickTextFromValue(item.input.message) ||
+                          pickTextFromValue(item.input.input) ||
+                          pickTextFromValue(item.input.query) ||
+                          pickTextFromValue(item.input.expression);
+          if (fromInput) return fromInput;
+        }
+      }
+      return '';
+    }
+
+    function enrichStepInput(stepInput, step, idx) {
+      var input;
+      if (stepInput && typeof stepInput === 'object' && !Array.isArray(stepInput)) {
+        input = Object.assign({}, stepInput);
+      } else if (stepInput != null) {
+        input = { input: stepInput };
+      } else {
+        input = {};
+      }
+
+      var previousOutput = getPreviousStepOutput(idx);
+      var previousText = pickTextFromValue(previousOutput);
+      var lastTransferText = getLastResultTransferText();
+      var originalText = getOriginalUserText();
+      var fallbackText = previousText || lastTransferText || originalText || '';
+
+      // Главная логика v11:
+      // первый шаг получает исходный ввод пользователя;
+      // последующие шаги получают результат предыдущего шага;
+      // если предыдущий шаг вернул только технический объект code/stage,
+      // берём последний нормальный смысловой текст выше по цепочке.
+      var shouldPreferPrevious = idx > 0 && !!(previousText || lastTransferText);
+      var effectiveText = shouldPreferPrevious ? (previousText || lastTransferText) : fallbackText;
+
+      // Заполняем пустые значения.
+      Object.keys(input).forEach(function(k) {
+        if (!hasUsefulValue(input[k]) && effectiveText) {
+          input[k] = effectiveText;
+        }
+      });
+
+      // Для последующих шагов принудительно кладём previousText
+      // в основные поля. Это предотвращает ситуацию, когда 3-й агент
+      // получает исходный запрос пользователя вместо результата 2-го.
+      if (shouldPreferPrevious) {
+        [
+          'message',
+          'input',
+          'query',
+          'expression',
+          'text',
+          'content',
+          'file'
+        ].forEach(function(k) {
+          input[k] = previousText;
+        });
+      }
+
+      // Если mapping вообще ничего полезного не дал — даём агенту универсальный вход.
+      if (!hasUsefulValue(input) && effectiveText) {
+        input.input = effectiveText;
+      }
+
+      // Универсальные поля, чтобы разные агенты могли взять то, что ожидают.
+      if (effectiveText) {
+        if (!hasUsefulValue(input.message)) input.message = effectiveText;
+        if (!hasUsefulValue(input.query)) input.query = effectiveText;
+        if (!hasUsefulValue(input.input)) input.input = effectiveText;
+        if (!hasUsefulValue(input.expression)) input.expression = effectiveText;
+      }
+
+      if (previousOutput != null && input.previous == null) input.previous = previousOutput;
+      if ((previousText || effectiveText) && input.previous_text == null) input.previous_text = previousText || effectiveText;
+      if (originalText && input.original_input == null) input.original_input = originalText;
+      input.chain_transfer_source = shouldPreferPrevious ? 'previous_step' : 'original_input';
+      input.chain_transfer_text = effectiveText || '';
+
+      return input;
+    }
+
+    function buildAgentPayload(stepInput, step, idx) {
+      var payload;
+      if (stepInput && typeof stepInput === 'object' && !Array.isArray(stepInput)) {
+        payload = Object.assign({}, stepInput);
+      } else {
+        payload = { input: stepInput };
+      }
+
+      var token = '';
+      var username = '';
+      var displayName = '';
+      try { token = GigaChat.auth.getToken() || ''; } catch (e) {}
+      try { username = GigaChat.auth.getUsername() || ''; } catch (e) {}
+      try { displayName = GigaChat.auth.getDisplayName() || ''; } catch (e) {}
+
+      if (payload.message == null || payload.message === '') {
+        payload.message = pickTextFromValue(payload.input);
+      }
+      if (payload.message == null || payload.message === '') {
+        payload.message = pickTextFromValue(stepInput);
+      }
+
+      // Критично: обычные агенты платформы проверяют token именно в JSON-body.
+      // Заголовок X-Auth-Token оставляем тоже, но для n8n workflows важнее body.token.
+      if (token && payload.token == null) payload.token = token;
+      if (username && payload.user_name == null) payload.user_name = username;
+      if (displayName && payload.display_name == null) payload.display_name = displayName;
+
+      if (payload.session_id == null || payload.session_id === '') {
+        payload.session_id = state.session_id || 'chain_' + Date.now().toString(36);
+      }
+
+      payload.chain_step_id = step.id;
+      payload.chain_step_label = step.label;
+      payload.chain_step_index = idx;
+      payload.chain_mode = 'preview';
+
+      return payload;
+    }
+
+    function maskPayloadForLog(payload) {
+      var safe = Object.assign({}, payload || {});
+      if (safe.token) safe.token = '***';
+      return safe;
+    }
+
     function simulateStep(step, stepInput, idx) {
-      // Симулируем ответ, если n8n недоступен
+      // Используем тестовый ответ, если n8n недоступен
+      var demoText =
+        pickTextFromValue(stepInput && stepInput.message) ||
+        pickTextFromValue(stepInput && stepInput.input) ||
+        pickTextFromValue(stepInput && stepInput.query) ||
+        pickTextFromValue(stepInput && stepInput.expression) ||
+        'demo input';
       var simData = {
-        response: '⚡ Симулированный ответ от ' + step.label + '\n\nВходные данные: ' + JSON.stringify(stepInput, null, 2)
+        response: '⚡ DEMO: ' + step.label + ' получил: ' + demoText
       };
       return new Promise(function(resolve) {
         setTimeout(function() {
@@ -270,8 +563,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
 
     function run(scenarioInput) {
       aborted = false;
-      state = { input: scenarioInput || {}, outputs: {} };
-      var results = [];
+      state = { input: scenarioInput || {}, outputs: {}, steps: {}, session_id: 'chain_' + Date.now().toString(36) + '_' + Math.random().toString(16).slice(2) };
+      results = [];
 
       function nextStep(idx) {
         if (aborted) return Promise.resolve({ aborted: true });
@@ -279,33 +572,68 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
 
         var step = steps[idx];
         var stepInput = resolveInput(step.inputMapping, state);
+        stepInput = enrichStepInput(stepInput, step, idx);
 
         if (callbacks && callbacks.onStepStart) callbacks.onStepStart(step, idx);
 
-        // Если n8n офлайн — симулируем
+        // ВАЖНО v14:
+        // автоматический demo/fallback отключён. Если proxy/n8n недоступен,
+        // цепочка НЕ должна притворяться успешной и красить шаги зелёным.
+        // Demo разрешён только явно через ?demo=1.
         if (!bootFlags.n8nOnline) {
-          return simulateStep(step, stepInput, idx).then(function(sim) {
-            if (aborted) return;
-            state.outputs[step.id] = sim.data;
-            results.push({ stepId: step.id, label: step.label, output: sim.data, simulated: true });
-            if (callbacks && callbacks.onStepComplete) callbacks.onStepComplete(step, sim.data, idx);
-            return nextStep(idx + 1);
-          });
+          if (isDemoModeExplicit()) {
+            return simulateStep(step, stepInput, idx).then(function(sim) {
+              if (aborted) return;
+              var simTransferText =
+                pickTextFromValue(sim.data) ||
+                pickTextFromValue(stepInput && stepInput.previous_text) ||
+                pickTextFromValue(stepInput && stepInput.message) ||
+                pickTextFromValue(stepInput && stepInput.input) ||
+                pickTextFromValue(stepInput && stepInput.query) ||
+                pickTextFromValue(stepInput && stepInput.expression) ||
+                '';
+              state.outputs[step.id] = sim.data;
+              state.steps[step.id] = { input: stepInput, output: sim.data, transferText: simTransferText };
+              results.push({ stepId: step.id, label: step.label, input: stepInput, output: sim.data, transferText: simTransferText, simulated: true });
+              if (callbacks && callbacks.onStepComplete) callbacks.onStepComplete(step, sim.data, idx);
+              return nextStep(idx + 1);
+            });
+          }
+
+          var offlineErr = new Error(n8nUnavailableMessage());
+          var offlineInfo = { stepId: step.id, label: step.label, error: offlineErr.message, offline: true };
+          results.push(offlineInfo);
+          if (callbacks && callbacks.onStepError) callbacks.onStepError(step, offlineErr.message, idx);
+          return Promise.resolve({ error: offlineInfo, results: results });
         }
 
         // Реальный запрос к n8n
         var controller = new AbortController();
         var timeout = setTimeout(function(){ controller.abort(); }, (step.timeout || 120) * 1000);
 
-        // Добавляем токен авторизации в заголовки
+        // Добавляем токен авторизации и служебные поля не только в headers,
+        // но и в JSON-body. Именно body.token ожидают защищённые n8n-агенты.
         var authHeaders = { 'Content-Type': 'application/json' };
         var token = GigaChat.auth.getToken();
         if (token) authHeaders['X-Auth-Token'] = token;
 
-        return fetch(step.webhookUrl, {
+        var requestUrl = proxiedN8nUrl(step.webhookUrl);
+        var requestPayload = buildAgentPayload(stepInput, step, idx);
+        console.log('[CP] step request', {
+          step: step.label,
+          url: requestUrl,
+          input: stepInput,
+          payload: maskPayloadForLog(requestPayload),
+          previous: getPreviousStepOutput(idx),
+          previous_text: pickTextFromValue(getPreviousStepOutput(idx)),
+          transfer_text: stepInput && (stepInput.chain_transfer_text || stepInput.previous_text || stepInput.message || stepInput.input || stepInput.query || stepInput.expression),
+          transfer_source: stepInput && stepInput.chain_transfer_source
+        });
+
+        return fetch(requestUrl, {
           method: 'POST',
           headers: authHeaders,
-          body: JSON.stringify(stepInput),
+          body: JSON.stringify(requestPayload),
           signal: controller.signal,
         }).then(function(res) {
           clearTimeout(timeout);
@@ -314,28 +642,73 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
               throw new Error('HTTP ' + res.status + ': ' + (body || res.statusText).slice(0, 500));
             });
           }
-          return res.json();
-        }).then(function(data) {
+          return res.text().then(function(text) {
+            if (!text) return {};
+            try { return JSON.parse(text); }
+            catch(e) { return { response: text }; }
+          });
+        }).then(function(rawData) {
           if (aborted) return;
+          var data = normalizeWebhookResponse(rawData);
+          if (data && data.auth_required) {
+            data = {
+              response: '⚠ Агент вернул auth_required. Запрос дошёл до webhook, но агент не принял авторизацию. Проверьте, что в payload есть token, а workflow агента проверяет именно body.token.',
+              auth_required: true,
+              _request: { url: requestUrl, input: stepInput, payload: maskPayloadForLog(requestPayload) },
+              _raw: rawData
+            };
+          }
+          if (isPlainEmptyObject(data)) {
+            data = {
+              response: '⚠ Webhook вернул пустой JSON {}. Запрос дошёл до n8n, но workflow не вернул поле response/answer/text/result. Проверьте endpoint и последний узел n8n.',
+              _empty: true,
+              _request: { url: requestUrl, input: stepInput },
+              _raw: rawData
+            };
+          }
+          console.log('[CP] step response', { step: step.label, output: data });
+          var stepTransferText =
+            pickTextFromValue(data) ||
+            pickTextFromValue(stepInput && stepInput.previous_text) ||
+            pickTextFromValue(stepInput && stepInput.message) ||
+            pickTextFromValue(stepInput && stepInput.input) ||
+            pickTextFromValue(stepInput && stepInput.query) ||
+            pickTextFromValue(stepInput && stepInput.expression) ||
+            '';
           state.outputs[step.id] = data;
-          results.push({ stepId: step.id, label: step.label, output: data });
+          state.steps[step.id] = { input: stepInput, output: data, transferText: stepTransferText };
+          results.push({ stepId: step.id, label: step.label, input: stepInput, output: data, transferText: stepTransferText });
           if (callbacks && callbacks.onStepComplete) callbacks.onStepComplete(step, data, idx);
           return nextStep(idx + 1);
         }).catch(function(err) {
           clearTimeout(timeout);
           if (err.name === 'AbortError') err = new Error('Превышено время ожидания (' + (step.timeout || 120) + 'c)');
 
-          // Если fetch упал (n8n не отвечает) — помечаем n8n как офлайн и симулируем этот шаг
+          // Если fetch упал — НЕ симулируем успех.
+          // Иначе пользователь получает зелёные шаги и мусорный demo-ответ.
           if (err.message.indexOf('Failed to fetch') >= 0 || err.message.indexOf('ERR_CONNECTION') >= 0) {
             bootFlags.n8nOnline = false;
-            return simulateStep(step, stepInput, idx).then(function(sim) {
-              if (aborted) return;
-              state.outputs[step.id] = sim.data;
-              results.push({ stepId: step.id, label: step.label, output: sim.data, simulated: true });
-              addChatMessage('system', '⚠ ' + step.label + ': n8n недоступен, использованы тестовые данные');
-              if (callbacks && callbacks.onStepComplete) callbacks.onStepComplete(step, sim.data, idx);
-              return nextStep(idx + 1);
-            });
+
+            if (isDemoModeExplicit()) {
+              return simulateStep(step, stepInput, idx).then(function(sim) {
+                if (aborted) return;
+                var simTransferText =
+                  pickTextFromValue(sim.data) ||
+                  pickTextFromValue(stepInput && stepInput.previous_text) ||
+                  pickTextFromValue(stepInput && stepInput.message) ||
+                  pickTextFromValue(stepInput && stepInput.input) ||
+                  pickTextFromValue(stepInput && stepInput.query) ||
+                  pickTextFromValue(stepInput && stepInput.expression) ||
+                  '';
+                state.outputs[step.id] = sim.data;
+                state.steps[step.id] = { input: stepInput, output: sim.data, transferText: simTransferText };
+                results.push({ stepId: step.id, label: step.label, input: stepInput, output: sim.data, transferText: simTransferText, simulated: true });
+                if (callbacks && callbacks.onStepComplete) callbacks.onStepComplete(step, sim.data, idx);
+                return nextStep(idx + 1);
+              });
+            }
+
+            err = new Error(n8nUnavailableMessage());
           }
 
           var errInfo = { stepId: step.id, label: step.label, error: err.message };
@@ -488,9 +861,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
         setStepStatus(idx, 'done');
         setStepResult(idx, data);
         scrollSteps();
-        // Show intermediate result in chat if not the last step
+        // Main chat is for the final user answer.
+        // Intermediate results stay in the step sidebar and Console.
+        // If a specific step really must be printed in chat, set:
+        //   step.showIntermediate = true
         var isLast = (idx === scenario.steps.length - 1);
-        if (!isLast && step.showIntermediate !== false) {
+        if (!isLast && step.showIntermediate === true) {
           var interimText = extractText(data);
           if (interimText) {
             addChatMessage(interimText, 'bot', null, step.label);
@@ -554,10 +930,20 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
         finalOutput = extractText(result.results[result.results.length - 1]?.output);
       }
 
-      if (finalOutput) {
+      var bestUserResult = extractBestUserFacingResult(result.results || []);
+      if (finalOutput && String(finalOutput).trim()) {
         addChatMessage(String(finalOutput), 'bot');
+      } else if (bestUserResult && bestUserResult.text) {
+        addChatMessage(String(bestUserResult.text), 'bot');
+        if (bestUserResult.sourceIndex !== result.results.length - 1) {
+          console.info(
+            '[CP] final fallback',
+            'Последний агент не вернул человекочитаемый ответ. Показан последний нормальный результат из шага:',
+            bestUserResult.sourceStep
+          );
+        }
       } else {
-        addChatMessage('✅ Цепочка выполнена. Результаты на боковой панели.', 'bot');
+        addChatMessage('✅ Цепочка выполнена, но агенты не вернули человекочитаемый ответ. Подробности на боковой панели.', 'bot');
       }
     });
   }
@@ -610,10 +996,62 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
   }
 
   function extractText(data) {
-    if (!data) return null;
-    if (typeof data === 'string') return data;
-    // Common response patterns from GigaChat agents
-    return data.response || data.answer || data.text || data.result || data.message || data.output || JSON.stringify(data, null, 2);
+    // Только человекочитаемый текст для пользователя.
+    // Технические поля code/raw_result/stage/json целиком НЕ показываем как финальный ответ.
+    if (data == null) return null;
+    if (typeof data === 'string') return data.trim() ? data : null;
+    if (typeof data === 'number' || typeof data === 'boolean') return String(data);
+    if (Array.isArray(data)) data = normalizeWebhookResponse(data);
+    if (isPlainEmptyObject(data)) return null;
+
+    if (typeof data === 'object') {
+      var fields = ['response', 'answer', 'result', 'text', 'message', 'output', 'final', 'content', 'value'];
+
+      for (var i = 0; i < fields.length; i++) {
+        var key = fields[i];
+        if (data[key] != null) {
+          var picked = extractText(data[key]);
+          if (picked) return picked;
+        }
+      }
+
+      if (data.json) {
+        var jsonText = extractText(data.json);
+        if (jsonText) return jsonText;
+      }
+
+      if (data.body) {
+        var bodyText = extractText(data.body);
+        if (bodyText) return bodyText;
+      }
+
+      if (data.data) {
+        var dataText = extractText(data.data);
+        if (dataText) return dataText;
+      }
+    }
+
+    return null;
+  }
+
+  function extractBestUserFacingResult(results) {
+    if (!results || !results.length) return null;
+
+    // Идём с конца цепочки назад.
+    // Если последний агент вернул только code/raw_result/stage, но не дал
+    // человекочитаемый ответ, показываем последний нормальный ответ предыдущего агента.
+    for (var i = results.length - 1; i >= 0; i--) {
+      var item = results[i];
+      if (!item || !item.output) continue;
+      var text = extractText(item.output);
+      if (text) return {
+        text: text,
+        sourceStep: item.label || item.stepId || ('step ' + (i + 1)),
+        sourceIndex: i
+      };
+    }
+
+    return null;
   }
 
   function escapeHtml(s) {
@@ -637,26 +1075,45 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-primary);co
    * ============================================================ */
   var bootFlags = { n8nOnline: false, serverOnline: false };
 
+  function isDemoModeExplicit() {
+    try {
+      var p = new URLSearchParams(window.location.search || '');
+      return p.get('demo') === '1' || p.get('demo') === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function n8nUnavailableMessage() {
+    return 'n8n proxy недоступен: ' + n8nProxyBase() +
+      '. Проверь Start-n8n-proxy-8777.bat, firewall и доступность /n8n-healthz.';
+  }
+
   function boot() {
     // Проверка авторизации. Если токен невалидный — редирект на login.
     GigaChat.auth.requireAuth({
       onOk: function(username) {
         // Проверка n8n
-        var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
         document.documentElement.classList.remove('gc-pending-auth');
 
         var n8nCtrl = new AbortController();
         var n8nTimer = setTimeout(function(){ n8nCtrl.abort(); }, 2000);
-        fetch(n8nBase + '/healthz', { method: 'HEAD', signal: n8nCtrl.signal })
+        fetch(n8nProxyBase() + '/n8n-healthz', { method: 'HEAD', signal: n8nCtrl.signal })
           .then(function() {
             clearTimeout(n8nTimer);
             bootFlags.n8nOnline = true;
             initUI();
           })
-          .catch(function() {
+          .catch(function(err) {
             clearTimeout(n8nTimer);
             bootFlags.n8nOnline = false;
-            console.log('[CP] n8n недоступен — работаем с симулированными ответами');
+
+            if (isDemoModeExplicit()) {
+              console.warn('[CP] n8n недоступен, но включён ручной demo режим (?demo=1)');
+            } else {
+              console.error('[CP] ' + n8nUnavailableMessage(), err);
+            }
+
             initUI();
           });
       }
