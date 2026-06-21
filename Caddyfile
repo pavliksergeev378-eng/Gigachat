@@ -38,7 +38,7 @@
 	# Тяжёлые библиотеки (lib/* — pyodide, jszip, hljs), .wasm и .zip меняются
 	# редко и остаются кэшируемыми, чтобы не перекачивать их каждый раз.
 	@appcode {
-		path / *.html *.js
+		path / *.html *.js *.css
 		not path /Agents/lib/*
 	}
 	header @appcode Cache-Control "no-store, no-cache, must-revalidate"
