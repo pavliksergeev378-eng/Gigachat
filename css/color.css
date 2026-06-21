@@ -67,22 +67,22 @@
   --danger-75: #d9534fBF;
 
 
-  --dark-background: #06090E;
-  --dark-component: #1a1a1a;
-  --dark-text: #ddd;
-  --dark-placeholder: var(--gray-color);
+  --dark-background: #0c0c0c;
+  --dark-component: #161617;
+  --dark-text: #ececea;
+  --dark-placeholder: #6c6c66;
 
-  --night-color: #1a1a1a;
-  --dark-moon: #121212;
-  --dark-list: #222222;
-  --dark-table: #272727;
-  --dark-blue: #272727;
-  --btn: #333333;
-  --btn-grey: #404040;
-  --dark-header: #2a2a2a;
-  --dark-border: #2a2a2a;
-  --dark-control-border: var(--gray-dark-color);
-  --hover-dark: #2a2a2a;
+  --night-color: #0c0c0c;
+  --dark-moon: #08080a;
+  --dark-list: #161617;
+  --dark-table: #161617;
+  --dark-blue: #161617;
+  --btn: #232325;
+  --btn-grey: #232325;
+  --dark-header: #161617;
+  --dark-border: rgba(255,255,255,.08);
+  --dark-control-border: rgba(255,255,255,.08);
+  --hover-dark: rgba(255,255,255,.06);
 
 
   --dark-highlight-border-color: var(--info-25);
@@ -108,7 +108,7 @@ body:not(.dark) {
   --ch-fg-muted: #6b6a64;
   --ch-fg-faint: #a09e96;
 
-  --ch-accent: #111827;
+  --ch-accent: #1d414e;
   --ch-accent-fg: #ffffff;
   --ch-accent-soft: rgba(17, 24, 39, .08);
 
@@ -125,6 +125,7 @@ body:not(.dark) {
   --ch-success: #10a37f;
 }
 
+html.gc-dark body,
 body.dark {
   --ch-bg: #0c0c0c;
   --ch-bg-sunken: #08080a;
@@ -143,9 +144,9 @@ body.dark {
   --ch-fg-muted: #9b9b96;
   --ch-fg-faint: #6c6c66;
 
-  --ch-accent: #fafaf7;
-  --ch-accent-fg: #0a0a08;
-  --ch-accent-soft: rgba(255, 255, 255, .08);
+  --ch-accent: #607881;
+  --ch-accent-fg: #ffffff;
+  --ch-accent-soft: rgba(96, 120, 129, .15);
 
   --success-soft: rgba(16, 163, 127, .18);
   --warning-soft: rgba(201, 115, 22, .18);
@@ -173,9 +174,7 @@ tr.my-table-select:not(.progress):hover, tr.my-table-select:not(.progress).focus
   color: var(--white-color);
 }
 
-body {
-  background-color: var(--gray-lighter-color);
-}
+/* body background — задаётся в GigaChat-Platform.html через inline-стили */
 
 /*a {
   color: var(--main-color);

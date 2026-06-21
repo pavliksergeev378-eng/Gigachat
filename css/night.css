@@ -1,163 +1,167 @@
-.dark {
+.dark, html.gc-dark {
   background-color: var(--dark-background);
 }
 
-.dark .highlight {
+.dark .highlight, html.gc-dark .highlight {
   border: 1px solid var(--dark-highlight-border-color);
   background-color: var(--dark-highlight-background-color);
 }
 
-.dark .chosen-container .chosen-results li.disabled-result {
+.dark .chosen-container .chosen-results li.disabled-result, html.gc-dark .chosen-container .chosen-results li.disabled-result {
   color: var(--dark-header);
 }
 
-.dark .file-content-text {
+.dark .file-content-text, html.gc-dark .file-content-text {
   border-color: var(--dark-border);
 }
 
-.dark .split__info {
+.dark .split__info, html.gc-dark .split__info {
   background-color: var(--dark-background);
   color: var(--dark-text);
 }
 
-.dark .split:before {
+.dark .split:before, html.gc-dark .split:before {
   border-color: var(--dark-border);
 }
 
-.dark .work-page__body {
+.dark .work-page__body, html.gc-dark .work-page__body {
   color: var(--dark-text);
 }
 
-.dark .prompt__tab {
+.dark .prompt__tab, html.gc-dark .prompt__tab {
   color: var(--dark-text);
 }
 
 
-.dark #docs_main_service {
+.dark #docs_main_service, html.gc-dark #docs_main_service {
   background-color: var(--night-color);
 }
 
-.dark .my-table {
-  background-color: var(--night-color);
-  color: var(--dark-text);
-}
-
-.dark .fancybox-content {
+.dark .my-table, html.gc-dark .my-table {
   background-color: var(--night-color);
   color: var(--dark-text);
 }
 
-.dark .service-main__place .table {
+.dark .fancybox-content, html.gc-dark .fancybox-content {
+  background-color: var(--night-color);
+  color: var(--dark-text);
+}
+
+.dark .service-main__place .table, html.gc-dark .service-main__place .table {
   background-color: var(--night-color);
 }
 
-.dark .service-main__footer {
+.dark .service-main__footer, html.gc-dark .service-main__footer {
   background-color: var(--night-color);
 }
 
 
-.dark .voice-grid {
+.dark .voice-grid, html.gc-dark .voice-grid {
   background-color: var(--black-color);
 }
 
-.dark .tab-content {
+.dark .tab-content, html.gc-dark .tab-content {
   background-color: var(--night-color);
   border-color: var(--dark-border);
 }
 
-.dark .nav-tabs.nav-justified > li > a {
+.dark .nav-tabs.nav-justified > li > a, html.gc-dark .nav-tabs.nav-justified > li > a {
   border-bottom-color: var(--dark-border);
 }
 
 .dark .nav-tabs > li > a:hover,
 .dark .nav-tabs.nav-justified > .active > a,
 .dark .nav-tabs.nav-justified > .active > a:hover,
-.dark .nav-tabs.nav-justified > .active > a:focus {
+.dark .nav-tabs.nav-justified > .active > a:focus, html.gc-dark .nav-tabs > li > a:hover,
+html.gc-dark .nav-tabs.nav-justified > .active > a,
+html.gc-dark .nav-tabs.nav-justified > .active > a:hover,
+html.gc-dark .nav-tabs.nav-justified > .active > a:focus {
   border-color: var(--dark-border);
 }
 
-.dark .list-group-item {
+.dark .list-group-item, html.gc-dark .list-group-item {
   color: var(--dark-text);
   background-color: var(--dark-moon);
   border-color: var(--dark-border);
 }
 
-.dark .list-group-item:hover, .dark .list-group-item:active {
+.dark .list-group-item:hover, .dark .list-group-item:active, html.gc-dark .list-group-item:hover, html.gc-dark .list-group-item:active {
   color: var(--dark-text);
   background-color: var(--dark-component);
 }
 
-.dark .list-group-item.active {
+.dark .list-group-item.active, html.gc-dark .list-group-item.active {
   background-color: var(--dark-background);
   border-color: var(--dark-control-border);
   color: var(--dark-text);
 }
 
-.dark .panel {
+.dark .panel, html.gc-dark .panel {
   background-color: var(--night-color);
   color: var(--dark-text);
 }
 
-.dark .form-control {
+.dark .form-control, html.gc-dark .form-control {
   background-color: var(--dark-moon);
   color: var(--dark-text);
   border-color: var(--dark-control-border);
 }
 
 
-.dark .panel-default {
+.dark .panel-default, html.gc-dark .panel-default {
   background-color: var(--night-color);
   border-color: var(--dark-border);
 }
 
-.dark .chat__title, .dark .split, .dark .work-page__body {
+.dark .chat__title, .dark .split, .dark .work-page__body, html.gc-dark .chat__title, html.gc-dark .split, html.gc-dark .work-page__body {
   color: var(--dark-text);
 }
 
-.dark #docs_main_service, .dark .my-table {
+.dark #docs_main_service, .dark .my-table, html.gc-dark #docs_main_service, html.gc-dark .my-table {
   background-color: var(--night-color) !important;
 }
 
-.dark .my-table {
+.dark .my-table, html.gc-dark .my-table {
   color: var(--dark-text);
 }
 
-.dark .fancybox-content {
+.dark .fancybox-content, html.gc-dark .fancybox-content {
   color: var(--dark-text);
 }
 
-.dark .fancybox-content, .dark .service-main__footer, .dark .service-main__place .table {
+.dark .fancybox-content, .dark .service-main__footer, .dark .service-main__place .table, html.gc-dark .fancybox-content, html.gc-dark .service-main__footer, html.gc-dark .service-main__place .table {
   background-color: var(--night-color);
   border: 1px solid var(--dark-control-border);
 }
 
-.dark .checkbox-btn__title {
+.dark .checkbox-btn__title, html.gc-dark .checkbox-btn__title {
   color: var(--dark-text);
 }
 
-.dark .checkbox-btn__input:checked + .checkbox-btn__btn {
+.dark .checkbox-btn__input:checked + .checkbox-btn__btn, html.gc-dark .checkbox-btn__input:checked + .checkbox-btn__btn {
   background-color: var(--night-color);
 }
 
-.dark .checkbox-btn__input:checked + .checkbox-btn__btn {
+.dark .checkbox-btn__input:checked + .checkbox-btn__btn, html.gc-dark .checkbox-btn__input:checked + .checkbox-btn__btn {
   color: var(--success);
 }
 
-.dark .panel-body {
+.dark .panel-body, html.gc-dark .panel-body {
   color: var(--dark-text);
 }
 
-.dark .list-unstyled {
+.dark .list-unstyled, html.gc-dark .list-unstyled {
   color: var(--dark-text);
 }
 
-.dark .chosen-container-single .chosen-single {
+.dark .chosen-container-single .chosen-single, html.gc-dark .chosen-container-single .chosen-single {
   background-color: var(--dark-moon);
   color: var(--dark-text);
 }
 
 .dark .hasDatepicker[readonly="readonly"]:not([disabled="disabled"]),
-.dark .has-year[readonly="readonly"]:not([disabled="disabled"]) {
+.dark .has-year[readonly="readonly"]:not([disabled="disabled"]), html.gc-dark .hasDatepicker[readonly="readonly"]:not([disabled="disabled"]),
+html.gc-dark .has-year[readonly="readonly"]:not([disabled="disabled"]) {
   cursor: pointer;
   color: var(--dark-text);
   background-color: var(--night-color);
@@ -168,24 +172,30 @@
 .dark .ui-widget.ui-widget-content,
 .dark .ui-datepicker .ui-datepicker-header,
 .dark .ui-datepicker .ui-datepicker-prev span,
-.dark .ui-datepicker .ui-datepicker-next span {
+.dark .ui-datepicker .ui-datepicker-next span, html.gc-dark .ui-datepicker select.ui-datepicker-month,
+html.gc-dark .ui-datepicker select.ui-datepicker-year,
+html.gc-dark .ui-widget.ui-widget-content,
+html.gc-dark .ui-datepicker .ui-datepicker-header,
+html.gc-dark .ui-datepicker .ui-datepicker-prev span,
+html.gc-dark .ui-datepicker .ui-datepicker-next span {
   background-color: var(--night-color);
   color: var(--dark-text);
 }
 
-.dark .ui-widget-content .ui-state-default {
+.dark .ui-widget-content .ui-state-default, html.gc-dark .ui-widget-content .ui-state-default {
   background-color: var(--night-color);
   color: var(--dark-text);
 }
 
 
-.dark .chosen-container-single .chosen-single {
+.dark .chosen-container-single .chosen-single, html.gc-dark .chosen-container-single .chosen-single {
   background-color: var(--dark-moon);
   color: var(--dark-text)
 }
 
 .dark .has-year[readonly=readonly]:not([disabled=disabled]),
-.dark .hasDatepicker[readonly=readonly]:not([disabled=disabled]) {
+.dark .hasDatepicker[readonly=readonly]:not([disabled=disabled]), html.gc-dark .has-year[readonly=readonly]:not([disabled=disabled]),
+html.gc-dark .hasDatepicker[readonly=readonly]:not([disabled=disabled]) {
   background-color: var(--night-color);
   color: var(--dark-text);
   cursor: pointer
@@ -197,100 +207,115 @@
 .dark .ui-datepicker select.ui-datepicker-month,
 .dark .ui-datepicker select.ui-datepicker-year,
 .dark .ui-datepicker .ui-state-default,
-.dark .ui-widget.ui-widget-content {
+.dark .ui-widget.ui-widget-content, html.gc-dark .ui-datepicker .ui-datepicker-header,
+html.gc-dark .ui-datepicker .ui-datepicker-next span,
+html.gc-dark .ui-datepicker .ui-datepicker-prev span,
+html.gc-dark .ui-datepicker select.ui-datepicker-month,
+html.gc-dark .ui-datepicker select.ui-datepicker-year,
+html.gc-dark .ui-datepicker .ui-state-default,
+html.gc-dark .ui-widget.ui-widget-content {
   background-color: var(--dark-moon);
   color: var(--dark-text);
   border-color: var(--dark-border);
 }
 
 .dark .ui-datepicker .ui-datepicker-next.ui-state-hover span,
-.dark .ui-datepicker .ui-datepicker-prev.ui-state-hover span {
+.dark .ui-datepicker .ui-datepicker-prev.ui-state-hover span, html.gc-dark .ui-datepicker .ui-datepicker-next.ui-state-hover span,
+html.gc-dark .ui-datepicker .ui-datepicker-prev.ui-state-hover span {
   background-color: var(--dark-component);
   font-weight: 700;
 }
 
 .dark .ui-datepicker .ui-datepicker-next.ui-state-hover,
-.dark .ui-datepicker .ui-datepicker-prev.ui-state-hover {
+.dark .ui-datepicker .ui-datepicker-prev.ui-state-hover, html.gc-dark .ui-datepicker .ui-datepicker-next.ui-state-hover,
+html.gc-dark .ui-datepicker .ui-datepicker-prev.ui-state-hover {
   background-color: var(--dark-component);
   color: var(--dark-component);
   border: none;
   top: 2px;
 }
 
-.dark .ui-datepicker .ui-datepicker-next.ui-state-hover {
+.dark .ui-datepicker .ui-datepicker-next.ui-state-hover, html.gc-dark .ui-datepicker .ui-datepicker-next.ui-state-hover {
   right: 2px;
 }
 
-.dark .ui-datepicker .ui-datepicker-prev.ui-state-hover {
+.dark .ui-datepicker .ui-datepicker-prev.ui-state-hover, html.gc-dark .ui-datepicker .ui-datepicker-prev.ui-state-hover {
   left: 2px;
 }
 
 .dark .ui-datepicker .ui-datepicker-next.ui-state-hover,
-.dark .ui-datepicker .ui-state-default.ui-state-hover {
+.dark .ui-datepicker .ui-state-default.ui-state-hover, html.gc-dark .ui-datepicker .ui-datepicker-next.ui-state-hover,
+html.gc-dark .ui-datepicker .ui-state-default.ui-state-hover {
   background-color: var(--dark-component);
 }
 
-.dark .ui-state-default.ui-state-active {
+.dark .ui-state-default.ui-state-active, html.gc-dark .ui-state-default.ui-state-active {
   background-color: var(--dark-background);
   border-color: var(--dark-control-border);
 }
 
 
-.dark .my-table span.order-table.active {
+.dark .my-table span.order-table.active, html.gc-dark .my-table span.order-table.active {
   color: var(--dark-text);
 }
 
-.dark .dropdown-menu > li > a {
+.dark .dropdown-menu > li > a, html.gc-dark .dropdown-menu > li > a {
   color: var(--dark-text);
 }
 
-.dark .dropdown-menu .divider {
+.dark .dropdown-menu .divider, html.gc-dark .dropdown-menu .divider {
   background-color: var(--dark-control-border);
 }
 
-.dark .dropdown-menu {
+.dark .dropdown-menu, html.gc-dark .dropdown-menu {
   background-color: var(--dark-background);
   border-color: var(--dark-control-border);
 }
 
 .dark .dropdown-menu > li > a:hover,
-.dark .dropdown-menu > li > a:focus {
+.dark .dropdown-menu > li > a:focus, html.gc-dark .dropdown-menu > li > a:hover,
+html.gc-dark .dropdown-menu > li > a:focus {
   background-color: var(--hover-dark);
 }
 
 
 .dark .nav-tabs.nav-justified > .active > a,
 .dark .nav-tabs.nav-justified > .active > a:hover,
-.dark .nav-tabs.nav-justified > .active > a:focus {
+.dark .nav-tabs.nav-justified > .active > a:focus, html.gc-dark .nav-tabs.nav-justified > .active > a,
+html.gc-dark .nav-tabs.nav-justified > .active > a:hover,
+html.gc-dark .nav-tabs.nav-justified > .active > a:focus {
   background-color: var(--night-color);
   color: var(--dark-text);
 }
 
 .dark .my-service-page .active .my-service-select-page,
-.dark .my-service-page .active .my-service-select-page:hover {
+.dark .my-service-page .active .my-service-select-page:hover, html.gc-dark .my-service-page .active .my-service-select-page,
+html.gc-dark .my-service-page .active .my-service-select-page:hover {
   background-color: var(--dark-background);
   border-color: var(--gray-lighter-color);
   color: var(--dark-text);
 }
 
 .dark .pagination > li:first-child > a,
-.dark .pagination > li > a {
+.dark .pagination > li > a, html.gc-dark .pagination > li:first-child > a,
+html.gc-dark .pagination > li > a {
   background-color: var(--dark-moon);
   color: var(--dark-text);
 }
 
-.dark .chosen-container-active.chosen-with-drop .chosen-single div b {
+.dark .chosen-container-active.chosen-with-drop .chosen-single div b, html.gc-dark .chosen-container-active.chosen-with-drop .chosen-single div b {
   background-color: var(--dark-moon);
 }
 
 
 .dark .chosen-container.chosen-with-drop .chosen-drop,
-.dark .chosen-container .chosen-results {
+.dark .chosen-container .chosen-results, html.gc-dark .chosen-container.chosen-with-drop .chosen-drop,
+html.gc-dark .chosen-container .chosen-results {
   background: var(--dark-moon);
   color: var(--dark-text);
 }
 
-.dark .chosen-container-active.chosen-with-drop, .dark .chosen-container-single .chosen-single {
+.dark .chosen-container-active.chosen-with-drop, .dark .chosen-container-single .chosen-single, html.gc-dark .chosen-container-active.chosen-with-drop, html.gc-dark .chosen-container-single .chosen-single {
   background-color: var(--dark-moon);
   border-color: var(--dark-control-border);
 }
@@ -302,50 +327,53 @@
 
 .dark .table-bordered,
 .dark .table-bordered > tbody > tr > td,
-.dark .table-bordered > thead > tr > th {
+.dark .table-bordered > thead > tr > th, html.gc-dark .table-bordered,
+html.gc-dark .table-bordered > tbody > tr > td,
+html.gc-dark .table-bordered > thead > tr > th {
   border-color: var(--dark-control-border) !important;
 }
 
 .dark tr.my-table-select:not(.progress):hover,
-.dark tr.my-table-select:not(.progress).focus {
+.dark tr.my-table-select:not(.progress).focus, html.gc-dark tr.my-table-select:not(.progress):hover,
+html.gc-dark tr.my-table-select:not(.progress).focus {
   background-color: var(--dark-blue);
 }
 
-.dark .form-control-feedback {
+.dark .form-control-feedback, html.gc-dark .form-control-feedback {
   color: var(--dark-text);
 }
 
-.dark .open > .dropdown-toggle.btn-default:focus {
+.dark .open > .dropdown-toggle.btn-default:focus, html.gc-dark .open > .dropdown-toggle.btn-default:focus {
   color: var(--dark-text);
   background-color: var(--btn-grey);
 }
 
-.dark .form-control::placeholder {
+.dark .form-control::placeholder, html.gc-dark .form-control::placeholder {
   color: var(--dark-text);
 }
 
-.dark .open > .dropdown-toggle.btn-default {
+.dark .open > .dropdown-toggle.btn-default, html.gc-dark .open > .dropdown-toggle.btn-default {
   background-color: var(--btn-grey);
   color: var(--dark-text);
 }
 
-.dark .my-table span.order-table:hover {
+.dark .my-table span.order-table:hover, html.gc-dark .my-table span.order-table:hover {
   color: var(--dark-text);
 }
 
-.dark .form-grid > .panel {
+.dark .form-grid > .panel, html.gc-dark .form-grid > .panel {
   background-color: var(--night-color);
 }
 
-.dark .form-control[disabled] {
+.dark .form-control[disabled], html.gc-dark .form-control[disabled] {
   background-color: var(--btn-grey);
 }
 
-.dark .not-found-grid__info {
+.dark .not-found-grid__info, html.gc-dark .not-found-grid__info {
   color: var(--main-light-color);
 }
 
-.dark .nav-tabs.nav-justified > li > a {
+.dark .nav-tabs.nav-justified > li > a, html.gc-dark .nav-tabs.nav-justified > li > a {
   color: var(--dark-text);
 }
 
@@ -353,33 +381,38 @@
 .dark input:-webkit-autofill,
 .dark input:-webkit-autofill:hover,
 .dark input:-webkit-autofill:focus,
-.dark input:-webkit-autofill:active {
+.dark input:-webkit-autofill:active, html.gc-dark input:-webkit-autofill,
+html.gc-dark input:-webkit-autofill:hover,
+html.gc-dark input:-webkit-autofill:focus,
+html.gc-dark input:-webkit-autofill:active {
   background: var(--primary-25);
 }
 
 .dark .nav-tabs.nav-justified > .active > a,
 .dark .nav-tabs.nav-justified > .active > a:hover,
-.dark .nav-tabs.nav-justified > .active > a:focus {
+.dark .nav-tabs.nav-justified > .active > a:focus, html.gc-dark .nav-tabs.nav-justified > .active > a,
+html.gc-dark .nav-tabs.nav-justified > .active > a:hover,
+html.gc-dark .nav-tabs.nav-justified > .active > a:focus {
   border-bottom-color: var(--night-color);
 }
 
-.dark .nav > li > a:hover, .dark .nav > li > a:focus {
+.dark .nav > li > a:hover, .dark .nav > li > a:focus, html.gc-dark .nav > li > a:hover, html.gc-dark .nav > li > a:focus {
   background-color: var(--dark-list);
 }
 
-.dark .select-event {
+.dark .select-event, html.gc-dark .select-event {
   border-color: var(--dark-control-border);
 }
 
-.dark .btn {
+.dark .btn, html.gc-dark .btn {
   background-color: var(--night-color);
 }
 
-.dark .btn-default {
+.dark .btn-default, html.gc-dark .btn-default {
   color: var(--dark-text)
 }
 
-.dark .btn-success {
+.dark .btn-success, html.gc-dark .btn-success {
   color: var(--success)
 }
 
@@ -391,12 +424,20 @@
 .dark .open > .dropdown-toggle.btn-success:focus,
 .dark .btn-success:active.focus,
 .dark .btn-success.active.focus,
-.dark .open > .dropdown-toggle.btn-success.focus {
+.dark .open > .dropdown-toggle.btn-success.focus, html.gc-dark .btn-success:active:hover,
+html.gc-dark .btn-success.active:hover,
+html.gc-dark .open > .dropdown-toggle.btn-success:hover,
+html.gc-dark .btn-success:active:focus,
+html.gc-dark .btn-success.active:focus,
+html.gc-dark .open > .dropdown-toggle.btn-success:focus,
+html.gc-dark .btn-success:active.focus,
+html.gc-dark .btn-success.active.focus,
+html.gc-dark .open > .dropdown-toggle.btn-success.focus {
   background-color: var(--hover-dark);
   color: var(--success);
 }
 
-.dark .btn-danger {
+.dark .btn-danger, html.gc-dark .btn-danger {
   color: var(--danger)
 }
 
@@ -408,12 +449,20 @@
 .dark .open > .dropdown-toggle.btn-danger:focus,
 .dark .btn-danger:active.focus,
 .dark .btn-danger.active.focus,
-.dark .open > .dropdown-toggle.btn-danger.focus {
+.dark .open > .dropdown-toggle.btn-danger.focus, html.gc-dark .btn-danger:active:hover,
+html.gc-dark .btn-danger.active:hover,
+html.gc-dark .open > .dropdown-toggle.btn-danger:hover,
+html.gc-dark .btn-danger:active:focus,
+html.gc-dark .btn-danger.active:focus,
+html.gc-dark .open > .dropdown-toggle.btn-danger:focus,
+html.gc-dark .btn-danger:active.focus,
+html.gc-dark .btn-danger.active.focus,
+html.gc-dark .open > .dropdown-toggle.btn-danger.focus {
   background-color: var(--hover-dark);
   color: var(--danger);
 }
 
-.dark .btn-warning {
+.dark .btn-warning, html.gc-dark .btn-warning {
   color: var(--warning)
 }
 
@@ -425,12 +474,20 @@
 .dark .open > .dropdown-toggle.btn-warning:focus,
 .dark .btn-warning:active.focus,
 .dark .btn-warning.active.focus,
-.dark .open > .dropdown-toggle.btn-warning.focus {
+.dark .open > .dropdown-toggle.btn-warning.focus, html.gc-dark .btn-warning:active:hover,
+html.gc-dark .btn-warning.active:hover,
+html.gc-dark .open > .dropdown-toggle.btn-warning:hover,
+html.gc-dark .btn-warning:active:focus,
+html.gc-dark .btn-warning.active:focus,
+html.gc-dark .open > .dropdown-toggle.btn-warning:focus,
+html.gc-dark .btn-warning:active.focus,
+html.gc-dark .btn-warning.active.focus,
+html.gc-dark .open > .dropdown-toggle.btn-warning.focus {
   background-color: var(--hover-dark);
   color: var(--warning);
 }
 
-.dark .btn-primary {
+.dark .btn-primary, html.gc-dark .btn-primary {
   color: var(--primary)
 }
 
@@ -442,12 +499,20 @@
 .dark .open > .dropdown-toggle.btn-primary:focus,
 .dark .btn-primary:active.focus,
 .dark .btn-primary.active.focus,
-.dark .open > .dropdown-toggle.btn-primary.focus {
+.dark .open > .dropdown-toggle.btn-primary.focus, html.gc-dark .btn-primary:active:hover,
+html.gc-dark .btn-primary.active:hover,
+html.gc-dark .open > .dropdown-toggle.btn-primary:hover,
+html.gc-dark .btn-primary:active:focus,
+html.gc-dark .btn-primary.active:focus,
+html.gc-dark .open > .dropdown-toggle.btn-primary:focus,
+html.gc-dark .btn-primary:active.focus,
+html.gc-dark .btn-primary.active.focus,
+html.gc-dark .open > .dropdown-toggle.btn-primary.focus {
   background-color: var(--hover-dark);
   color: var(--primary);
 }
 
-.dark .btn-info {
+.dark .btn-info, html.gc-dark .btn-info {
   color: var(--info)
 }
 
@@ -459,34 +524,42 @@
 .dark .open > .dropdown-toggle.btn-info:focus,
 .dark .btn-info:active.focus,
 .dark .btn-info.active.focus,
-.dark .open > .dropdown-toggle.btn-info.focus {
+.dark .open > .dropdown-toggle.btn-info.focus, html.gc-dark .btn-info:active:hover,
+html.gc-dark .btn-info.active:hover,
+html.gc-dark .open > .dropdown-toggle.btn-info:hover,
+html.gc-dark .btn-info:active:focus,
+html.gc-dark .btn-info.active:focus,
+html.gc-dark .open > .dropdown-toggle.btn-info:focus,
+html.gc-dark .btn-info:active.focus,
+html.gc-dark .btn-info.active.focus,
+html.gc-dark .open > .dropdown-toggle.btn-info.focus {
   background-color: var(--hover-dark);
   color: var(--info);
 }
 
 
-.dark .alert {
+.dark .alert, html.gc-dark .alert {
   color: var(--dark-text);
   background-color: var(--dark-background);
 }
 
-.dark .alert-info {
+.dark .alert-info, html.gc-dark .alert-info {
   border-color: var(--info);
 }
 
-.dark .alert-warning {
+.dark .alert-warning, html.gc-dark .alert-warning {
   border-color: var(--warning);
 }
 
-.dark .alert-success {
+.dark .alert-success, html.gc-dark .alert-success {
   border-color: var(--success);
 }
 
-.dark .alert-danger {
+.dark .alert-danger, html.gc-dark .alert-danger {
   border-color: var(--danger);
 }
 
-.dark .alert-primary {
+.dark .alert-primary, html.gc-dark .alert-primary {
   border-color: var(--primary);
 }
 
@@ -495,7 +568,12 @@
 .dark .pagination > .disabled > span:focus,
 .dark .pagination > .disabled > a,
 .dark .pagination > .disabled > a:hover,
-.dark .pagination > .disabled > a:focus {
+.dark .pagination > .disabled > a:focus, html.gc-dark .pagination > .disabled > span,
+html.gc-dark .pagination > .disabled > span:hover,
+html.gc-dark .pagination > .disabled > span:focus,
+html.gc-dark .pagination > .disabled > a,
+html.gc-dark .pagination > .disabled > a:hover,
+html.gc-dark .pagination > .disabled > a:focus {
   background-color: var(--dark-component);
   color: var(--dark-text);
 }
@@ -508,36 +586,47 @@
 .dark .open > .dropdown-toggle.btn-default:focus,
 .dark .btn-default:active.focus,
 .dark .btn-default.active.focus,
-.dark .open > .dropdown-toggle.btn-default.focus {
+.dark .open > .dropdown-toggle.btn-default.focus, html.gc-dark .btn-default:active:hover,
+html.gc-dark .btn-default.active:hover,
+html.gc-dark .open > .dropdown-toggle.btn-default:hover,
+html.gc-dark .btn-default:active:focus,
+html.gc-dark .btn-default.active:focus,
+html.gc-dark .open > .dropdown-toggle.btn-default:focus,
+html.gc-dark .btn-default:active.focus,
+html.gc-dark .btn-default.active.focus,
+html.gc-dark .open > .dropdown-toggle.btn-default.focus {
   background-color: var(--hover-dark);
   color: var(--dark-text);
 }
 
-.dark .close:hover, .dark .close:focus {
+.dark .close:hover, .dark .close:focus, html.gc-dark .close:hover, html.gc-dark .close:focus {
   color: var();
 }
 
-.dark .dialog__format pre {
+.dark .dialog__format pre, html.gc-dark .dialog__format pre {
   color: var(--dark-text);
   background-color: var(--dark-moon);
 }
 
 .dark textarea::placeholder,
 .dark input::placeholder,
-.dark .file-panel__name_placeholder {
+.dark .file-panel__name_placeholder, html.gc-dark textarea::placeholder,
+html.gc-dark input::placeholder,
+html.gc-dark .file-panel__name_placeholder {
   color: var(--dark-placeholder) !important;
 }
 
 .dark textarea:-webkit-autofill,
-.dark input:-webkit-autofill {
+.dark input:-webkit-autofill, html.gc-dark textarea:-webkit-autofill,
+html.gc-dark input:-webkit-autofill {
   background-color: var(--primary-25) !important;
 }
 
-.dark .ui-resizable-e {
+.dark .ui-resizable-e, html.gc-dark .ui-resizable-e {
   border-color: var(--dark-border);
 }
 
-.dark .panel-heading {
+.dark .panel-heading, html.gc-dark .panel-heading {
   background-color: var(--dark-moon);
   color: var(--white-color);
   border-color: var(--dark-border);
@@ -548,58 +637,65 @@
  * Перебивают .dark .form-control / .dark .btn-success / .dark .btn-default
  * 1px-специфичностью (body.dark + .ch-modal + target).
  * ============================================================ */
-body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]), html.gc-dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
   background: var(--ch-bg-elev);
   color: var(--ch-fg);
   border-color: var(--ch-border);
   box-shadow: none;
 }
 
-body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus {
+body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus, html.gc-dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus {
   border-color: var(--ch-border-str);
   box-shadow: 0 0 0 3px var(--ch-accent-soft);
 }
 
-body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder {
+body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder, html.gc-dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder {
   color: var(--ch-fg-faint);
 }
 
 body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):disabled,
-body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])[readonly] {
+body.dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])[readonly], html.gc-dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):disabled,
+html.gc-dark .ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])[readonly] {
   background: var(--ch-bg-hover-sft);
   color: var(--ch-fg-muted);
 }
 
 body.dark .ch-modal .form-group > label,
 body.dark .ch-modal .control-label,
-body.dark .ch-modal .help-block {
+body.dark .ch-modal .help-block, html.gc-dark .ch-modal .form-group > label,
+html.gc-dark .ch-modal .control-label,
+html.gc-dark .ch-modal .help-block {
   color: var(--ch-fg-strong);
 }
 
-body.dark .ch-modal .help-block {
+body.dark .ch-modal .help-block, html.gc-dark .ch-modal .help-block {
   color: var(--ch-fg-muted);
 }
 
 body.dark .ch-modal .has-error .help-block,
-body.dark .ch-modal .has-error .control-label {
+body.dark .ch-modal .has-error .control-label, html.gc-dark .ch-modal .has-error .help-block,
+html.gc-dark .ch-modal .has-error .control-label {
   color: var(--danger);
 }
 
-body.dark .ch-modal .has-error .form-control {
+body.dark .ch-modal .has-error .form-control, html.gc-dark .ch-modal .has-error .form-control {
   border-color: var(--danger);
 }
 
 body.dark .ch-modal .btn.btn-success,
 body.dark .ch-modal .btn.btn-success:hover,
 body.dark .ch-modal .btn.btn-success:focus,
-body.dark .ch-modal .btn.btn-success:active {
+body.dark .ch-modal .btn.btn-success:active, html.gc-dark .ch-modal .btn.btn-success,
+html.gc-dark .ch-modal .btn.btn-success:hover,
+html.gc-dark .ch-modal .btn.btn-success:focus,
+html.gc-dark .ch-modal .btn.btn-success:active {
   background: var(--ch-accent);
   border-color: var(--ch-accent);
   color: var(--ch-accent-fg);
   text-shadow: none;
 }
 
-body.dark .ch-modal .btn.btn-default {
+body.dark .ch-modal .btn.btn-default, html.gc-dark .ch-modal .btn.btn-default {
   background: transparent;
   border-color: var(--ch-border);
   color: var(--ch-fg);
@@ -607,37 +703,41 @@ body.dark .ch-modal .btn.btn-default {
 }
 
 body.dark .ch-modal .btn.btn-default:hover,
-body.dark .ch-modal .btn.btn-default:focus {
+body.dark .ch-modal .btn.btn-default:focus, html.gc-dark .ch-modal .btn.btn-default:hover,
+html.gc-dark .ch-modal .btn.btn-default:focus {
   background: var(--ch-bg-hover-sft);
   border-color: var(--ch-border-str);
   color: var(--ch-fg-strong);
 }
 
-body.dark .login-place .form-control {
+body.dark .login-place .form-control, html.gc-dark .login-place .form-control {
   background-color: var(--ch-bg-elev);
   color: var(--ch-fg);
   border-color: var(--ch-border);
   box-shadow: none;
 }
 
-body.dark .login-place .form-control:hover {
+body.dark .login-place .form-control:hover, html.gc-dark .login-place .form-control:hover {
   border-color: var(--ch-border-str);
 }
 
-body.dark .login-place .form-control:focus {
+body.dark .login-place .form-control:focus, html.gc-dark .login-place .form-control:focus {
   background-color: var(--ch-bg-elev);
   border-color: var(--ch-border-str);
   box-shadow: 0 0 0 3px var(--ch-accent-soft);
 }
 
-body.dark .login-place .form-control::placeholder {
+body.dark .login-place .form-control::placeholder, html.gc-dark .login-place .form-control::placeholder {
   color: var(--ch-fg-muted);
 }
 
 body.dark .login-place .btn.btn-success,
 body.dark .login-place .btn.btn-success:hover,
 body.dark .login-place .btn.btn-success:focus,
-body.dark .login-place .btn.btn-success:active {
+body.dark .login-place .btn.btn-success:active, html.gc-dark .login-place .btn.btn-success,
+html.gc-dark .login-place .btn.btn-success:hover,
+html.gc-dark .login-place .btn.btn-success:focus,
+html.gc-dark .login-place .btn.btn-success:active {
   background: var(--ch-accent);
   border-color: var(--ch-accent);
   color: var(--ch-accent-fg);
@@ -647,10 +747,12 @@ body.dark .login-place .btn.btn-success:active {
 
 .dark .form-group.has-error .form-control,
 .dark .form-group.has-error .form-control:hover,
-.dark .form-group.has-error .form-control:focus {
+.dark .form-group.has-error .form-control:focus, html.gc-dark .form-group.has-error .form-control,
+html.gc-dark .form-group.has-error .form-control:hover,
+html.gc-dark .form-group.has-error .form-control:focus {
   border-color: var(--danger);
 }
 
-.dark .form-group.has-error .form-control-feedback {
+.dark .form-group.has-error .form-control-feedback, html.gc-dark .form-group.has-error .form-control-feedback {
   color: var(--danger);
 }
