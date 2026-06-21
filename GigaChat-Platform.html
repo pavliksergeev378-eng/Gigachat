@@ -7,17 +7,17 @@
     <style>
         /* Pre-paint фон + color-scheme + базовый body — первый paint в
            правильных цветах и шрифтах, без серифного фолбэка. */
-        html { color-scheme: light; background: #fdfdfc; }
-        html[data-theme="dark"] { color-scheme: dark; background: #1f1f1e; }
+        html { color-scheme: light; background: #fafaf7; }
+        html[data-theme="dark"] { color-scheme: dark; background: #06090E; }
         body {
             margin: 0;
             font-family: 'Segoe UI', Tahoma, sans-serif;
-            color: #1f1f1e;
-            background: #fdfdfc;
+            color: #1a1a17;
+            background: #fafaf7;
         }
         html[data-theme="dark"] body {
-            color: #d4d4d4;
-            background: #1f1f1e;
+            color: #ececea;
+            background: #06090E;
         }
         /* Анти-FOUC mask на время verify-токена. Дашборд = протектед страница:
            без токена редиректим на /login.html, до завершения verify прячем
@@ -26,35 +26,35 @@
         html.gc-pending-auth .bg-dots,
         html.gc-pending-auth #gcAuthWidget { display: none !important; }
     </style>
-    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1f1f1e':'#fdfdfc','important');document.documentElement.classList.add('gc-pending-auth');}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#06090E':'#fafaf7','important');document.documentElement.classList.add('gc-pending-auth');}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
     <style>
         :root {
-            --bg-primary: #1f1f1e;
-            --bg-secondary: #1f1e1c;
-            --bg-card: #1f1e1c;
-            --bg-card-hover: #1c2028;
-            --border: #363432;
-            --border-hover: #d4a574;
-            --text-primary: #d4d4d4;
-            --text-secondary: #8a8a8a;
-            --text-muted: #5a5a5a;
-            --accent: #d4a574;
-            --accent-hover: #c08a5a;
+            --bg-primary: #06090E;
+            --bg-secondary: #08080a;
+            --bg-card: #161617;
+            --bg-card-hover: #1a1a1a;
+            --border: #2d2d29;
+            --border-hover: #4d4d46;
+            --text-primary: #ececea;
+            --text-secondary: #9b9b96;
+            --text-muted: #6c6c66;
+            --accent: #fafaf7;
+            --accent-hover: #e0e0da;
             --glow-green: #10b981;
             --glow-red: #ef4444;
         }
         :root[data-theme="light"] {
-            --bg-primary: #fdfdfc;
-            --bg-secondary: #f3f1ec;
-            --bg-card: #fffffe;
-            --bg-card-hover: #faf7f0;
+            --bg-primary: #fafaf7;
+            --bg-secondary: #f4f3ee;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f0efe7;
             --border: #e3dfd5;
-            --border-hover: #b8895d;
-            --text-primary: #1f1f1e;
-            --text-secondary: #6b6b68;
-            --text-muted: #a8a59f;
-            --accent: #b8895d;
-            --accent-hover: #a0764d;
+            --border-hover: #bfbbb0;
+            --text-primary: #1a1a17;
+            --text-secondary: #6b6a64;
+            --text-muted: #a09e96;
+            --accent: #111827;
+            --accent-hover: #1a2333;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -95,15 +95,15 @@
             position: fixed; top:0;right:0;bottom:0;left:0; z-index: 0;
             pointer-events: none;
             background-image:
-                radial-gradient(circle, rgba(212,165,116,0.22) 1.5px, transparent 2px),
-                radial-gradient(circle, rgba(212,165,116,0.12) 1px, transparent 1.5px);
+                radial-gradient(circle, rgba(250,250,247,0.12) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(250,250,247,0.06) 1px, transparent 1.5px);
             background-size: 60px 60px, 30px 30px;
             background-position: 0 0, 15px 15px;
         }
         :root[data-theme="light"] .bg-dots {
             background-image:
-                radial-gradient(circle, rgba(120,85,45,0.32) 1.5px, transparent 2px),
-                radial-gradient(circle, rgba(120,85,45,0.18) 1px, transparent 1.5px);
+                radial-gradient(circle, rgba(17,24,39,0.10) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(17,24,39,0.05) 1px, transparent 1.5px);
         }
 
         /* Layout */
@@ -133,13 +133,13 @@
             font-size: 42px;
             font-weight: 700;
             letter-spacing: 6px;
-            background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+            background: linear-gradient(135deg, #ececea 0%, var(--accent) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
         :root[data-theme="light"] .header h1 {
-            background: linear-gradient(135deg, #1f1f1e 0%, var(--accent) 100%);
+            background: linear-gradient(135deg, #1a1a17 0%, var(--accent) 100%);
             -webkit-background-clip: text;
             background-clip: text;
         }
@@ -249,7 +249,7 @@
             stroke-linejoin: round;
         }
 
-        .card .card-icon { background: linear-gradient(135deg, rgba(212,165,116,0.15), rgba(192,138,90,0.15)); color: var(--accent); }
+        .card .card-icon { background: linear-gradient(135deg, rgba(250,250,247,0.10), rgba(240,240,237,0.10)); color: var(--accent); }
 
         .card-title {
             font-size: 17px;
@@ -277,7 +277,7 @@
             font-weight: 500;
         }
 
-        .card .card-tag { background: rgba(212,165,116,0.10); color: var(--accent); border: 1px solid rgba(212,165,116,0.25); }
+        .card .card-tag { background: rgba(250,250,247,0.06); color: var(--accent); border: 1px solid rgba(250,250,247,0.14); }
 
 
         /* Card status dot: позиционирование и размер per-page.
