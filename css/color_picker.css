@@ -1,0 +1,16 @@
+.color-elem {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.color-picker {
+  display: grid;
+  grid-gap: 5px;
+}
+
+.color-picker__item {
+  cursor: pointer;
+}

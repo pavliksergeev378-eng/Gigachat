@@ -1,0 +1,799 @@
+﻿﻿body{
+  --gpt-radius: 28px;
+  --gpt-tool-size: 36px;
+  --gpt-send-size: 36px;
+
+  --gpt-bg:            var(--ch-bg-elev);
+  --gpt-border:        var(--ch-border);
+  --gpt-border-strong: var(--ch-border-str);
+  --gpt-fg:            var(--ch-fg-strong);
+  --gpt-fg-muted:      var(--ch-fg-muted);
+  --gpt-accent:        var(--ch-accent);
+  --gpt-accent-fg:     var(--ch-accent-fg);
+
+  --gpt-toggle-on:     var(--ch-accent);
+  --gpt-toggle-off:    var(--ch-fg-faint);
+
+  --gpt-shadow:        var(--ch-shadow-sm);
+  --gpt-shadow-hover:  var(--ch-shadow-md);
+}
+
+.gpt-composer {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  font-family: inherit;
+}
+
+.gpt-form--legacy-hidden > div:first-child,
+.gpt-form--legacy-hidden > .text-right {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.gpt-composer__shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 10px 10px 14px;
+  background: var(--gpt-bg);
+  border: 1px solid var(--gpt-border);
+  border-radius: var(--gpt-radius);
+  box-shadow: var(--gpt-shadow);
+  transition: box-shadow .18s ease, border-color .18s ease;
+}
+
+.gpt-composer__shell:focus-within {
+  border-color: var(--gpt-border-strong);
+  box-shadow: var(--gpt-shadow-hover);
+}
+
+.gpt-composer__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.gpt-composer__center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gpt-composer__textarea {
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--gpt-fg);
+  font-family: inherit;
+  font-size: 15.5px;
+  line-height: 1.55;
+  letter-spacing: -.005em;
+  padding: 9px 4px;
+  min-height: 24px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.gpt-composer__textarea::placeholder {
+  color: var(--gpt-fg-muted);
+}
+
+.gpt-composer__textarea:disabled {
+  color: var(--gpt-fg-muted);
+  cursor: not-allowed;
+}
+
+.gpt-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--gpt-tool-size);
+  height: var(--gpt-tool-size);
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--gpt-fg);
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+  padding: 0;
+  position: relative;
+}
+
+.gpt-icon-btn:hover {
+  background: var(--ch-bg-hover);
+}
+
+.gpt-icon-btn:active {
+  transform: scale(.96);
+}
+
+.gpt-icon-btn:focus-visible {
+  outline: none;
+  border-color: var(--gpt-border-strong);
+  box-shadow: 0 0 0 3px var(--ch-accent-soft);
+}
+
+.gpt-icon-btn svg, .gpt-icon-btn .fa-solid {
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.gpt-icon-btn .lc-icon,
+.gpt-popover__item .lc-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.gpt-icon-btn--plus {
+  border: 1px solid var(--gpt-border);
+}
+
+.gpt-icon-btn--plus:hover {
+  border-color: var(--gpt-border-strong);
+  background: var(--ch-bg-hover-sft);
+}
+
+.gpt-icon-btn[aria-disabled="true"] {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.gpt-icon-btn[aria-disabled="true"]:hover {
+  background: transparent;
+  border-color: var(--gpt-border);
+}
+
+.gpt-composer__right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gpt-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--gpt-send-size);
+  height: var(--gpt-send-size);
+  border-radius: 50%;
+  border: 0;
+  background: var(--gpt-accent);
+  color: var(--gpt-accent-fg);
+  cursor: pointer;
+  transition: background-color .15s ease, transform .15s ease, opacity .15s ease;
+  padding: 0;
+  position: relative;
+}
+
+.gpt-send-btn:hover {
+  background: #000;
+}
+
+.gpt-send-btn:active {
+  transform: scale(.94);
+}
+
+.gpt-send-btn:disabled {
+  background: var(--gpt-toggle-off);
+  cursor: not-allowed;
+  opacity: .7;
+}
+
+.gpt-send-btn .gpt-send-btn__icon {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  display: block;
+}
+
+.gpt-send-btn[data-state="busy"] {
+  background: var(--gpt-accent);
+}
+
+.gpt-send-btn[data-state="busy"] .gpt-send-btn__square {
+  width: 12px;
+  height: 12px;
+  background: var(--gpt-accent-fg);
+  border-radius: 3px;
+  display: block;
+}
+
+.gpt-composer__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 0 6px;
+}
+
+.gpt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--gpt-border);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--gpt-fg);
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  max-width: 220px;
+  white-space: nowrap;
+  line-height: 1.2;
+  position: relative;
+}
+
+.gpt-chip:hover {
+  background: var(--ch-bg-hover-sft);
+  border-color: var(--gpt-border-strong);
+}
+
+.gpt-chip__label {
+  color: var(--gpt-fg-muted);
+  font-size: 12px;
+}
+
+.gpt-chip__value {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gpt-chip__caret {
+  display: inline-flex;
+  align-items: center;
+  color: var(--gpt-fg-muted);
+  margin-left: 2px;
+  line-height: 0;
+}
+.gpt-chip__caret .lc-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.gpt-chip--placeholder .gpt-chip__value {
+  color: var(--gpt-fg-muted);
+  font-weight: 400;
+}
+
+.gpt-chip[aria-disabled="true"] {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.gpt-chip-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  background: var(--gpt-bg);
+  border: 1px solid var(--gpt-border);
+  border-radius: 12px;
+  box-shadow: var(--gpt-shadow-hover);
+  padding: 4px;
+  z-index: 60;
+  animation: gpt-fade-in .12s ease-out;
+}
+
+.gpt-chip-menu__body {
+  overflow: auto;
+  max-height: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gpt-chip-menu__item {
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--gpt-fg);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color .12s ease;
+}
+
+.gpt-chip-menu__item:hover {
+  background: var(--ch-bg-hover);
+}
+
+.gpt-chip-menu__item.is-selected {
+  background: var(--ch-accent-soft);
+  color: var(--ch-fg-strong);
+  font-weight: 500;
+}
+
+.gpt-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--gpt-fg-muted);
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+  padding: 0;
+}
+
+.gpt-toggle:hover {
+  background: var(--ch-bg-hover);
+}
+
+.gpt-toggle .fa-solid {
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.gpt-toggle .lc-icon {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.gpt-toggle__dot { display: none; }
+
+.gpt-toggle[data-state="on"] {
+  background: var(--ch-accent-soft);
+  color: var(--ch-fg-strong);
+}
+
+.gpt-toggle[data-state="on"]:hover {
+  background: var(--ch-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--ch-border);
+}
+
+.gpt-toggle[aria-disabled="true"] {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.gpt-popover {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 8px);
+  min-width: 220px;
+  background: var(--gpt-bg);
+  border: 1px solid var(--gpt-border);
+  border-radius: 14px;
+  box-shadow: var(--gpt-shadow-hover);
+  padding: 6px;
+  display: none;
+  z-index: 50;
+}
+
+.gpt-composer.is-popover-open .gpt-popover {
+  display: block;
+  animation: gpt-fade-in .12s ease-out;
+}
+
+@keyframes gpt-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gpt-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: var(--gpt-fg);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color .12s ease;
+  text-align: left;
+}
+
+.gpt-popover__item:hover {
+  background: var(--ch-bg-hover);
+}
+
+.gpt-popover__item .fa-solid {
+  width: 18px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--gpt-fg-muted);
+}
+
+.gpt-composer__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 2px 2px 2px;
+  margin-bottom: 2px;
+}
+
+.gpt-composer__attachments:empty {
+  display: none;
+  padding: 0;
+  margin: 0;
+}
+
+
+.gpt-attachment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 6px 10px 6px 6px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 10px;
+  color: var(--ch-fg);
+  font-size: 13.5px;
+  line-height: 1.2;
+  max-width: 320px;
+  transition: background .14s ease, border-color .14s ease;
+}
+.gpt-attachment:hover { border-color: var(--ch-border-str); }
+
+/* Превью-слот: hairline-квадрат с lucide-иконкой ИЛИ тамбнейл картинки */
+.gpt-attachment__icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--ch-bg-sunken);
+  border: 1px solid var(--ch-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ch-fg-muted);
+  overflow: hidden;
+  position: relative;
+}
+.gpt-attachment__icon .lc-icon { width: 16px; height: 16px; stroke-width: 1.8; }
+.gpt-attachment__icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Корпус — имя + meta */
+.gpt-attachment__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  flex: 1 1 auto;
+  padding-right: 4px;
+}
+.gpt-attachment__name {
+  font-weight: 500;
+  color: var(--ch-fg-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  letter-spacing: -.005em;
+}
+.gpt-attachment__meta {
+  font-size: 11.5px;
+  color: var(--ch-fg-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-feature-settings: "tnum";
+  text-transform: none;
+  letter-spacing: 0;
+}
+.gpt-attachment__type {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ch-fg-faint);
+}
+.gpt-attachment__dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ch-fg-faint);
+  opacity: .55;
+}
+
+/* Type tints — очень мягкие, ~8% alpha на превью, ~18% на бордер.
+   Цветной hue живёт только в превью и mono-бейдже, корпус всегда нейтрален. */
+.gpt-attachment--pdf  .gpt-attachment__icon { background: rgba(180, 80, 60, .08);  border-color: rgba(180, 80, 60, .18);  color: #a04835; }
+.gpt-attachment--doc  .gpt-attachment__icon { background: rgba(70, 105, 160, .08); border-color: rgba(70, 105, 160, .18); color: #3d5d8f; }
+.gpt-attachment--xls  .gpt-attachment__icon { background: rgba(75, 125, 75, .08);  border-color: rgba(75, 125, 75, .18);  color: #4d7d4a; }
+.gpt-attachment--text .gpt-attachment__icon { background: rgba(110, 90, 150, .07); border-color: rgba(110, 90, 150, .16); color: #6e5a96; }
+.gpt-attachment--code .gpt-attachment__icon { background: rgba(150, 100, 60, .07); border-color: rgba(150, 100, 60, .16); color: #8a6238; }
+
+.gpt-attachment--pdf  .gpt-attachment__type { color: #a04835; }
+.gpt-attachment--doc  .gpt-attachment__type { color: #3d5d8f; }
+.gpt-attachment--xls  .gpt-attachment__type { color: #4d7d4a; }
+.gpt-attachment--text .gpt-attachment__type { color: #6e5a96; }
+.gpt-attachment--code .gpt-attachment__type { color: #8a6238; }
+
+/* Картинка: превью чуть крупнее, без тинта */
+.gpt-attachment--img { height: 48px; }
+.gpt-attachment--img .gpt-attachment__icon { width: 36px; height: 36px; border-radius: 7px; }
+
+/* Actions-слот — inline в потоке (был absolute) */
+.gpt-attachment__place {
+  position: static;
+  top: auto;
+  right: auto;
+  transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin-left: 2px;
+  opacity: .55;
+  transition: opacity .14s ease;
+}
+.gpt-attachment:hover .gpt-attachment__place { opacity: 1; }
+
+.gpt-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 15, 12, .35);
+  -webkit-backdrop-filter: blur(2px) saturate(.6);
+  backdrop-filter: blur(2px) saturate(.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+
+.gpt-drop-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gpt-drop-overlay__card {
+  position: relative;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 18px;
+  padding: 28px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  max-width: 420px;
+  width: calc(100% - 64px);
+  box-shadow: var(--ch-shadow-md);
+  transform: scale(.94);
+  opacity: 0;
+  transition: transform .26s cubic-bezier(.2, .8, .25, 1),
+              opacity .2s ease,
+              border-color .18s ease,
+              background-color .18s ease;
+}
+
+.gpt-drop-overlay.is-visible .gpt-drop-overlay__card {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.gpt-drop-overlay__icon {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--ch-bg-sunken);
+  border: 1px solid var(--ch-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ch-fg-strong);
+}
+
+.gpt-drop-overlay__icon::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ch-border-str);
+  opacity: .5;
+  animation: gpt-drop-ripple 1.6s ease-out infinite;
+}
+
+@keyframes gpt-drop-ripple {
+  0%   { transform: scale(1);    opacity: .5; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+.gpt-drop-overlay__icon .lc-icon {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.8;
+}
+
+.gpt-drop-overlay__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ch-fg-strong);
+  margin: 0;
+  letter-spacing: -.01em;
+}
+
+.gpt-drop-overlay__subtitle {
+  font-size: 13.5px;
+  color: var(--ch-fg-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Форматы — mono-чипы в сетке */
+.gpt-drop-overlay__formats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 4px;
+  max-width: 320px;
+  word-break: normal;
+}
+
+.gpt-drop-overlay__fmt {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--ch-bg-sunken);
+  border: 1px solid var(--ch-hairline);
+  color: var(--ch-fg-muted);
+}
+
+/* Reject-стейт — только danger-tokens + shake */
+.gpt-drop-overlay.is-reject .gpt-drop-overlay__card {
+  border-color: rgba(195, 58, 58, .4);
+  animation: gpt-drop-shake .35s ease-out;
+}
+
+@keyframes gpt-drop-shake {
+  0%, 100% { transform: scale(1) translateX(0); }
+  20%      { transform: scale(1) translateX(-6px); }
+  40%      { transform: scale(1) translateX(5px); }
+  60%      { transform: scale(1) translateX(-3px); }
+  80%      { transform: scale(1) translateX(2px); }
+}
+
+.gpt-drop-overlay.is-reject .gpt-drop-overlay__icon {
+  background: var(--danger-soft);
+  border-color: rgba(195, 58, 58, .3);
+  color: var(--danger);
+}
+
+.gpt-drop-overlay.is-reject .gpt-drop-overlay__icon::before {
+  border-color: var(--danger);
+  opacity: .35;
+}
+
+.gpt-drop-overlay.is-reject .gpt-drop-overlay__title { color: var(--danger); }
+
+/* Подсветка композера во время active drag — accent ring */
+.gpt-composer__shell.is-drop-active {
+  border-color: var(--ch-border-str);
+  box-shadow: 0 0 0 4px var(--ch-accent-soft), var(--ch-shadow-sm);
+}
+
+.gpt-composer__shell.is-drop-reject {
+  border-color: rgba(195, 58, 58, .4);
+  box-shadow: 0 0 0 4px rgba(195, 58, 58, .10), var(--ch-shadow-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gpt-drop-overlay__icon::before { animation: none; opacity: .25; }
+  .gpt-drop-overlay.is-reject .gpt-drop-overlay__card { animation: none; }
+}
+
+.chat__load-response {
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+
+.chat__form .main-form[disabled]::after, .chat__form .main-form[disabled]:after {
+  content: none !important;
+  display: none !important;
+}
+
+@media (max-width: 600px) {
+  .gpt-composer {
+    --gpt-tool-size: 32px;
+    --gpt-send-size: 32px;
+    --gpt-radius: 22px;
+  }
+
+  .gpt-chip {
+    max-width: 140px;
+    font-size: 12px;
+  }
+
+  .gpt-composer__shell {
+    padding: 8px;
+  }
+}
+
+/* ==========================================================================
+   DARK THEME (ОСНОВНОЙ КОМПОЗЕР)
+   --gpt-* алиасятся через --ch-* в основном body{}, инверсия идёт автоматом
+   из color.css. Здесь — только зоны (attachment, drop-overlay), которые
+   --ch-* пока не покрывает (см. F-T2 / БЛОК E).
+   ========================================================================== */
+.dark .gpt-send-btn:hover {
+  background: #f3f4f6;
+}
+
+body.dark .gpt-attachment,
+.dark .gpt-attachment {
+  background: var(--ch-bg-elev);
+  border-color: var(--ch-border);
+  color: var(--ch-fg);
+}
+body.dark .gpt-attachment__icon,
+.dark .gpt-attachment__icon {
+  background: var(--ch-bg-sunken);
+  border-color: var(--ch-hairline);
+  color: var(--ch-fg-muted);
+}
+
+body.dark .gpt-attachment--pdf  .gpt-attachment__icon,
+.dark .gpt-attachment--pdf  .gpt-attachment__icon { background: rgba(220, 130, 110, .10); border-color: rgba(220, 130, 110, .22); color: #d4998b; }
+body.dark .gpt-attachment--doc  .gpt-attachment__icon,
+.dark .gpt-attachment--doc  .gpt-attachment__icon { background: rgba(130, 165, 220, .10); border-color: rgba(130, 165, 220, .22); color: #9bb4dc; }
+body.dark .gpt-attachment--xls  .gpt-attachment__icon,
+.dark .gpt-attachment--xls  .gpt-attachment__icon { background: rgba(140, 190, 140, .10); border-color: rgba(140, 190, 140, .22); color: #a8ce9e; }
+body.dark .gpt-attachment--text .gpt-attachment__icon,
+.dark .gpt-attachment--text .gpt-attachment__icon { background: rgba(170, 150, 210, .09); border-color: rgba(170, 150, 210, .20); color: #b6a6d3; }
+body.dark .gpt-attachment--code .gpt-attachment__icon,
+.dark .gpt-attachment--code .gpt-attachment__icon { background: rgba(210, 165, 120, .09); border-color: rgba(210, 165, 120, .20); color: #d3b48a; }
+
+body.dark .gpt-attachment--pdf  .gpt-attachment__type,
+.dark .gpt-attachment--pdf  .gpt-attachment__type { color: #d4998b; }
+body.dark .gpt-attachment--doc  .gpt-attachment__type,
+.dark .gpt-attachment--doc  .gpt-attachment__type { color: #9bb4dc; }
+body.dark .gpt-attachment--xls  .gpt-attachment__type,
+.dark .gpt-attachment--xls  .gpt-attachment__type { color: #a8ce9e; }
+body.dark .gpt-attachment--text .gpt-attachment__type,
+.dark .gpt-attachment--text .gpt-attachment__type { color: #b6a6d3; }
+body.dark .gpt-attachment--code .gpt-attachment__type,
+.dark .gpt-attachment--code .gpt-attachment__type { color: #d3b48a; }
+
+/* Dark drop-overlay: только backdrop, остальное автоматически через --ch-* токены. */
+body.dark .gpt-drop-overlay,
+.dark .gpt-drop-overlay {
+  background: rgba(0, 0, 0, .55);
+}
+
+/* Стили библиотеки промптов вынесены в prompt_library.css */

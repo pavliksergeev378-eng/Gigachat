@@ -1,0 +1,25 @@
+
+.tw-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  vertical-align: text-bottom;
+  background: var(--ch-fg-strong, #111827);
+  margin-left: 2px;
+  animation: tw-blink 1.05s steps(1, end) infinite;
+  border-radius: 1px;
+}
+
+@keyframes tw-blink {
+  0%, 50%   { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+body.dark .tw-cursor {
+  background: var(--ch-fg-strong, #f9fafb);
+}
+
+/* В reduced-motion блокируем мигание (курсор статичен). */
+@media (prefers-reduced-motion: reduce) {
+  .tw-cursor { animation: none; opacity: 1; }
+}

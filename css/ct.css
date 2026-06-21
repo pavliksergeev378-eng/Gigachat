@@ -1,0 +1,67 @@
+.ct-line.ct-threshold-above, .ct-point.ct-threshold-above, .ct-bar.ct-threshold-above {
+  stroke: #f05b4f;
+}
+
+.ct-line.ct-threshold-below, .ct-point.ct-threshold-below, .ct-bar.ct-threshold-below {
+  stroke: #59922b;
+}
+
+.ct-area.ct-threshold-above {
+  fill: #f05b4f;
+}
+
+.ct-area.ct-threshold-below {
+  fill: #59922b;
+}
+
+.ct-target-line {
+  stroke: blue;
+  stroke-width: 2px;
+  stroke-dasharray: 4px;
+  shape-rendering: crispEdges;
+}
+
+.ct-zoom-rect {
+  fill: rgba(200, 100, 100, 0.3);
+  stroke: red;
+}
+
+.ct-series .ct-label {
+  fill: rgba(0, 0, 0, .75);
+  color: rgba(0, 0, 0, .75);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.ct-label-normal .ct-label {
+  fill: rgba(0, 0, 0, .75);
+  color: rgba(0, 0, 0, .75);
+  font-size: 2.25rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ct-left-legend {
+  display: grid;
+  grid-gap: 5px;
+  /*grid-template-columns: 1fr auto;*/
+  /*align-items: center;*/
+}
+
+.ct-legend {
+  display: grid;
+  grid-gap: 5px;
+  margin: 0 auto;
+}
+
+.ct-legend__item {
+  grid-gap: 5px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  line-height: 1;
+}
+
+.ct-legend__item > span.svg {
+  width: 14px;
+  height: 14px;
+}

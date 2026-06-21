@@ -1,0 +1,940 @@
+/* ============================================================
+ * forms.css — общесистемный словарь форм (UI Modernization, фаза 1, коммит 03).
+ *
+ * 7 примитивов на --ch-* токенах:
+ *   .ch-btn   .ch-input   .ch-field   .ch-check
+ *   .ch-switch  .ch-seg   .ch-select
+ *
+ * Префикс .ch- осознанный: Bootstrap 3 уже занимает .btn / .form-control,
+ * и переопределение голой .btn перекроет весь сайт (наш бандл идёт
+ * после bootstrap.css). Точечные алиасы Bootstrap (.btn-default → .ch-btn--outline
+ * и т.п.) подключаются в коммитах применения (06+: чат, библиотека, документы),
+ * а не на уровне общего словаря.
+ *
+ * На момент коммита 03 примитивы НИКЕМ не используются — визуальный регресс нулевой.
+ * ============================================================ */
+
+/* ---------- Buttons ---------- */
+.ch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ch-fg);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+}
+.ch-btn:hover    { background: var(--ch-bg-hover-sft); }
+.ch-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.ch-btn--primary {
+  background: var(--ch-accent);
+  color: var(--ch-accent-fg);
+  border-color: var(--ch-accent);
+}
+.ch-btn--primary:hover {
+  background: var(--ch-accent);
+  transform: translateY(-1px);
+  box-shadow: var(--ch-shadow-sm);
+}
+
+.ch-btn--outline {
+  background: var(--ch-bg-elev);
+  border-color: var(--ch-border);
+}
+.ch-btn--outline:hover { border-color: var(--ch-border-str); }
+
+.ch-btn--ghost        { background: transparent; }
+.ch-btn--ghost:hover  { background: var(--ch-bg-hover); }
+
+.ch-btn--danger       { color: var(--danger); }
+.ch-btn--danger:hover { background: var(--danger-soft); }
+
+.ch-btn--sm {
+  padding: 5px 10px;
+  font-size: 12.5px;
+  border-radius: 7px;
+}
+
+/* ---------- Input ---------- */
+.ch-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 9px;
+  color: var(--ch-fg);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: -.005em;
+  transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.ch-input:focus,
+.ch-input:focus-within {
+  outline: 0;
+  border-color: var(--ch-border-str);
+  box-shadow: 0 0 0 3px var(--ch-accent-soft);
+}
+.ch-input::placeholder { color: var(--ch-fg-faint); }
+
+textarea.ch-input {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.55;
+}
+
+/* ---------- Field (label + control + hint/error) ---------- */
+.ch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ch-field__label {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  color: var(--ch-fg-strong);
+}
+.ch-field__hint {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ch-fg-muted);
+}
+.ch-field__error {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--danger);
+}
+.ch-field--has-error .ch-input,
+.ch-field--has-error .ch-input:focus-within,
+.ch-field--has-error .ch-select {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+/* ---------- Checkbox ---------- */
+.ch-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: var(--ch-fg);
+}
+.ch-check input { display: none; }
+.ch-check__box {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ch-bg-elev);
+  border: 1.5px solid var(--ch-border-str);
+  border-radius: 5px;
+  color: var(--ch-accent-fg);
+  transition: background .12s ease, border-color .12s ease;
+}
+.ch-check input:checked + .ch-check__box {
+  background: var(--ch-accent);
+  border-color: var(--ch-accent);
+}
+.ch-check__box svg                       { display: none; }
+.ch-check input:checked + .ch-check__box svg { display: block; }
+
+/* ---------- Switch ---------- */
+.ch-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: var(--ch-fg);
+}
+.ch-switch input { display: none; }
+.ch-switch__track {
+  position: relative;
+  width: 36px;
+  height: 22px;
+  flex: 0 0 auto;
+  background: var(--ch-border-str);
+  border-radius: 999px;
+  transition: background .15s ease;
+}
+.ch-switch__track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+  transition: transform .18s ease;
+}
+.ch-switch input:checked + .ch-switch__track          { background: var(--success); }
+.ch-switch input:checked + .ch-switch__track::after   { transform: translateX(14px); }
+
+/* ---------- Segmented control ---------- */
+.ch-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ch-bg-hover-sft);
+  border-radius: 9px;
+}
+.ch-seg__item {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ch-fg-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.ch-seg__item:hover     { color: var(--ch-fg); }
+.ch-seg__item.is-active {
+  background: var(--ch-bg-elev);
+  color: var(--ch-fg-strong);
+  box-shadow: 0 1px 2px rgba(15, 15, 12, .05);
+}
+
+/* ---------- Select (визуальная обёртка, не нативный <select>) ---------- */
+.ch-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 9px;
+  color: var(--ch-fg);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+.ch-select:hover { border-color: var(--ch-border-str); }
+.ch-select__value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ch-select__value.is-placeholder { color: var(--ch-fg-faint); }
+.ch-select__caret {
+  color: var(--ch-fg-faint);
+  font-size: 11px;
+}
+
+/* ============================================================
+ * .ch-modal — узкий скоуп для chat-Fancybox CRUD-модалок (§6 хвостов).
+ *
+ * Применяется через `wrap_class: 'ch-modal'` в make_fancy_modal (см.
+ * group_modal, prompt_modal). Алиасит Bootstrap-классы изнутри
+ * Fancybox-контейнера к визуалу .ch-input / .ch-btn:
+ *   .form-control          → .ch-input (40px, 9px-radius, --ch-bg-elev, focus-ring)
+ *   textarea.form-control  → textarea.ch-input (min-h 96, line-h 1.55)
+ *   .btn.btn-success       → .ch-btn--primary
+ *   .btn.btn-default       → .ch-btn--ghost
+ *   .help-block            → .ch-field__hint / __error
+ *
+ * Без вмешательства в шаренные примитивы (input/textarea/button helpers) —
+ * остальной сайт остаётся на старом Bootstrap. См. handoff 05 §Inputs.
+ * ============================================================ */
+
+/* `:not([type=...])` сужает на text-инпуты — нативные checkbox/radio/file
+ * скрываются другими словарями (.checkbox-btn__input { display:none } и т.п.),
+ * наш display:block / padding их бы «вытащил» сверху своей label-плашки. */
+.ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 8px 12px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 9px;
+  color: var(--ch-fg);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -.005em;
+  box-shadow: none;
+  transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus {
+  outline: 0;
+  border-color: var(--ch-border-str);
+  box-shadow: 0 0 0 3px var(--ch-accent-soft);
+}
+.ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder { color: var(--ch-fg-faint); }
+.ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]):disabled,
+.ch-modal .form-control:not([type="checkbox"]):not([type="radio"]):not([type="file"])[readonly] {
+  background: var(--ch-bg-hover-sft);
+  color: var(--ch-fg-muted);
+  cursor: not-allowed;
+}
+
+.ch-modal textarea.form-control,
+.ch-modal textarea.modal-textarea {
+  resize: vertical;
+  min-height: 96px;
+  max-height: calc(96px * 5);
+  line-height: 1.55;
+  text-align: left;
+}
+
+/* Label — Bootstrap `.control-label` / `<label>` внутри `.form-group` */
+.ch-modal .form-group > label,
+.ch-modal .control-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  color: var(--ch-fg-strong);
+}
+
+/* Hint / error снизу — Bootstrap `.help-block` */
+.ch-modal .help-block {
+  margin-top: 4px;
+  margin-bottom: 0;
+  font-size: 11.5px;
+  color: var(--ch-fg-muted);
+}
+.ch-modal .has-error .form-control {
+  border-color: var(--danger);
+  box-shadow: none;
+}
+
+.has-error .form-control-feedback {
+  color: var(--danger);
+}
+
+.ch-modal .has-error .form-control:focus {
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.ch-modal .has-error .help-block,
+.ch-modal .has-error .control-label {
+  color: var(--danger);
+}
+
+/* Footer-кнопки (.btn-success — primary, .btn-default — ghost). */
+.ch-modal .btn.btn-success {
+  background: var(--ch-accent);
+  border: 1px solid var(--ch-accent);
+  color: var(--ch-accent-fg);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  text-shadow: none;
+  box-shadow: none;
+  transition: background .14s ease, border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+}
+.ch-modal .btn.btn-success:hover,
+.ch-modal .btn.btn-success:focus,
+.ch-modal .btn.btn-success:active {
+  background: var(--ch-accent);
+  border-color: var(--ch-accent);
+  color: var(--ch-accent-fg);
+  transform: translateY(-1px);
+  box-shadow: var(--ch-shadow-sm);
+}
+.ch-modal .btn.btn-success[disabled],
+.ch-modal .btn.btn-success.disabled {
+  opacity: .55;
+  transform: none;
+  box-shadow: none;
+}
+
+.ch-modal .btn.btn-default {
+  background: transparent;
+  border: 1px solid var(--ch-border);
+  color: var(--ch-fg);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  box-shadow: none;
+  transition: background .14s ease, border-color .14s ease;
+}
+.ch-modal .btn.btn-default:hover,
+.ch-modal .btn.btn-default:focus {
+  background: var(--ch-bg-hover-sft);
+  border-color: var(--ch-border-str);
+  color: var(--ch-fg-strong);
+}
+
+/* Не трогаем chosen, datatables, file-pack, panel — только form-control + footer-кнопки. */
+
+/* ============================================================
+ * .ch-modal — КАРТОЧКА-ШЕЛЛ chat-Fancybox CRUD-модалок.
+ *
+ * Сама .ch-modal (внутренний <div> из make_fancy_modal) становится
+ * карточкой: bg/border/radius16/shadow. Вокруг неё СБРАСЫВАЕМ хром
+ * fancybox через :has() (баг «квадрата» — парный к prompt_library.css;
+ * здесь же, потому что тут карточка-шелл: без шелла форма повисла бы
+ * без фона). Применяется к prompt_modal, group_modal.
+ *
+ * DOM make_fancy_modal:
+ *   .ch-modal
+ *     .fancybox-btn-panel  (close × → абсолютом в правый верх header)
+ *     .form-group-lead-text-center  (.lead — заголовок → header-бар)
+ *     form.main-form
+ *       [id$=_form_place]   (поля → body)
+ *       .text-right         (submit → footer)
+ *
+ * overflow карточки — VISIBLE: внутри кастомные select-дропдауны
+ * (form_select_init) позиционируются absolute и при hidden обрезались бы.
+ * Скругление низа отдаём футеру (header прозрачный — углам не мешает).
+ * ============================================================ */
+
+/* .ch-modal === сам .fancybox-content: fancybox v3 вешает wrap_class прямо на
+   свой content-div (проверено в браузере: class="ch-modal fancybox-content"),
+   а НЕ оборачивает. Поэтому прежний reset `.fancybox-content:has(> .ch-modal)`
+   никогда не матчил (нет дочернего .ch-modal). Нейтрализуем дефолты
+   fancybox/my_table/night ПРЯМО на самом .ch-modal. */
+.ch-modal {
+  position: relative;
+  width: min(560px, 94vw);
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(15, 15, 12, .18);
+  color: var(--ch-fg);
+  padding: 0;            /* перебить my_table.css .fancybox-content { padding:20px 10px 10px } */
+  overflow: visible;     /* кастомные select-дропдауны формы не клипуются */
+}
+/* Тёмная тема: night.css `.dark .fancybox-content` (спецификация выше .ch-modal)
+   красит фон в --night-color и вешает свой border — лишняя «обводка». Перебиваем
+   на карточный вид (body.dark .ch-modal = 0,2,1 > .dark .fancybox-content = 0,2,0). */
+body.dark .ch-modal {
+  background: var(--ch-bg-elev);
+  border-color: var(--ch-border);
+}
+
+/* --- Header: заголовок-бар (.lead) + close (.fancybox-btn-panel) --- */
+.ch-modal .form-group-lead-text-center {
+  margin: 0;
+  padding: 16px 20px;                     /* «×» убран — симметричный паддинг */
+  border-bottom: 1px solid var(--ch-hairline);
+}
+.ch-modal .form-group-lead-text-center .lead {
+  margin: 0;
+  text-align: left;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.015em;
+  color: var(--ch-fg-strong);
+}
+
+/* Fancybox-«×» формы убран (D-A2, Пачка 1): закрытие — Esc / «Отмена» /
+   «Сохранить промпт», как у .dlg-форм. «крестиков не должно быть» (юзер).
+   Панель close скрываем целиком; handler в make_fancy_modal остаётся (неактивен). */
+.ch-modal .fancybox-btn-panel { display: none; }
+
+/* --- Body: контейнер полей --- */
+.ch-modal .main-form { margin: 0; }
+.ch-modal [id$="_form_place"] {
+  padding: 18px 20px 6px;
+}
+
+/* --- Footer: .text-right (submit + опц. ghost-Отмена) --- */
+.ch-modal .main-form > .text-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--ch-hairline);
+  background: var(--ch-bg-sunken);
+  border-radius: 0 0 16px 16px;          /* низ карточки (overflow visible) */
+}
+
+/* Ghost-кнопка «Отмena» (инжектится в prompt_modal/after_show) */
+.ch-modal__cancel {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ch-fg-muted);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  letter-spacing: -.005em;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.ch-modal__cancel:hover {
+  background: var(--ch-bg-hover);
+  color: var(--ch-fg-strong);
+}
+
+/* ============================================================
+ * .ch-modal--danger — диалог подтверждения удаления (Изм.5).
+ * Контент кастомный (не form): плитка-иконка + заголовок + текст +
+ * цитата-карточка, футер ghost/danger. Карточку-шелл даёт .ch-modal.
+ * ============================================================ */
+.ch-modal--danger { width: min(460px, 94vw); }
+
+.ch-danger__body {
+  display: flex;
+  gap: 14px;
+  padding: 24px 22px 18px;
+}
+.ch-danger__ico {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ch-danger__ico .lc-icon { width: 20px; height: 20px; }
+.ch-danger__main { min-width: 0; }
+.ch-danger__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ch-fg-strong);
+  letter-spacing: -.01em;
+  margin: 2px 0 6px;
+}
+.ch-danger__text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ch-fg-muted);
+}
+.ch-danger__quote {
+  margin-top: 12px;
+  border: 1px solid var(--ch-hairline);
+  border-left: 2px solid var(--danger);
+  background: var(--ch-bg-sunken);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.ch-danger__quote-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ch-fg-strong);
+  word-break: break-word;
+}
+.ch-danger__quote-ex {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ch-fg-muted);
+  word-break: break-word;
+}
+.ch-danger__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--ch-hairline);
+  background: var(--ch-bg-sunken);
+  border-radius: 0 0 16px 16px;
+}
+.btn-ch-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--danger);
+  color: #fff;
+  border: 1px solid var(--danger);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  letter-spacing: -.005em;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease;
+}
+.btn-ch-danger:hover {
+  background: var(--danger-hover);
+  border-color: var(--danger-border-hover);
+}
+.btn-ch-danger .lc-icon { width: 15px; height: 15px; }
+
+/* ============================================================
+ * .ch-modal — форма промпта (Изм.4): флэт-панели, сворачиваемый
+ * раздел «Параметры запуска» (.ch-adv), теги-чипы (.ch-tags).
+ * Разметку .ch-adv/.ch-tags инжектит prompt_modal/after_show
+ * поверх сгенерированной формы (группы-панели и input остаются).
+ * ============================================================ */
+
+/* Bootstrap .panel внутри ch-modal → плоский контейнер (без рамки/тени/inset) */
+.ch-modal .panel {
+  margin: 0 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.ch-modal .panel > .panel-body { padding: 0; }
+body.dark .ch-modal .panel,
+body.dark .ch-modal .panel-default { background: transparent; border: 0; }
+
+/* Сворачиваемый раздел «Параметры запуска» (группа chat) */
+.ch-modal .ch-adv {
+  margin: 4px 0 2px;
+  border: 1px solid var(--ch-hairline);
+  border-radius: 12px;
+  background: var(--ch-bg);
+  overflow: hidden;
+}
+/* T-5: в dark раздел сливался с фоном формы. Виновник — forms.css:594
+   `body.dark .ch-modal .panel-default { border: 0 }` (.ch-adv имеет класс panel-default)
+   обнулял border-WIDTH (не только цвет). Потому задаём border ЦЕЛИКОМ (width+style+color),
+   а не только border-color. Зеркалим light: видимая обводка --ch-border + приподнятый
+   фон --ch-bg-elev, чтобы «Параметры запуска» читались как отдельная карточка. */
+body.dark .ch-modal .ch-adv {
+  border: 1px solid var(--ch-border);
+  background: var(--ch-bg-elev);
+}
+/* T-2: когда раздел РАСКРЫТ — overflow:visible, иначе клипует flip-выпадашку селектов
+   Модель/Агент (открываются вверх и выходят за границу .ch-adv → «обрезанная полоса»
+   сверху списка). В свёрнутом состоянии overflow:hidden остаётся (скруглённые углы). */
+.ch-modal .ch-adv.ch-adv--open {
+  overflow: visible;
+}
+.ch-modal .ch-adv__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.ch-modal .ch-adv__head .ch-adv__lead {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--ch-fg-muted);
+}
+.ch-modal .ch-adv__head .ch-adv__t {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ch-fg-strong);
+}
+.ch-modal .ch-adv__head .ch-adv__meta {
+  font-size: 12px;
+  color: var(--ch-fg-muted);
+}
+.ch-modal .ch-adv__head .ch-adv__chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--ch-fg-faint);
+  transition: transform .18s ease;
+}
+.ch-modal .ch-adv__head .ch-adv__chev .lc-icon { width: 16px; height: 16px; }
+.ch-modal .ch-adv.ch-adv--open .ch-adv__head .ch-adv__chev { transform: rotate(180deg); }
+
+/* Тело раздела — скрыто, пока не открыт */
+.ch-modal .ch-adv > .panel-body {
+  display: none;
+  padding: 0 14px 14px;
+}
+.ch-modal .ch-adv.ch-adv--open > .panel-body { display: block; }
+
+/* F-03: раскладка «Параметры запуска» 2×2 (кадр 06-B). Перебиваем сетку
+   form-block (.form-grid__12 → repeat(12,1fr)) и span'ы ceil'ов (которые
+   приходят с `!important` из form-block__ceil_3). prompt_form.js не трогаем. */
+.ch-modal .ch-adv--2x2 > .panel-body > .form-block {
+  grid-template-columns: 1fr 1fr;
+  grid-gap: 10px;
+}
+.ch-modal .ch-adv--2x2 > .panel-body > .form-block > .form-block__ceil {
+  grid-column: span 1 !important;
+  min-width: 0;
+}
+.ch-modal .ch-adv--2x2 .form-group > label,
+.ch-modal .ch-adv--2x2 .control-label {
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ch-modal .ch-adv--2x2 .form-control:not([type="checkbox"]):not([type="radio"]) {
+  min-height: 38px;
+}
+
+/* Туглы search_in_db / search_in_sql → switch-карточка (образец .cf__opt/.sw
+   из Before-After.html). form-group тогглов помечена .ch-adv__toggle в JS.
+   Лейбл «База знаний» слева, switch справа; зелёные fa-иконки и текст-коммент
+   компонента скрыты. */
+.ch-modal .ch-adv__toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  min-height: 38px;
+  border: 1px solid var(--ch-border);
+  border-radius: 10px;
+  background: var(--ch-bg-elev);
+}
+.ch-modal .ch-adv__toggle > label.line-text,
+.ch-modal .ch-adv__toggle > .control-label {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ch-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* сам checkbox-btn — только switch, без текста/иконок */
+.ch-modal .ch-adv__toggle .checkbox-btn {
+  width: auto;
+  margin: 0 0 0 auto;
+  padding: 0;
+  min-width: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.ch-modal .ch-adv__toggle .checkbox-btn__check,
+.ch-modal .ch-adv__toggle .checkbox-btn__unchecked,
+.ch-modal .ch-adv__toggle .checkbox-btn__indeterminate,
+.ch-modal .ch-adv__toggle .checkbox-btn__title {
+  display: none !important;
+}
+.ch-modal .ch-adv__toggle .checkbox-btn__btn {
+  position: relative;
+  display: block;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;                       /* убираем зелёный bootstrap-border #5cb85c */
+  border-radius: 999px;
+  background: var(--ch-border-str);
+  transition: background .15s ease;
+}
+.ch-modal .ch-adv__toggle .checkbox-btn__btn::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  transition: left .15s ease;
+}
+.ch-modal .ch-adv__toggle .checkbox-btn__input:checked + .checkbox-btn__btn {
+  background: var(--ch-accent);
+}
+.ch-modal .ch-adv__toggle .checkbox-btn__input:checked + .checkbox-btn__btn::after {
+  left: 16px;
+  /* on-state knob: контраст с графит/light треком в обеих темах */
+  background: var(--ch-accent-fg);
+}
+/* Тёмная тема: off-трек субтильный светлый → бегунок светлый, но виден */
+body.dark .ch-modal .ch-adv__toggle .checkbox-btn__btn::after {
+  background: #d9d9d6;
+}
+body.dark .ch-modal .ch-adv__toggle .checkbox-btn__input:checked + .checkbox-btn__btn::after {
+  background: var(--ch-accent-fg);
+}
+
+/* Теги-чипы поверх скрытого tags_str input */
+.ch-modal .ch-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 8px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 9px;
+  cursor: text;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+.ch-modal .ch-tags:focus-within {
+  border-color: var(--ch-border-str);
+  box-shadow: 0 0 0 3px var(--ch-accent-soft);
+}
+.ch-modal .ch-tags__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--ch-bg-sunken);
+  border: 1px solid var(--ch-hairline);
+  color: var(--ch-fg);
+  border-radius: 999px;
+  padding: 3px 6px 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.ch-modal .ch-tags__rm {
+  width: 11px;
+  height: 11px;
+  color: var(--ch-fg-faint);
+  cursor: pointer;
+}
+.ch-modal .ch-tags__rm:hover { color: var(--ch-fg-strong); }
+.ch-modal .ch-tags__add {
+  flex: 1 1 80px;
+  min-width: 80px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ch-fg);
+  padding: 4px 2px;
+}
+.ch-modal .ch-tags__add::placeholder { color: var(--ch-fg-faint); }
+
+/* ============================================================
+ * T-2: chosen-селекты внутри формы промпта (Группа / Модель / ИИ-агент)
+ * приведены к стилю обычного .form-control на --ch-* токенах. Раньше chosen
+ * брал legacy chosen.css + night.css → выбивался (bg #121212 темнее input
+ * #161617, border #333, radius 5px, height 34) И выпадашка была БЕЛОЙ в dark
+ * (chosen-drop #fff — текст #ddd на белом нечитаем). forms.css:382 «не трогаем
+ * chosen» — пересмотр: трогаем УЗКО под .ch-modal, vendor chosen.css/night.css
+ * не правим. Скоуп .ch-modal + body.dark .ch-modal даёт специфичность над night.
+ * ============================================================ */
+
+/* Поле (закрытое состояние) — как input.form-control */
+.ch-modal .chosen-container-single .chosen-single {
+  height: 38px;
+  line-height: 26px;
+  padding: 5px 11px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 9px;
+  color: var(--ch-fg);
+  box-shadow: none;
+}
+.ch-modal .chosen-container-active.chosen-with-drop .chosen-single {
+  border-color: var(--ch-accent);
+  border-bottom-left-radius: 9px;
+  border-bottom-right-radius: 9px;
+}
+.ch-modal .chosen-container-single .chosen-single span {
+  color: var(--ch-fg);
+}
+/* Стрелка справа — убираем legacy спрайт, рисуем chevron через border */
+.ch-modal .chosen-container-single .chosen-single div { width: 26px; }
+.ch-modal .chosen-container-single .chosen-single div b {
+  background: none !important;
+  position: relative;
+}
+.ch-modal .chosen-container-single .chosen-single div b::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ch-fg-muted);
+  border-bottom: 1.5px solid var(--ch-fg-muted);
+  transform: translate(-50%, -70%) rotate(45deg);
+}
+
+/* Поле поиска chosen в single-выпадашке скрываем: source ≤ нескольких пунктов
+   (модели/группы/агенты), искать незачем, а легаси search-input торчал ПУСТОЙ
+   полосой над списком (chosen.css позиционирует его absolute сверху drop — на
+   белом фоне был незаметен, на тёмном --ch-bg-elev проявился «обрезанной строкой»).
+   visibility:hidden+height:0 (НЕ display:none) — chosen фокусирует это поле для
+   keyboard-навигации, display:none ломает фокус. Список поднимается под самый верх. */
+.ch-modal .chosen-container-single .chosen-search {
+  position: absolute;
+  height: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* Выпадашка — фон/рамка/радиус на --ch-* (КЛЮЧЕВОЕ: убирает белый фон в dark). */
+.ch-modal .chosen-container .chosen-drop {
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+/* Список вплотную к верху drop — search-поле скрыто (height:0), но chosen.css даёт
+   .chosen-results margin/padding сверху под него. Обнуляем, чтобы не было пустой полосы. */
+.ch-modal .chosen-container .chosen-results {
+  margin-top: 0;
+  padding-top: 4px;
+}
+.ch-modal .chosen-container-active.chosen-with-drop .chosen-drop {
+  border-color: var(--ch-accent);
+}
+.ch-modal .chosen-container .chosen-results { color: var(--ch-fg); }
+/* Опции — hover/selected как .gpt-chip-menu__item (прозрач / hover bg / accent-soft) */
+.ch-modal .chosen-container .chosen-results li {
+  background: transparent;
+  color: var(--ch-fg);
+  padding: 7px 11px;
+}
+.ch-modal .chosen-container .chosen-results li.highlighted {
+  background: var(--ch-bg-hover);
+  color: var(--ch-fg-strong);
+}
+.ch-modal .chosen-container .chosen-results li.result-selected {
+  background: var(--ch-accent-soft);
+  color: var(--ch-fg-strong);
+}
+/* Поиск внутри выпадашки (если есть) */
+.ch-modal .chosen-container .chosen-search input {
+  background: var(--ch-bg-sunken);
+  border: 1px solid var(--ch-border);
+  border-radius: 7px;
+  color: var(--ch-fg);
+}
+
+/* Dark: surfaces/fg уже инвертируются через --ch-* (color.css). Перебиваем
+   night.css-правила chosen, что прямо ставят --dark-moon/--dark-control-border:
+   night.css:291 `.dark ... .chosen-single { border-color: var(--dark-control-border) }`
+   (=#333) той же специфичности (0,3,0) — потому border-color ОБЯЗАТЕЛЬНО дублируем
+   здесь (body.dark .ch-modal = 0,4,0 > night). */
+body.dark .ch-modal .chosen-container-single .chosen-single,
+body.dark .ch-modal .chosen-container .chosen-drop,
+body.dark .ch-modal .chosen-container .chosen-results,
+body.dark .ch-modal .chosen-container-active.chosen-with-drop,
+body.dark .ch-modal .chosen-container-active.chosen-with-drop .chosen-single {
+  background-color: var(--ch-bg-elev);
+  border-color: var(--ch-border);
+  color: var(--ch-fg);
+}
+body.dark .ch-modal .chosen-container-active.chosen-with-drop .chosen-single,
+body.dark .ch-modal .chosen-container-active.chosen-with-drop .chosen-drop {
+  border-color: var(--ch-accent);
+}
+body.dark .ch-modal .chosen-container .chosen-results li.highlighted {
+  background: var(--ch-bg-hover);
+}

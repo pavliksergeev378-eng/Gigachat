@@ -1,0 +1,773 @@
+/* ============================================================
+ * UI Modernization — system polish (фаза 1, коммит 04 + 9.6).
+ * Тонкие скроллбары на --ch-* токенах, единый focus-visible ring,
+ * тёплый ::selection, font-smoothing, CSS-only tooltips, status-pill.
+ * Аддитивно поверх Bootstrap 3 / FontAwesome / Chosen.
+ * Старый общий `*::-webkit-scrollbar-thumb { background: --main-color }`
+ * из color.css перекрывается по cascade order (polish.css импортируется позже).
+ * ============================================================ */
+
+/* --- Скроллбары --------------------------------------------------------- */
+/* Глобальные тонкие 8px на --ch-border (расширено в 9.6 по handoff 06).
+   Прежний 10px на --ch-border-str был визуально шире, чем у современных
+   AI-продуктов. Hover поднимает контраст до --ch-border-str. */
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--ch-border);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ch-border-str);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ch-border) transparent;
+}
+
+/* Исключение для Fancybox-модалок — DataTables / Chosen / file-pickers внутри
+   модалок иногда зависят от дефолтной ширины скроллбара браузера.
+   Откатываем тонкие скроллбары к native поведению внутри `.fancybox-content`. */
+.fancybox-content *::-webkit-scrollbar {
+  width: auto;
+  height: auto;
+}
+
+.fancybox-content *::-webkit-scrollbar-thumb {
+  background: var(--ch-border-str);
+  border: none;
+  background-clip: border-box;
+}
+
+.fancybox-content * {
+  scrollbar-width: auto;
+}
+
+/* --- Focus-visible ring ------------------------------------------------- */
+/* Показываем ring только после реальной клавиатурной навигации.
+   `body.no-focus-ring` ставится по умолчанию (см. base.html) и снимается
+   на первое нажатие Tab; mousedown/touchstart возвращают класс обратно.
+   Это лечит ложный ring после reload, когда JS делает .focus() на
+   composer input / другие поля без участия пользователя. */
+
+.btn:focus-visible,
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--ch-accent);
+  outline-offset: 2px;
+}
+
+/* Текстовые поля и select имеют собственный focus-стиль через border-color
+   (Bootstrap .form-control:focus, .chosen-container-active, composer pill).
+   Свой outline не накладываем. */
+.form-control:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* Не показывать outline при клике мышью. */
+.btn:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Глобальная гашка ring'а пока пользователь не нажал Tab. */
+body.no-focus-ring :focus-visible {
+  outline: none;
+}
+
+/* Шапка теперь светлая (--ch-bg, см. секцию «App-bar restyle» ниже), поэтому
+   override outline-color для focus-visible внутри .my-header больше не нужен —
+   --ch-accent (#111827) корректно контрастирует с --ch-bg (#fafaf7). */
+
+/* --- Выделение текста --------------------------------------------------- */
+
+::selection {
+  background: var(--ch-accent-soft);
+  color: var(--ch-fg-strong);
+}
+
+body.dark ::selection {
+  background: rgba(255, 255, 255, .14);
+  color: var(--ch-fg-strong);
+}
+
+/* --- Font smoothing ----------------------------------------------------- */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* --- CSS-only tooltips (9.6) ------------------------------------------- */
+/* Любой элемент с `data-tip="..."` получает современный bubble на hover/focus.
+   Без миграции HTML, без JS-библиотек. Bubble позиционируется относительно
+   элемента — родитель автоматически становится `position: relative` для
+   таргета. Для inline-only элементов (например <a> внутри текста)
+   `position: relative` визуально безопасен (не меняет inline-поток).
+
+   Native browser tooltip от `title=""` пока сосуществует. Чтобы получить
+   современный bubble на старых местах, при применении в коммитах 10+
+   менять `title=` → `data-tip=` точечно. Гибридный селектор `[title]`
+   не вводим — нативный tooltip нельзя погасить чистым CSS, и двойной
+   tooltip портит UX. */
+
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: 5px 9px;
+  background: var(--ch-fg-strong);
+  color: var(--ch-bg);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s ease, transform .15s ease;
+  z-index: 1080;
+  box-shadow: var(--ch-shadow-sm);
+}
+
+[data-tip]::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--ch-fg-strong);
+  opacity: 0;
+  transition: opacity .15s ease;
+  pointer-events: none;
+}
+
+[data-tip]:hover::after,
+[data-tip]:hover::before,
+[data-tip]:focus-visible::after,
+[data-tip]:focus-visible::before {
+  opacity: 1;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Disabled / неактивные таргеты — без bubble (часто `data-tip` живёт на
+   `<button disabled>` для подсказки «почему недоступно»; пока оставляем
+   стандартное поведение, при необходимости отдельный сценарий введём). */
+[data-tip][disabled]::after,
+[data-tip][disabled]::before,
+[data-tip][aria-disabled="true"]::after,
+[data-tip][aria-disabled="true"]::before {
+  opacity: 0;
+}
+
+/* --- Status pill (9.6) -------------------------------------------------- */
+/* Семантический pill для статусов (документы, инстансы промптов, future
+   notifications). Тёмная точка currentColor слева + soft фон по семантике.
+   Используется как `<span class="status-pill status-pill--success">…</span>`.
+   Размер совпадает с label'ами в чате (Inter 11.5/500), чтобы pill'ы
+   не выпирали в плотных таблицах. */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  border-radius: 999px;
+  background: var(--ch-bg-hover-sft);
+  color: var(--ch-fg-muted);
+  border: 1px solid var(--ch-border);
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-pill--neutral {
+  background: var(--ch-bg-hover-sft);
+  color: var(--ch-fg-muted);
+  border-color: var(--ch-border);
+}
+
+.status-pill--success {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: transparent;
+}
+
+.status-pill--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-color: transparent;
+}
+
+.status-pill--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: transparent;
+}
+
+.status-pill--info {
+  background: var(--info-soft);
+  color: var(--info);
+  border-color: transparent;
+}
+
+/* Dark — soft-фоны уже зеркалятся через --*-soft токены (см. color.css).
+   Текст и точка остаются на ярких --success/--warning/--danger/--info,
+   они уже достаточно контрастны на тёмном фоне. */
+
+/* --- Toasts (9.7) ------------------------------------------------------ */
+/* Перестилизация existing alert_* API. HTML рендерит make_alert_handler.js
+   (Lucide-иконка по kind: success/danger/warning/info/loader). Region
+   позиционируется fixed снизу-справа, стеком сверху вниз; внутри region
+   тосты получают slide-in keyframes + jQuery.animate opacity (alert_handler.js).
+   Inline-использования make_alert_loader / make_alert_info (внутри
+   .dialog__format / .dialog__empty) рендерят тот же .toast как обычную
+   карточку без fixed-позиции — это сознательно, чтобы один HTML работал
+   и как top-toast, и как inline-loader в bubble сообщения. */
+
+.toast-region {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000000;
+  max-width: 380px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 12px;
+  box-shadow: var(--ch-shadow-md);
+  pointer-events: auto;
+  min-width: 280px;
+  max-width: 380px;
+  color: var(--ch-fg);
+  animation: toast-slide-in .25s ease-out;
+}
+
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+
+.toast__ico {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.toast__ico .toast__ico-svg {
+  width: 13px;
+  height: 13px;
+}
+
+.toast--success .toast__ico { background: var(--success-soft); color: var(--success); }
+.toast--danger  .toast__ico { background: var(--danger-soft);  color: var(--danger); }
+.toast--warning .toast__ico { background: var(--warning-soft); color: var(--warning); }
+.toast--info    .toast__ico { background: var(--info-soft);    color: var(--info); }
+.toast--loader  .toast__ico { background: var(--info-soft);    color: var(--info); }
+
+.toast__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toast__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ch-fg-strong);
+  letter-spacing: -.005em;
+  line-height: 1.4;
+}
+
+.toast__msg {
+  font-size: 12.5px;
+  color: var(--ch-fg-muted);
+  margin-top: 2px;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.toast__msg p { margin: 0; }
+.toast__msg p + p { margin-top: 4px; }
+
+.toast__close {
+  margin-left: 4px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ch-fg-faint);
+  cursor: pointer;
+  flex: 0 0 auto;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toast__close:hover {
+  background: var(--ch-bg-hover);
+  color: var(--ch-fg-strong);
+}
+
+.toast__action {
+  margin-top: 6px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ch-accent);
+  cursor: pointer;
+}
+
+.toast__action:hover { text-decoration: underline; }
+
+/* Loader spin — Lucide loader-circle крутится. */
+.toast__spin {
+  animation: toast-spin 1s linear infinite;
+}
+
+@keyframes toast-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast__spin { animation: none; }
+}
+
+/* Inline-использования (внутри сообщений чата / пустой диалог) — убираем
+   min-width, чтобы карточка влезала в узкие слоты bubble. */
+.dialog__elem .toast,
+.dialog__empty .toast {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Dark-зеркала: --ch-* токены уже флипаются в color.css.
+   .toast__action: на тёмной теме акцент белый, читаемо. */
+body.dark .toast {
+  background: var(--ch-bg-elev);
+  border-color: var(--ch-border);
+}
+
+/* === F-T2 — Attachments над bubble (chat-prototype parity) =============== */
+/* До этой правки файлы рендерились в panel-footer ВНИЗУ bubble. Прототип
+   (chat-area.jsx:115-129 + styles.css:767-772) поднимает их отдельным
+   flex-блоком НАД bubble: для user — выровнены вправо, для assistant —
+   влево. Блок — первый ребёнок .dialog__main, чтобы наследовать ширину
+   bubble-колонки и не ломать grid выравнивание .dialog__elem_right. */
+.dialog__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dialog__elem_right .dialog__attachments {
+  justify-content: flex-end;
+}
+.dialog__elem_left .dialog__attachments {
+  justify-content: flex-start;
+}
+
+/* Action-кнопки чипа (view + download + delete). Lucide-stroke ghost
+   28×28, без подложки в idle; на hover — мягкий bg. Без `.dialog__action`
+   — actions теперь inline в `.gpt-attachment__place`, а не absolute. */
+.gpt-attachment__btn {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--ch-fg-muted);
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .14s ease, color .14s ease;
+}
+.gpt-attachment__btn:hover,
+.gpt-attachment__btn:focus-visible {
+  background: var(--ch-bg-hover);
+  color: var(--ch-fg-strong);
+  text-decoration: none;
+  outline: none;
+}
+.gpt-attachment__btn .lc-icon { width: 15px; height: 15px; }
+/* Гасим scale-jump из my_table.css §icon-hover — 28×28 обёртка уже даёт
+   достаточный отклик (тот же паттерн, что в chat.css §903). */
+.gpt-attachment__btn .icon-hover,
+.gpt-attachment__btn .icon-hover:hover {
+  transform: none;
+}
+.gpt-attachment__btn--danger:hover,
+.gpt-attachment__btn--danger:focus-visible {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* === Image-tile 88×88 (compose + bubble) ===
+   Прототип секции 03 + 04: для jpg/jpeg/png карточка превращается в
+   тамбнейл во весь чип. Compose: corner × delete. Bubble: сам tile —
+   `<a class="view-box">` (file_action.js → fancybox). */
+.gpt-attachment-tile {
+  position: relative;
+  display: inline-block;
+  width: 88px;
+  height: 88px;
+  border-radius: 10px;
+  border: 1px solid var(--ch-border);
+  overflow: hidden;
+  background: var(--ch-bg-sunken);
+  transition: border-color .14s ease;
+  text-decoration: none;
+  flex: 0 0 auto;
+}
+.gpt-attachment-tile:hover { border-color: var(--ch-border-str); text-decoration: none; }
+.gpt-attachment-tile__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gpt-attachment-tile__gradient {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 50%;
+  background: linear-gradient(to top, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+.gpt-attachment-tile__label {
+  position: absolute;
+  left: 8px;
+  right: 28px;
+  bottom: 6px;
+  font-size: 11px;
+  color: #fff;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  pointer-events: none;
+}
+.gpt-attachment-tile__btn {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity .14s ease, background-color .14s ease;
+}
+.gpt-attachment-tile:hover .gpt-attachment-tile__btn { opacity: 1; }
+.gpt-attachment-tile__btn:hover { background: rgba(0, 0, 0, .75); }
+.gpt-attachment-tile__btn .lc-icon { width: 12px; height: 12px; }
+.gpt-attachment-tile__btn .icon-hover,
+.gpt-attachment-tile__btn .icon-hover:hover { transform: none; }
+
+/* ============================================================
+ * App-bar restyle — переезд глобальной шапки на --ch-* токены
+ * по прототипу `test (3)/package/previews/02-header.html`.
+ *
+ * Изменяется ТОЛЬКО визуал (цвета/высота/радиусы/тип). Разметка
+ * в base.html не трогается, FA-классы иконок не меняются —
+ * правка только стилей по требованию задачи.
+ *
+ * Высота: каждая полоса хедера (.my-header и .my-header_pos-*)
+ * жёстко 52px → суммарная зона одинаковая на всех страницах
+ * с одинаковым количеством полос (Чат — 52px, Документы — 104px).
+ * ============================================================ */
+
+.my-header,
+.my-header[class*="my-header_pos-"] {
+  background: var(--ch-bg);
+  border-bottom: 1px solid var(--ch-hairline);
+  padding: 0 16px;
+  align-items: center;
+  column-gap: 12px;
+  box-shadow: none;
+}
+
+.my-header__nav {
+  align-items: center;
+  padding: 5px 0;
+}
+
+.my-header__nav .flex.flex-0.left-border {
+  align-items: center;
+  padding: 5px 0;
+  border-left: none;
+}
+
+/* Нав-ссылки в полосах хедера */
+.my-header .header-link,
+[class*="my-header_pos-"] .header-link {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  border-radius: 8px;
+  color: var(--ch-fg-muted);
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  line-height: 1.2;
+  vertical-align: middle;
+  transition: background-color .14s ease, color .14s ease;
+  text-shadow: none;
+}
+
+.my-header .header-link:hover,
+.my-header .header-link:focus,
+.my-header .header-link:active,
+[class*="my-header_pos-"] .header-link:hover,
+[class*="my-header_pos-"] .header-link:focus,
+[class*="my-header_pos-"] .header-link:active {
+  color: var(--ch-fg-strong);
+  background-color: var(--ch-bg-hover-sft);
+  text-shadow: none;
+  text-decoration: none;
+}
+
+.my-header .header-link.active,
+[class*="my-header_pos-"] .header-link.active {
+  color: var(--ch-fg-strong);
+  background: var(--ch-bg-elev);
+  background-image: none;
+  box-shadow: 0 1px 0 rgba(15, 15, 12, .04), 0 0 0 1px var(--ch-hairline) inset;
+}
+
+.my-header .header-link.active:hover,
+[class*="my-header_pos-"] .header-link.active:hover {
+  color: var(--ch-fg-strong);
+  background: var(--ch-bg-elev);
+}
+
+/* Hub-вкладки (родительские разделы) — равняем к общему стилю активной */
+.my-header .header-link_hub.active,
+[class*="my-header_pos-"] .header-link_hub.active,
+.my-header .header-link_hub.active:hover {
+  color: var(--ch-fg-strong);
+  background: var(--ch-bg-elev);
+}
+
+/* Правый блок: имя пользователя + dropdown */
+.my-header__user {
+  display: flex;
+  align-items: center;
+}
+
+.my-header__dropdown {
+  display: inline-flex;
+  align-items: center;
+}
+
+.my-header .info-link {
+  color: var(--ch-fg-strong);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 6px 12px 6px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  gap: 4px;
+  text-shadow: none;
+  transition: background-color .14s ease, border-color .14s ease;
+}
+
+.my-header .info-link > * {
+  margin: 0 4px;
+}
+
+.my-header .info-link:hover,
+.my-header .info-link:focus,
+.my-header .info-link:active,
+.my-header__dropdown.open .info-link {
+  color: var(--ch-fg-strong);
+  background: var(--ch-bg-hover-sft);
+  border-color: var(--ch-border);
+  text-shadow: none;
+  text-decoration: none;
+}
+
+.my-header .info-link .dropdown-angle {
+  color: var(--ch-fg-faint);
+  font-size: 10px;
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.my-header .info-link .dropdown-angle .fa-solid.fa-angle-down {
+  color: var(--ch-fg-faint);
+}
+
+/* Dropdown-меню профиля */
+.my-header .dropdown-menu {
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 14px;
+  padding: 6px;
+  margin-top: 6px;
+  box-shadow: var(--ch-shadow-pop);
+  min-width: 240px;
+}
+
+body.dark .my-header .dropdown-menu {
+  background: var(--ch-bg-elev);
+  border-color: var(--ch-border);
+}
+
+.my-header .dropdown-menu > li > a,
+.my-header .dropdown-menu .context-menu__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--ch-fg);
+  font-size: 13.5px;
+  line-height: 1.3;
+  background: transparent;
+  transition: background-color .12s ease;
+}
+
+.my-header .dropdown-menu > li > a:hover,
+.my-header .dropdown-menu > li > a:focus,
+.my-header .dropdown-menu .context-menu__link:hover,
+.my-header .dropdown-menu .context-menu__link:focus {
+  background-color: var(--ch-bg-hover-sft);
+  color: var(--ch-fg-strong);
+  text-decoration: none;
+}
+
+body.dark .my-header .dropdown-menu > li > a,
+body.dark .my-header .dropdown-menu .context-menu__link {
+  color: var(--ch-fg);
+}
+
+body.dark .my-header .dropdown-menu > li > a:hover,
+body.dark .my-header .dropdown-menu .context-menu__link:hover {
+  background-color: var(--ch-bg-hover);
+}
+
+/* Иконки внутри пунктов dropdown — единый muted цвет вместо bootstrap
+   text-primary / text-warning / text-default. По прототипу все иконки
+   профиля идут одного нейтрального тона (за исключением danger). */
+.my-header .dropdown-menu > li > a .fa-solid,
+.my-header .dropdown-menu .context-menu__link .fa-solid {
+  color: var(--ch-fg-muted);
+  width: 16px;
+  text-align: center;
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.my-header .dropdown-menu .context-menu__link .fa-solid.text-danger,
+.my-header .dropdown-menu > li > a .fa-solid.text-danger,
+.my-header .dropdown-menu .fa-solid.fa-arrow-right-from-bracket {
+  color: var(--danger);
+}
+
+/* Divider в dropdown — hairline вместо жёсткого #e5e5e5 */
+.my-header .dropdown-menu .divider,
+.my-header .dropdown-menu li.divider {
+  background-color: var(--ch-hairline);
+  margin: 4px 4px;
+}
+
+/* Радиус dropdown в шапке (старое правило в my_table.css фиксировало 0 0 0 4px) */
+.my-header .dropdown-menu {
+  border-radius: 14px;
+}
+
+/* Поднимаем скруглённые углы и заливку при открытии каретки */
+.my-header__dropdown.open .dropdown-angle,
+.my-header .dropdown.open .dropdown-angle {
+  transform: rotateX(180deg);
+}
+
+/* Sub-nav полосы (Документы → Руководящие/Шаблоны). Цвет фиксируем
+   единым --ch-bg, активная строка-якорь с тем же стилем active.
+   Старые --main-color-1..5 в color.css перебиваются за счёт более
+   высокой специфичности селектора через [class*=...] выше. */

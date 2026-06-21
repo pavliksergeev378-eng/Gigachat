@@ -1,0 +1,22 @@
+
+.lc-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+/* Совместимость с fa-{size}: дублируем font-size матчинг FA, чтобы icon('lucide:x', {size: '2xl'}) работало. */
+.lc-icon.fa-2xs { font-size: 0.625em; }
+.lc-icon.fa-xs  { font-size: 0.75em; }
+.lc-icon.fa-sm  { font-size: 0.875em; }
+.lc-icon.fa-lg  { font-size: 1.25em; line-height: 0.05em; vertical-align: -0.225em; }
+.lc-icon.fa-xl  { font-size: 1.5em; }
+.lc-icon.fa-2xl { font-size: 2em; }
+.lc-icon.fa-2x  { font-size: 2em; }
+.lc-icon.fa-3x  { font-size: 3em; }

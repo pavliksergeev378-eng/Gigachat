@@ -1,0 +1,142 @@
+/* ============================================================
+ * dialog.css — модальный .dlg для destructive-подтверждений
+ * (UI Modernization, фаза 1, коммит 9.8).
+ *
+ * Применение узкое: confirm удаления чата и удаления всех чатов.
+ * CRUD/edit-формы остаются на Fancybox до своих коммитов.
+ * ============================================================ */
+
+.dlg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  background: rgba(15, 15, 12, .42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: dlg-backdrop-in .15s ease;
+}
+
+/* .dlg, открытый ПОВЕРХ Fancybox-окна (библиотека промптов и пр.). Fancybox-
+ * контейнер держит z-index 99992-99999 (vendor), contextmenu — 100000, поэтому
+ * штатных 1080 не хватает: диалог провалился бы за окно-хост. Поднимаем выше
+ * обоих. Скоуп — только диалоги, которым явно передали backdropClass; чат-.dlg
+ * (sidebar-подтверждения) остаётся на 1080 без изменений. */
+.dlg-backdrop--over-fancybox { z-index: 100002; }
+
+.dlg {
+  width: 100%;
+  max-width: 440px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 14px;
+  box-shadow: var(--ch-shadow-lg);
+  overflow: hidden;
+  animation: dlg-slide-in .18s cubic-bezier(.2, .7, .2, 1);
+}
+
+.dlg__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 22px 24px 12px;
+}
+
+.dlg__icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ch-bg-hover);
+  color: var(--ch-fg-muted);
+}
+
+.dlg__icon--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.dlg__icon .lc-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.dlg__title {
+  flex: 1 1 auto;
+  padding-top: 7px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -.01em;
+  color: var(--ch-fg-strong);
+}
+
+.dlg__body {
+  padding: 4px 24px 20px 76px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ch-fg);
+}
+
+/* lean-вариант — модалка без icon (форма/prompt): заголовок и body выравниваем
+ * по левому краю, title без верхнего отступа под 38px-иконку. */
+.dlg--lean .dlg__head  { padding: 22px 24px 4px; }
+.dlg--lean .dlg__title { padding-top: 0; }
+.dlg--lean .dlg__body  { padding: 4px 24px 18px; }
+.dlg__body p              { margin: 0 0 8px; }
+.dlg__body p:last-child   { margin: 0; }
+.dlg__body ul             { margin: 6px 0 0; padding-left: 18px; }
+.dlg__body ul li          { margin: 2px 0; color: var(--ch-fg-muted); }
+.dlg__body b              { color: var(--ch-fg-strong); }
+
+.dlg__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--ch-border);
+  background: var(--ch-bg-hover-sft);
+}
+
+/* Filled-danger вариант кнопки — только для confirm-действия в .dlg, чтобы
+ * не плодить семантику в forms.css (.ch-btn--danger там ghost-style). */
+.dlg__action--danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.dlg__action--danger:hover {
+  background: var(--danger);
+  filter: brightness(.94);
+  transform: translateY(-1px);
+  box-shadow: var(--ch-shadow-sm);
+}
+.dlg__action--danger:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+@keyframes dlg-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dlg-slide-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0)     scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dlg-backdrop,
+  .dlg { animation: none; }
+}
+
+/* ---------- Dark mirrors (night.css перебивает --ch-bg-elev/border) ---------- */
+body.dark .dlg-backdrop      { background: rgba(0, 0, 0, .58); }
+body.dark .dlg               { background: var(--ch-bg-elev); border-color: var(--ch-border); }
+body.dark .dlg__foot         { background: var(--ch-bg); border-top-color: var(--ch-border); }
+body.dark .dlg__title        { color: var(--ch-fg-strong); }
+body.dark .dlg__body b       { color: var(--ch-fg-strong); }

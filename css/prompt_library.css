@@ -1,0 +1,1519 @@
+/* ==========================================================================
+   БИБЛИОТЕКА ПРОМПТОВ
+   ==========================================================================
+   Namespace `.prompt-library` + локальная палитра `--pl-*` в шапке файла.
+   Все цвета и тени — через семантические переменные, а не хардкодом по
+   правилам. Тёмная тема — переопределение значений переменных в
+   `body.dark .prompt-library`; сами правила одни и те же.
+
+   Это НЕ привязка к color.css проекта: текущий «современный» вид сохранён
+   1:1. Когда придёт глобальный рестайл — точка правки одна (этот блок),
+   а не 30 хардкодов разбросанных по файлу.
+
+   Часть базовых тонов всё ещё приходит из `--gpt-*` (gpt_composer.css):
+   `--gpt-bg`, `--gpt-fg`, `--gpt-fg-muted`, `--gpt-border`,
+   `--gpt-border-strong`, `--gpt-toggle-on` — это единая визуальная связка
+   композер ↔ библиотека.
+   ========================================================================== */
+
+.prompt-library {
+  /* === Surfaces (фоны модалки) — тёплые токены чата === */
+  --pl-bg-sidebar: var(--ch-bg-sunken);
+  --pl-bg-preview: var(--gpt-bg);
+  --pl-bg-preview-content: var(--ch-bg-sunken);
+  --pl-bg-meta: var(--ch-bg-sunken);
+  --pl-fg-meta: var(--ch-fg-muted);
+
+  /* === Бордеры === */
+  --pl-border-subtle: var(--ch-hairline);
+  --pl-border-preview-content: var(--gpt-border);
+
+  /* === Accent (графит чата — НЕ зелёный) === */
+  --pl-accent: var(--ch-accent);
+  --pl-accent-hover: #000;                 /* как .gpt-send-btn:hover (light) */
+  --pl-accent-bg-soft: var(--ch-accent-soft);
+  --pl-accent-bg: var(--ch-accent-soft);
+
+  /* === Tag-chip фильтра (наверху сайдбара) === */
+  --pl-tag-chip-bg: var(--pl-accent-bg-soft);
+  --pl-tag-chip-bg-hover: rgba(15, 15, 12, 0.08);
+
+  /* === Card-tag (мелкие теги в карточке) === */
+  --pl-card-tag-bg: rgba(15, 15, 12, 0.05);
+  --pl-card-tag-fg: var(--gpt-fg-muted);
+
+  /* === Hover-states (тёплые) === */
+  --pl-hover-surface: rgba(15, 15, 12, 0.055);   /* menu-item hover */
+  --pl-hover-trigger: rgba(15, 15, 12, 0.08);    /* menu-trigger hover bg */
+  --pl-hover-trigger-fg: var(--gpt-fg);          /* menu-trigger hover color */
+  --pl-hover-subtle: rgba(15, 15, 12, 0.04);     /* btn-outline-secondary hover */
+
+  /* === btn-outline-secondary === */
+  --pl-btn-outline-border: var(--gpt-border-strong);
+  --pl-btn-outline-fg: var(--gpt-fg);
+
+  /* === Тени === */
+  --pl-shadow-layout: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --pl-shadow-btn: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --pl-shadow-menu: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+
+  /* === Скроллбар === */
+  --pl-scrollbar-thumb: var(--ch-border-str);
+  --pl-scrollbar-thumb-hover: rgba(15, 15, 12, 0.3);
+
+  /* === Новые переменные для рефакторинга 2026-05-28 (прототип 04) === */
+  --pl-hairline: var(--ch-hairline);
+  --pl-tab-active: var(--gpt-fg);
+  --pl-tab-active-fg: var(--ch-accent-fg);
+  --pl-card-active-bg: var(--gpt-bg);
+  --pl-fg-faint: var(--ch-fg-faint);
+  --pl-bg-hover-soft: rgba(15, 15, 12, 0.04);
+
+  /* --- Базовые свойства самого враппера --- */
+  color: var(--gpt-fg);
+  font-family: inherit;
+  width: 85vw;
+  max-width: 1100px;
+}
+
+body.dark .prompt-library {
+  /* Surfaces / borders / accent / fg / scrollbar-thumb / tab-active / fg-faint —
+     теперь через --ch-* (color.css инвертирует их сам), отдельные dark-значения
+     не нужны. Оставляем dark-инверсию только для литеральных тёплых rgba light,
+     которые сами не инвертируются (hover/tag-плашки → белые rgba). */
+  --pl-accent-hover: #f3f4f6;              /* как .dark .gpt-send-btn:hover */
+
+  --pl-tag-chip-bg-hover: rgba(255, 255, 255, 0.1);
+  --pl-card-tag-bg: rgba(255, 255, 255, 0.08);
+
+  --pl-hover-trigger: rgba(255, 255, 255, 0.1);
+  --pl-hover-subtle: rgba(255, 255, 255, 0.05);
+  /* --pl-hover-surface намеренно НЕ переопределяем — повторяет исходное
+     поведение (menu-item hover в тёмной был закомментирован в исходнике). */
+
+  --pl-scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+
+  --pl-bg-hover-soft: rgba(255, 255, 255, 0.04);
+}
+
+/* 1. Каркас модалки — новая структура: flex-column shell */
+.prompt-library__shell {
+  position: relative;          /* для absolute notice */
+  width: min(1100px, 94vw);
+  height: min(720px, 88vh);
+  border-radius: 16px;
+  border: 1px solid var(--gpt-border);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+  background: var(--gpt-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: pl-pop 0.16s ease-out;
+}
+
+@keyframes pl-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* Fancybox override — лёгкое затемнение + blur подложки, подавление btn-panel/
+   title библиотеки, полный сброс хрома fancybox вокруг модалки («квадрата»).
+
+   DOM-факт (проверено в браузере): fancybox v3 вешает wrap_class ПРЯМО на свой
+   content-div → элемент имеет ОБА класса: class="prompt-library-wrap fancybox-content".
+   Поэтому:
+   - затемнение бэка матчим через `.fancybox-container:has(.prompt-library-wrap)`
+     (descendant — работает: wrap лежит внутри контейнера);
+   - сброс хрома самого окна — ПРЯМО на `.prompt-library-wrap.fancybox-content`
+     (компаунд), а НЕ через `:has(> .prompt-library-wrap)` — дочернего wrap нет.
+   Карточка библиотеки — это `.prompt-library__shell`; для .ch-modal-формы тот же
+   приём в forms.css (там .ch-modal — сама карточка). */
+
+/* Затемнение-подложка: лёгкое (обе модалки). Блюр сюда НЕ ставим — `.fancybox-bg`
+   лежит ВНУТРИ `.fancybox-container`, а тот поднят `transform`-контекстом (fancybox
+   ставит свой transform) → backdrop-filter на bg не захватывает контент страницы за
+   контейнером (блюрит «пустоту» внутри контекста), визуально размытия НЕТ. */
+.fancybox-container:has(.prompt-library-wrap) .fancybox-bg,
+.fancybox-container:has(.ch-modal) .fancybox-bg {
+  background: rgba(20, 18, 14, 0.36);
+}
+
+/* Размытие фона за модалкой — на САМ контейнер (он inset:0 поверх страницы, под ним
+   реальный контент чата) → backdrop-filter реально размывает страницу. Референс
+   chat-prototype (overlay blur 4px). Узко под библиотеку/форму, чтобы не задеть
+   прочие fancybox-окна проекта.
+   T-6: блюр привязан к .fancybox-is-open (как штатное затемнение .fancybox-bg) +
+   transition на backdrop-filter → при ЗАКРЫТИИ блюр угасает СИНХРОННО с затемнением
+   (раньше статичный блюр висел до удаления контейнера из DOM — «задержка» исчезновения).
+   Базовое состояние (без is-open) = blur(0): появление и исчезновение одной скоростью. */
+.fancybox-container:has(.prompt-library-wrap),
+.fancybox-container:has(.ch-modal) {
+  backdrop-filter: blur(0);
+  -webkit-backdrop-filter: blur(0);
+  transition: backdrop-filter 0.25s cubic-bezier(.22, .61, .36, 1),
+              -webkit-backdrop-filter 0.25s cubic-bezier(.22, .61, .36, 1);
+}
+.fancybox-container.fancybox-is-open:has(.prompt-library-wrap),
+.fancybox-container.fancybox-is-open:has(.ch-modal) {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* btn-panel/title прячем только у библиотеки (свой close в шапке);
+   у .ch-modal штатный fancybox-close в btn-panel остаётся рабочим. */
+.prompt-library-wrap .fancybox-btn-panel,
+.prompt-library-wrap .fancybox-title {
+  display: none;
+}
+
+/* Сброс fancybox-хрома вокруг модалки библиотеки (карточка — это __shell).
+   КЛЮЧЕВОЕ: fancybox v3 вешает wrap_class прямо на свой content-div
+   (class="prompt-library-wrap fancybox-content" — ОДИН элемент, проверено в
+   браузере), поэтому прежний `.fancybox-content:has(> .prompt-library-wrap)`
+   никогда не матчил (нет дочернего wrap) — «квадратная подложка» D-A1 оставалась
+   (в light невидима бело-на-белом, в dark проявлялась night-рамкой). Гасим хром
+   ПРЯМО на самом элементе. Компаунд .prompt-library-wrap.fancybox-content (0,2,0)
+   бьёт my_table.css .fancybox-content { padding:20px 10px 10px; radius:4px }. */
+.prompt-library-wrap.fancybox-content {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+/* Тёмная тема: night.css `.dark .fancybox-content` (border + bg, спецификация
+   выше) рисует подложку — перебиваем (0,3,1 > 0,2,0). */
+body.dark .prompt-library-wrap.fancybox-content {
+  background: transparent;
+  border: 0;
+}
+
+/* 2. Шапка модалки — заголовок + count + search + close в одну строку */
+.prompt-library__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--pl-hairline);
+  flex: 0 0 auto;
+}
+
+.prompt-library__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  /* Заголовок-зона не сжимается и не переносится — иначе при длинном счётчике
+     («Ничего не нашлось») h2 уходил в 2 строки и шапка дёргалась по высоте. */
+  flex: 0 0 auto;
+}
+
+.prompt-library__title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  color: var(--gpt-fg);
+  white-space: nowrap;
+}
+
+.prompt-library__count {
+  font-size: 12px;
+  color: var(--gpt-fg-muted);
+  font-variant-numeric: tabular-nums;
+  /* Счётчик в одну строку — «Ничего не нашлось» не переносит шапку. */
+  white-space: nowrap;
+}
+
+.prompt-library__search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  /* Левый край поля = левый край превью (список 320px) — поле тянется влево до
+     границы превью-колонки. shell = min(1100px,94vw); 383 = 320 (список) + close(30)
+     + gap(14) + head-pad(18) + бордеры(~1). margin-left:auto прижимает к close справа,
+     ширина задаёт левую границу. min(...,260px) — floor на совсем узких окнах. */
+  width: max(260px, calc(min(1100px, 94vw) - 383px));
+  /* При нехватке места ужимается поиск (а не заголовок) — шапка остаётся в строку. */
+  flex: 0 1 auto;
+  min-width: 0;
+  background: var(--pl-bg-sidebar);
+  border: 1px solid var(--pl-hairline);
+  border-radius: 10px;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.prompt-library__search:focus-within {
+  border-color: var(--gpt-border-strong);
+}
+
+.prompt-library__search .lc-icon {
+  color: var(--pl-fg-faint);
+  flex: 0 0 auto;
+}
+
+.prompt-library__search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  width: 100%;
+  padding: 2px 0;
+  /* Шрифт как у поиска по чатам (.chat__search-input) — единый язык.
+     font-weight:400 обязателен: без него наследуется 700 от контекста модала
+     (и текст, и ::placeholder выглядели bold). */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+}
+
+.prompt-library__search input::placeholder {
+  color: var(--pl-fg-faint);
+}
+
+/* F-06: × очистки поиска — справа в поле, видна только при непустом значении
+   (класс --has-value вешает JS на input). */
+.prompt-library__search-clear {
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pl-fg-faint);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.prompt-library__search--has-value .prompt-library__search-clear {
+  display: inline-flex;
+}
+
+.prompt-library__search-clear:hover {
+  background: var(--pl-hover-trigger);
+  color: var(--gpt-fg);
+}
+
+.prompt-library__search-clear .lc-icon {
+  width: 13px;
+  height: 13px;
+  color: inherit;
+}
+
+.prompt-library__close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--gpt-fg-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.prompt-library__close:hover {
+  background: var(--pl-hover-trigger);
+  color: var(--gpt-fg);
+}
+
+/* 4. Body — двухколоночный grid */
+.prompt-library__body {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 5. Левая колонка — список */
+.prompt-library__list {
+  border-right: 1px solid var(--pl-hairline);
+  background: var(--pl-bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 6. Правая колонка — превью */
+.prompt-library__preview {
+  display: flex;
+  flex-direction: column;
+  background: var(--gpt-bg);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 3. Табы (группы) — горизонтальный ряд под шапкой.
+   U-3: tabbar выровнен по grid body (320px / 1fr). Внутри #prompt_tabs:
+   - .tabs-fixed (320px = ширина списка): «Избранное» + «Общие» по 50%, НЕ скроллятся;
+   - «+ Группа» (.tab-add--pinned): левый край = левый край превью (320px), отступ как у поиска;
+   - .tabs-scroll (1fr, остаток): пользовательские группы, горизонтальный скролл.
+   Граница-bottom на __tabbar; делегаты bind_prompt_tabs.js не меняются (все .tab внутри __tabs). */
+.prompt-library__tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid var(--pl-hairline);
+  flex: 0 0 auto;
+}
+
+.prompt-library__tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Фикс-зона над списком (320px): «Избранное» + «Общие» делят пополам, не скроллятся.
+   padding слева 18px = отступ как у списка/поиска; правый край = граница списка (320px). */
+.prompt-library__tabs-fixed {
+  flex: 0 0 320px;
+  display: flex;
+  align-items: stretch;
+  padding: 0 0 0 18px;
+  min-width: 0;
+}
+
+/* Каждый из двух фикс-табов («Избранное», «Общие») занимает ровно половину зоны. */
+.prompt-library__tabs-fixed > .prompt-library__tab {
+  flex: 1 1 50%;
+  min-width: 0;
+  justify-content: center;
+}
+
+/* Скролл-зона над превью (1fr): пользовательские группы справа от «+ Группа». */
+.prompt-library__tabs-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gpt-border) transparent;
+}
+
+.prompt-library__tabs-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.prompt-library__tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--gpt-border);
+  border-radius: 2px;
+}
+
+.prompt-library__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--gpt-fg-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  letter-spacing: -0.005em;
+  transition: color 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
+  position: relative;
+}
+
+.prompt-library__tab:hover {
+  color: var(--gpt-fg);
+}
+
+.prompt-library__tab--active,
+.prompt-library__tab--active:hover {
+  color: var(--gpt-fg);
+  border-bottom-color: var(--pl-tab-active);
+}
+
+/* U-задача: при активном поиске группы без совпадений приглушаются (opacity), чтобы
+   глаз сразу видел «живые» группы. Класс вешает update_tab_badges (apply_tag_filter.js)
+   только при непустом query. Активный таб гасим мягче — подчёркивание остаётся видимым.
+   hover отменяет приглушение (можно навести и кликнуть). */
+.prompt-library__tab--no-match {
+  opacity: 0.4;
+}
+
+.prompt-library__tab--no-match.prompt-library__tab--active {
+  opacity: 0.65;
+}
+
+.prompt-library__tab--no-match:hover {
+  opacity: 1;
+}
+
+/* U-3: в фикс-зоне (50% ширины) длинное имя таба усекается ellipsis,
+   бейдж/иконка не сжимаются. */
+.prompt-library__tabs-fixed .prompt-library__tab-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.prompt-library__tabs-fixed .prompt-library__tab-badge {
+  flex: 0 0 auto;
+}
+
+.prompt-library__tab-badge {
+  background: var(--pl-hover-trigger);
+  color: var(--gpt-fg-muted);
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.prompt-library__tab--active .prompt-library__tab-badge {
+  background: var(--pl-tab-active);
+  color: var(--pl-tab-active-fg);
+}
+
+/* U-2: «+ Новая группа» = outlined-pill в стиле кнопки «Новый чат» (.chat__new):
+   фон --ch-bg-elev, рамка --ch-border, radius 12px, hover с lift. Pill не во всю
+   высоту tabbar (40px) — вертикальный padding/align:center дают «воздух» сверху/снизу. */
+.prompt-library__tab-add {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 12px;
+  color: var(--ch-fg-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(15, 15, 12, .04);
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease, color 0.14s ease;
+}
+
+.prompt-library__tab-add:hover {
+  background: var(--ch-bg-hover-sft);
+  border-color: var(--ch-border-str);
+  color: var(--ch-fg-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 15, 12, .06);
+}
+
+.prompt-library__tab-add:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 0 rgba(15, 15, 12, .04);
+}
+
+/* Иконка plus — muted-цвет, как .chat__new-icon. */
+.prompt-library__tab-add .lc-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ch-fg-muted);
+}
+
+/* U-3/U-2: «+ Новая группа» стоит на стыке списка и превью. Левый край pill = левый
+   край ОКНА превью (=правый край .tabs-fixed) → margin-left:0 (fixed-зона кончается
+   ровно на границе превью). Разделитель справа (тонкая линия + воздух) отделяет pill
+   от прокручиваемых групп — по аналогии с разделителем «Нового промпта» снизу. */
+.prompt-library__tab-add--pinned {
+  margin-left: 0;
+  margin-right: 14px;
+  flex: 0 0 auto;
+  align-self: center;
+  position: relative;
+}
+
+/* Вертикальный разделитель справа от pill. Короткая засечка (24px) по центру ряда —
+   гарантированно ВНУТРИ 40px-ряда табов, не пересекает горизонтальные hairline tabbar
+   (верх ряда / нижняя граница). Прежний вариант (top/bottom:-7px от pill) торчал наружу:
+   pill центрирован и ниже ряда, потому инсеты выводили линию за границы. */
+.prompt-library__tab-add--pinned::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: -14px;
+  width: 1px;
+  height: 24px;
+  background: var(--pl-hairline);
+}
+
+/* 7. Tag-filter — внутри списка, чип "все" первым */
+.prompt-library__filter {
+  flex: 0 0 auto;
+}
+
+.prompt-library__tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--pl-hairline);
+}
+
+.prompt-library__tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gpt-fg-muted);
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.prompt-library__tag-chip:hover {
+  background: var(--pl-bg-hover-soft);
+  color: var(--gpt-fg);
+}
+
+.prompt-library__tag-chip--active,
+.prompt-library__tag-chip--active:hover {
+  background: var(--pl-bg-hover-soft);
+  color: var(--gpt-fg);
+  border-color: var(--gpt-border-strong);
+}
+
+
+/* 9. Контейнер карточек — scrollable */
+.prompt-library__panes {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding: 6px 10px 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gpt-border) transparent;
+}
+
+.prompt-library__panes::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prompt-library__panes::-webkit-scrollbar-thumb {
+  background: var(--gpt-border);
+  border-radius: 3px;
+}
+
+.prompt-library__pane {
+  display: none;
+}
+
+.prompt-library__pane--active {
+  display: block;
+}
+
+/* 10. Карточка — плоская: ★ + title + tags. Никаких actions */
+.prompt-library__card {
+  position: relative;
+  padding: 11px 12px 11px 38px;  /* 38 = 12 (gap) + 22 (star) + 4 (extra) */
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.14s ease, border-color 0.14s ease;
+  /* Карточка списка — одна строка (звезда + тайтл). Теги убраны (показываются
+     только в превью), поэтому flex-column больше не нужен: тайтл задаёт высоту,
+     звезда центрируется по ней (см. .prompt-library__card-favorite top:50%). */
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  text-decoration: none;
+}
+
+.prompt-library__card.is-hidden {
+  display: none;
+}
+
+.prompt-library__card:hover {
+  background: var(--pl-card-active-bg);
+  border-color: var(--pl-hairline);
+}
+
+.prompt-library__card--active,
+.prompt-library__card--active:hover {
+  background: var(--pl-card-active-bg);
+  border-color: var(--gpt-border);
+  box-shadow: 0 1px 0 rgba(15, 15, 12, 0.04);
+}
+
+.prompt-library__card-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gpt-fg);
+  letter-spacing: -0.005em;
+  line-height: 1.35;
+  /* Длинное имя обрезается многоточием, а не растягивает строку списка. */
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* .prompt-library__card-tags (контейнер тегов в карточке списка) удалён —
+   теги растягивали строку, теперь показываются только в превью.
+   .prompt-library__card-tag (сам чип) ОСТАВЛЕН — используется в превью
+   (.prompt-library__preview-tags, см. make_preview.js). */
+.prompt-library__card-tag {
+  background: var(--pl-card-tag-bg);
+  color: var(--pl-card-tag-fg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--pl-hairline);
+}
+
+/* 7. Hover-управление группой (pencil/trash).
+   U-2 (плотные табы): в норме виден ТОЛЬКО бейдж-счётчик. На hover/active бейдж
+   заменяется карандашом В ТОЙ ЖЕ позиции (.tab-slot — бейдж задаёт ширину, карандаш
+   absolute поверх → своп не меняет ширину слота, соседи не дёргаются). Корзина держит
+   постоянное место (резерв ширины, opacity-reveal) справа от слота — её место заложено
+   заранее, gap до соседнего таба не даёт ей залезать на соседа.
+   Прежний `.tab-control` (pencil+trash вместе, всегда зарезервированы рядом с бейджем)
+   раздувал каждый таб на ~46px — отсюда большие промежутки (D-B1, Пачка 2 → пересмотр). */
+.prompt-library__tab-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Бейдж задаёт ширину слота; на hover/active гаснет (место держит). */
+.prompt-library__tab-slot .prompt-library__tab-badge {
+  transition: opacity 0.14s ease;
+}
+
+.prompt-library__tab:hover .prompt-library__tab-slot .prompt-library__tab-badge,
+.prompt-library__tab--active .prompt-library__tab-slot .prompt-library__tab-badge {
+  opacity: 0;
+}
+
+/* Карандаш поверх бейджа (центр слота), проявляется на hover/active. */
+.prompt-library__tab-edit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.prompt-library__tab:hover .prompt-library__tab-edit,
+.prompt-library__tab--active .prompt-library__tab-edit {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Корзина: место зарезервировано всегда (ширина в потоке), видна на hover/active. */
+.prompt-library__tab-delete {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.prompt-library__tab:hover .prompt-library__tab-delete,
+.prompt-library__tab--active .prompt-library__tab-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.prompt-library__tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--gpt-fg-muted);
+  cursor: pointer;
+}
+
+.prompt-library__tab-action:hover {
+  background: var(--pl-hover-trigger);
+  color: var(--gpt-fg);
+}
+
+.prompt-library__tab-action .lc-icon {
+  width: 15px;
+  height: 15px;
+}
+
+
+/* 8. "Новый промпт" — компактная кнопка между tag-filter и cards */
+.prompt-library__actions {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--pl-hairline);
+}
+
+/* U-2: «Новый промпт» = outlined-стиль кнопки «Новый чат» (.chat__new):
+   фон --ch-bg-elev, solid-рамка --ch-border, radius 12px, hover с lift.
+   Остаётся full-width — разделитель снизу даёт .prompt-library__actions. */
+.prompt-library__new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  color: var(--ch-fg-strong);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(15, 15, 12, .04);
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease, color 0.14s ease;
+}
+
+.prompt-library__new-btn:hover {
+  background: var(--ch-bg-hover-sft);
+  border-color: var(--ch-border-str);
+  color: var(--ch-fg-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 15, 12, .06);
+}
+
+.prompt-library__new-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 0 rgba(15, 15, 12, .04);
+}
+
+.prompt-library__new-btn .lc-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--ch-fg-muted);
+}
+
+/* Старый Bootstrap-стиль .btn-success внутри библиотеки больше не используется */
+
+/* 11. Превью — содержимое */
+.prompt-library__preview-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--gpt-fg-muted);
+  text-align: center;
+  padding: 40px;
+}
+
+.prompt-library__preview-empty .lc-icon {
+  color: var(--pl-fg-faint);
+  width: 36px;
+  height: 36px;
+}
+
+.prompt-library__preview-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gpt-fg);
+  letter-spacing: -0.018em;
+}
+
+.prompt-library__preview-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.prompt-library__preview-header {
+  flex: 0 0 auto;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--pl-hairline);
+}
+
+.prompt-library__preview-title {
+  margin: 0;
+  /* U-5: title в одной строке с tools-зоной → ellipsis, tools не сжимаются. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  color: var(--gpt-fg);
+  line-height: 1.15;
+}
+
+/* meta-chips отделены от строки title+tools отступом сверху. */
+.prompt-library__preview-header-top + .prompt-library__preview-meta {
+  margin-top: 10px;
+}
+
+.prompt-library__preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--gpt-fg-muted);
+  font-size: 12.5px;
+}
+
+.prompt-library__preview-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--pl-bg-meta);
+  border: 1px solid var(--pl-hairline);
+  border-radius: 999px;
+  color: var(--pl-fg-meta);
+  font-weight: 500;
+  /* Ключ к ровным иконкам (касается ВСЕХ иконок чипа, не только bot):
+     по умолчанию у текстового span line-height ~1.4 — строка выше глифов букв,
+     а кириллица без нижних выносных сидит в верхней части строки. align-items:
+     center центрировал иконку по ВСЕЙ высоте строки → она оказывалась ниже букв.
+     line-height:1 схлопывает строку до высоты глифов, и иконка встаёт ровно. */
+  line-height: 1;
+}
+
+/* Текст чипа — отдельным span'ом с тем же line-height:1, чтобы flex-выравнивание
+   шло по реальной высоте букв. */
+.prompt-library__preview-meta-item > span {
+  line-height: 1;
+}
+
+.prompt-library__preview-meta-item .lc-icon {
+  color: var(--pl-fg-faint);
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.prompt-library__preview-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 24px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gpt-fg);
+  white-space: pre-wrap;
+  letter-spacing: -0.005em;
+  background: transparent;
+  border: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gpt-border) transparent;
+}
+
+.prompt-library__preview-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.prompt-library__preview-content::-webkit-scrollbar-thumb {
+  background: var(--gpt-border);
+  border-radius: 4px;
+}
+
+.prompt-library__preview-empty-inline {
+  color: var(--gpt-fg-muted);
+  font-style: italic;
+}
+
+.prompt-library__preview-tags {
+  padding: 0 24px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* U-5: фикс-зона инструментов в шапке превью (шестерёнка + trash), справа от title. */
+.prompt-library__preview-header-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.prompt-library__preview-tools {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* выровнять по верхней строке заголовка (h3 line-height 1.15 ≈ 25px при 22px) */
+  margin-top: 1px;
+}
+
+.prompt-library__gear-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Кнопки-инструменты — язык .chat__delete-all (квадрат, elev-фон, hairline). */
+.prompt-library__preview-tool {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: var(--ch-bg-elev);
+  border: 1px solid var(--ch-border);
+  border-radius: 10px;
+  color: var(--ch-fg-faint);
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, color .14s ease, transform .14s ease;
+}
+
+.prompt-library__preview-tool .lc-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.prompt-library__preview-tool:hover {
+  background: var(--pl-bg-hover-soft);
+  border-color: var(--gpt-border-strong);
+  color: var(--gpt-fg);
+}
+
+.prompt-library__preview-tool[aria-expanded="true"] {
+  background: var(--pl-bg-hover-soft);
+  border-color: var(--gpt-border-strong);
+  color: var(--gpt-fg);
+}
+
+.prompt-library__preview-tool:active {
+  transform: translateY(1px);
+}
+
+/* U-4: trash под .chat__delete-all (danger-hover). */
+.prompt-library__preview-tool--danger:hover {
+  background: rgba(217, 83, 79, .08);
+  border-color: rgba(217, 83, 79, .35);
+  color: var(--danger, #b34a3a);
+}
+
+/* U-5: поповер шестерёнки. Anchor — .gear-wrap (в шапке), всплывает ВНИЗ. */
+.prompt-library__pl-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 210px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--gpt-bg);
+  border: 1px solid var(--pl-hairline);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 15, 12, 0.16);
+}
+
+/* Пункт главной view (Редактировать / Копировать / Переместить). */
+.prompt-library__pl-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--gpt-fg);
+  cursor: pointer;
+}
+
+.prompt-library__pl-popover-item:hover {
+  background: var(--pl-bg-hover-soft);
+}
+
+.prompt-library__pl-popover-item .lc-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: var(--gpt-fg-muted);
+}
+
+.prompt-library__pl-popover-name {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.prompt-library__pl-popover-chevron {
+  margin-left: auto;
+  color: var(--pl-fg-faint);
+}
+
+/* Заголовок sub-view «Переместить» = кнопка «← назад». */
+.prompt-library__pl-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  margin-bottom: 2px;
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--pl-fg-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.prompt-library__pl-popover-head:hover {
+  background: var(--pl-bg-hover-soft);
+  color: var(--gpt-fg-muted);
+}
+
+.prompt-library__pl-popover-head .lc-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* Пункты-группы sub-view «Переместить» — стиль = .gpt-chip-menu__item (выбор
+   модели/агента в композере): без иконок/«текущая», текущая = .is-selected. */
+.prompt-library__move-item {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--gpt-fg);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color .12s ease;
+}
+
+.prompt-library__move-item:hover {
+  background: var(--ch-bg-hover);
+}
+
+.prompt-library__move-item.is-selected {
+  background: var(--ch-accent-soft);
+  color: var(--ch-fg-strong);
+  font-weight: 500;
+}
+
+/* Футер превью — [Отмена] [Использовать] [Отправить] в ряд, прижаты ВПРАВО
+   (justify-content: flex-end; распорка .grow убрана). */
+.prompt-library__preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--pl-hairline);
+  background: var(--pl-bg-sidebar);
+  flex: 0 0 auto;
+}
+
+/* Общая база кнопок футера */
+.prompt-library__preview-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+/* Outline — «Отмена» (ghost) */
+.prompt-library__preview-footer .btn-outline {
+  background: var(--gpt-bg);
+  border-color: var(--gpt-border-strong);
+  color: var(--gpt-fg);
+}
+
+.prompt-library__preview-footer .btn-outline:hover {
+  background: var(--pl-bg-hover-soft);
+}
+
+/* Primary — «Использовать» (графит, как .gpt-send-btn). U-6 (dark) — отдельной задачей. */
+.prompt-library__preview-footer .btn-primary {
+  background: var(--pl-accent);
+  color: var(--ch-accent-fg);
+  border-color: var(--pl-accent);
+}
+
+.prompt-library__preview-footer .btn-primary:hover {
+  background: var(--pl-accent-hover);
+  border-color: var(--pl-accent-hover);
+}
+
+/* 12. Empty-state — внутри __panes, когда filtered=0 */
+.prompt-library__empty-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 18px;
+  color: var(--gpt-fg-muted);
+  text-align: center;
+}
+
+/* Крупная иконка плашки — только прямой ребёнок (не иконка внутри CTA-кнопки). */
+.prompt-library__empty-result > .lc-icon {
+  color: var(--pl-fg-faint);
+  width: 24px;
+  height: 24px;
+}
+
+/* F-12 (Экран 04-E): empty-state пустой группы. Та же центрированная колонка,
+   но с CTA-кнопкой «Создать в этой группе» под текстом. */
+.prompt-library__empty-result--group {
+  padding: 40px 18px;
+}
+
+.prompt-library__empty-cta.prompt-library__new-btn {
+  width: auto;
+  padding: 6px 12px;
+  margin-top: 2px;
+}
+
+/* Иконка plus внутри CTA — компактная, не 24px от общей плашки. */
+.prompt-library__empty-cta .lc-icon {
+  width: 15px;
+  height: 15px;
+  color: currentColor;
+}
+
+.prompt-library__empty-result-text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Тонкие скроллы внутри модалки (legacy — основные скроллы теперь в __panes)
+   ========================================================================== */
+.prompt-library__shell ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.prompt-library__shell ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prompt-library__shell ::-webkit-scrollbar-thumb {
+  background: var(--pl-scrollbar-thumb);
+  border-radius: 10px;
+}
+
+.prompt-library__shell ::-webkit-scrollbar-thumb:hover {
+  background: var(--pl-scrollbar-thumb-hover);
+}
+
+/* ==========================================================================
+   12. Избранные промпты
+   ==========================================================================
+   Звезда — слева от тайтла, всегда видна. Filled+gold (—on) либо контурная.
+   Tab «Избранные» — первый, с золотым акцентом и счётчиком N/MAX.
+   Empty-state — большая центрированная звезда + подсказка.
+   ========================================================================== */
+
+.prompt-library {
+  /* Золотой акцент для звезды и таба «Избранные». Не привязан к --gpt-toggle-on
+     специально — чтобы избранное визуально отличалось от «применить промпт». */
+  --pl-fav: #f5a524;
+  --pl-fav-soft: rgba(245, 165, 36, 0.12);
+  --pl-fav-faint: rgba(245, 165, 36, 0.4);
+}
+
+body.dark .prompt-library {
+  --pl-fav: #f5b342;
+  --pl-fav-soft: rgba(245, 179, 66, 0.16);
+  --pl-fav-faint: rgba(245, 179, 66, 0.5);
+}
+
+/* U-5: trash-hover в dark — мягче, как .dark .chat__delete-all:hover. Сами кнопки
+   tool используют ch/gpt-переменные (уже переопределены в dark), доп-правил не надо. */
+body.dark .prompt-library__preview-tool--danger:hover {
+  background: rgba(224, 122, 115, .14);
+  border-color: rgba(224, 122, 115, .45);
+  color: #e07a73;
+}
+
+/* U-2: surfaces/borders/fg кнопок «+ Группа»/«Новый промпт» уже инвертируются через
+   --ch-* (color.css). Отдельно правим лишь тень — light-тень (.04) в dark не читается;
+   глубже, как у .dark .chat__new (rgba(0,0,0,.25/.35)). */
+body.dark .prompt-library__tab-add,
+body.dark .prompt-library__new-btn {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+}
+
+body.dark .prompt-library__tab-add:hover,
+body.dark .prompt-library__new-btn:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+
+body.dark .prompt-library__tab-add:active,
+body.dark .prompt-library__new-btn:active {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+}
+
+/* U-6: кнопка «Использовать» в DARK = как .dark .gpt-send-btn (светлая заливка,
+   тёмный текст, hover #f3f4f6, без рамки/тени). В dark `--pl-accent`(=`--ch-accent`)
+   уже светлеет, `--ch-accent-fg` темнеет — фон/текст совпадают с композером сами.
+   Здесь явно гасим border/box-shadow: bootstrap `.btn-primary` рисует свой светлый
+   контур (та самая «обводка» на u5-preview-dark.png) — перебиваем под скоупом футера. */
+body.dark .prompt-library__preview-footer .btn-primary {
+  background: var(--ch-accent);
+  color: var(--ch-accent-fg);
+  border-color: var(--ch-accent);
+  box-shadow: none;
+}
+
+body.dark .prompt-library__preview-footer .btn-primary:hover {
+  background: #f3f4f6;
+  border-color: #f3f4f6;
+  color: var(--ch-accent-fg);
+}
+
+.prompt-library__card-favorite {
+  position: absolute;
+  /* Центрируем по вертикали относительно высоты строки — звезда остаётся в
+     центре даже у карточки с пустым тайтлом (раньше top:10px «ломал» строку).
+     scale на hover/active идёт ПОВЕРХ translateY, иначе звезда выпадала из центра. */
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--gpt-fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  border-radius: 6px;
+  transition: color 0.15s ease, transform 0.18s ease, background 0.15s ease;
+  z-index: 25;
+}
+
+.prompt-library__card-favorite:hover {
+  color: var(--pl-fav);
+  background: var(--pl-fav-soft);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.prompt-library__card-favorite:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+.prompt-library__card-favorite[disabled] {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* F-02 (Экран 04-C): лимит избранного 4/4 → НЕ-избранные звёзды disabled физически.
+   Отличается от in-flight [disabled] (progress) — здесь not-allowed + сильнее пригашено,
+   это устойчивое состояние «нельзя добавить», а не «запрос летит». */
+.prompt-library__card-favorite--limit[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.prompt-library__card-favorite--limit[disabled]:hover {
+  color: var(--gpt-fg-muted);
+  background: transparent;
+  transform: translateY(-50%);  /* без scale, но центрирование сохраняем */
+}
+
+.prompt-library__card-favorite--on,
+.prompt-library__card-favorite--on:hover {
+  color: var(--pl-fav);
+}
+
+/* На hover карточки controls (✏️/🗑️) сдвигают тайтл вправо — для звезды
+   слева ничего не делаем, она всегда занимает фиксированный padding-left. */
+
+/* Таб «Избранные» — золотой акцент (поверх базовых __tab правил).
+   U-3: иконка-звезда убрана, правило __tab-favicon удалено (мёртвое). */
+.prompt-library__tab--favorites:hover {
+  color: var(--gpt-fg);
+}
+
+.prompt-library__tab--favorites.prompt-library__tab--active,
+.prompt-library__tab--favorites.prompt-library__tab--active:hover {
+  color: var(--pl-fav);
+  border-bottom-color: var(--pl-fav);
+}
+
+.prompt-library__tab--favorites .prompt-library__tab-badge {
+  color: var(--pl-fav);
+  background: var(--pl-fav-soft);
+}
+
+.prompt-library__tab--favorites.prompt-library__tab--active .prompt-library__tab-badge {
+  background: var(--pl-fav);
+  color: #ffffff;
+}
+
+/* F-02 (Экран 04-C): при лимите 4/4 бейдж «Избранные» → danger (вместо золотого),
+   и в active, и в неактивном состоянии. Перебивает золотые правила выше. */
+.prompt-library__tab--favorites .prompt-library__tab-badge--limit,
+.prompt-library__tab--favorites.prompt-library__tab--active .prompt-library__tab-badge--limit {
+  background: var(--danger-soft, rgba(239, 68, 68, 0.1));
+  color: var(--danger, #ef4444);
+}
+
+/* Empty-state в favorite-pane */
+.prompt-library__favorites-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 36px 24px;
+  gap: 14px;
+  color: var(--gpt-fg-muted);
+}
+
+/* lucide-svg вместо FontAwesome (мусорные fa-* убраны) — размер через width/height. */
+.prompt-library__favorites-empty-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--pl-fav-faint);
+}
+
+.prompt-library__favorites-empty-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  max-width: 360px;
+}
+
+.prompt-library__favorites-empty-text .lc-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--pl-fav);
+  margin: 0 1px;
+  vertical-align: -2px;
+}
+
+/* ==========================================================================
+   13. Inline-notice (limit / error) внутри модалки библиотеки
+   ==========================================================================
+   Глобальный toast рендерится за fancybox-overlay — его не видно. Этот notice
+   монтируется в .prompt-library__shell сверху и уезжает за 3.0с.
+   ========================================================================== */
+
+.prompt-library__notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translate(-50%, -16px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 10px 12px;
+  border-radius: 10px;
+  background: var(--gpt-bg, #fff);
+  border: 1px solid var(--gpt-border-strong, #d1d5db);
+  box-shadow: var(--pl-shadow-menu);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gpt-fg);
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity .22s ease, transform .22s ease;
+  z-index: 200;
+  max-width: 90%;
+}
+
+.prompt-library__notice--shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.prompt-library__notice--warning {
+  border-color: var(--pl-fav-faint);
+  background: linear-gradient(180deg, var(--pl-fav-soft), var(--gpt-bg, #fff));
+}
+
+.prompt-library__notice--warning .prompt-library__notice-ico {
+  color: var(--pl-fav);
+}
+
+.prompt-library__notice-ico {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.prompt-library__notice-text {
+  line-height: 1.4;
+}
+
+.prompt-library__notice-close {
+  background: transparent;
+  border: none;
+  color: var(--gpt-fg-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 0 0 6px;
+  cursor: pointer;
+  transition: color .14s ease;
+}
+
+.prompt-library__notice-close:hover {
+  color: var(--gpt-fg);
+}
+
+body.dark .prompt-library__notice {
+  background: var(--pl-bg-sidebar);
+  border-color: var(--pl-border-subtle);
+  color: var(--gpt-fg);
+}
+
+body.dark .prompt-library__notice--warning {
+  background: linear-gradient(180deg, var(--pl-fav-soft), var(--pl-bg-sidebar));
+}
+
+/* Чтобы absolute-notice позиционировался относительно __shell — у него уже position: relative. */

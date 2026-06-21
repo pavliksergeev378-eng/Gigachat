@@ -1,0 +1,58 @@
+.diagram-place {
+  height: 100%;
+}
+
+.gantt_row.odd, .gantt_task_row.odd {
+  background-color: #f4f4fb;
+}
+
+/*mark selected line*/
+.gantt_grid_data .gantt_row.gantt_selected,
+.gantt_grid_data .gantt_row.odd.gantt_selected,
+.gantt_task_row.gantt_selected,
+.gantt_task_row.odd.gantt_selected {
+  background-color: #fff3a1;
+}
+
+/* color to th timeline on dif scales*/
+.gantt_scale_line.month_scale {
+  font-weight: bold;
+  background-color: #ddd;
+}
+
+.gantt_scale_line.week_scale {
+  background-color: #e1e1e1;
+}
+
+.gantt_scale_line.day_scale {
+  background-color: #efefef;
+}
+
+/* css bars*/
+/*.gantt_task_line {*/
+   /*border-radius: 14px;*/
+   /*background-color: #03A9F4;*/
+/*}*/
+
+/* css bars content*/
+/*.gantt_task_line.gantt_task_content {}*/
+
+/* mark bar in selected line */
+.gantt_task_line.gantt_selected {
+  box-shadow: 0 2px 5px #000;
+}
+
+.gantt_task_line.gantt_bar_custom_type {
+  border-radius: 14px;
+  background-color: #03A9F4;
+}
+
+.weekend {
+  background: #ff000055 !important;
+}
+
+/*.gantt_tree_content, .gantt_task_content {
+ line-height: 36px;
+ white-space: normal;
+ overflow-wrap: break-word;
+}*/
