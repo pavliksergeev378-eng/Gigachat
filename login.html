@@ -204,6 +204,12 @@
         }
         .gc-login-tab:hover { color: var(--text-primary); }
         .gc-login-tab.active { background: var(--accent); color: #fff; }
+        /* Dark theme: #fafaf7 фон + белый текст = белый квадрат на тёмной странице.
+           Меняем фон на полупрозрачный + тёмный текст — читаемо и не слепит. */
+        html[data-theme="dark"] .gc-login-tab.active {
+            background: rgba(250,250,247,0.14);
+            color: var(--accent);
+        }
 
         /* Fade форм при смене вкладки */
         .gc-login-form {
@@ -301,6 +307,10 @@
             border-width: 0 2px 2px 0;
             transform: rotate(45deg) translate(-1px, -1px);
         }
+        /* Dark theme: accent #fafaf7 фон + белая галочка = не видно. */
+        html[data-theme="dark"] .gc-checkbox-row input[type="checkbox"]:checked + .gc-checkbox-box::after {
+            border-color: #111827;
+        }
         .gc-checkbox-row .gc-checkbox-label {
             font-size: 14px; color: var(--text-primary); font-weight: 500;
             letter-spacing: 0.2px; line-height: 1;
@@ -338,6 +348,7 @@
             font-family: inherit; font-size: 14px; font-weight: 600;
             transition: background 0.18s ease, transform 0.1s ease, opacity 0.18s ease;
         }
+        html[data-theme="dark"] .gc-login-footer button { color: #111827; }
         .gc-login-footer button:hover { background: var(--accent-hover); }
         .gc-login-footer button:active { transform: scale(0.98); }
         .gc-login-footer button:disabled { opacity: 0.5; cursor: not-allowed; }
