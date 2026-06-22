@@ -1,1821 +1,1822 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Node Editor — Визуальный конструктор</title>
-<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
-<script src="_shared-guard.js"></script>
-<script src="_config.js"></script>
-<script src="_shared.js"></script>
-<style>
-/* Light theme overrides via CSS variables */
-:root[data-theme="light"] {
-  --bg-body: #f5f5f7;
-  --bg-toolbar: #e8e8ed;
-  --bg-palette: #e8e8ed;
-  --bg-palette-item: #ffffff;
-  --bg-node: #ffffff;
-  --bg-canvas: #f0f0f2;
-  --bg-config: #e8e8ed;
-  --border: #d1d1d6;
-  --border-accent: #007aff;
-  --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --accent: #e94560;
-  --accent-hover: #d63350;
-  --port-color: #007aff;
-  --port-output: #ff3b30;
-}
-:root {
-  --bg-body: #1a1a2e;
-  --bg-toolbar: #16213e;
-  --bg-palette: #16213e;
-  --bg-palette-item: #1a1a40;
-  --bg-node: #222244;
-  --bg-canvas: #16162a;
-  --bg-config: #16213e;
-  --border: #0f3460;
-  --border-accent: #e94560;
-  --text-primary: #e0e0e0;
-  --text-secondary: #888;
-  --accent: #e94560;
-  --accent-hover: #d63350;
-  --port-color: #8af;
-  --port-output: #f8a;
-}
-
-/* ===== RESET & BASE ===== */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-body);color:var(--text-primary);height:100vh;overflow:hidden;display:flex;flex-direction:column}
-html{overflow-y:hidden!important}
-/* ===== TOOLBAR ===== */
-.toolbar{display:flex;align-items:center;gap:10px;padding:10px 20px;background:var(--bg-toolbar);border-bottom:1px solid var(--border);flex-shrink:0}
-.toolbar h1{font-size:16px;font-weight:600;color:var(--accent);margin-right:auto;display:flex;align-items:center;gap:10px}
-.toolbar h1 small{font-size:11px;font-weight:400;color:var(--text-secondary);opacity:0.7}
-.toolbar .tb-group{display:flex;align-items:center;gap:6px;padding:0 4px}
-.toolbar .tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px}
-.toolbar button{padding:6px 14px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px;transition:0.15s;white-space:nowrap}
-.toolbar button:hover{background:var(--border);border-color:var(--accent)}
-.toolbar button.active{background:var(--accent);border-color:var(--accent);color:#fff}
-.toolbar input[type="file"]{display:none}
-.toolbar .node-count{font-size:12px;color:var(--text-secondary);margin-left:8px}
-.toolbar .zoom-display{font-size:12px;color:var(--text-secondary);min-width:40px;text-align:center}
-
-/* ===== MAIN LAYOUT ===== */
-.main{display:flex;flex:1;overflow:hidden}
-
-/* ===== PALETTE ===== */
-.palette{width:220px;min-width:220px;background:var(--bg-palette);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.palette-header{padding:12px 14px 8px;font-size:13px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--border);flex-shrink:0}
-.palette-section{padding:6px 14px 2px;font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text-secondary);letter-spacing:1px;background:var(--bg-toolbar)}
-.palette-list{flex:1;overflow-y:auto;padding:8px}
-.palette-item{padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:grab;font-size:13px;color:var(--text-primary);background:var(--bg-palette-item);border:1px solid transparent;transition:0.15s;user-select:none;display:flex;align-items:center;gap:8px}
-.palette-item:hover{background:var(--border);border-color:var(--accent);color:#fff}
-.palette-item:active{cursor:grabbing}
-.palette-item .badge{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.palette-item .pi-icon{width:16px;height:16px;flex-shrink:0;opacity:0.7}
-.palette-item .pi-label{flex:1}
-.palette-item .pi-type{font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px}
-
-/* ===== CANVAS ===== */
-.canvas-wrap{flex:1;position:relative;overflow:hidden}
-.canvas-viewport{position:absolute;inset:0;overflow:auto}
-.canvas-inner{position:relative;transform-origin:0 0}
-
-/* ===== NODE ===== */
-.node{position:absolute;width:190px;background:var(--bg-node);border:2px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);cursor:move;user-select:none;z-index:10}
-.node.selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(233,69,96,0.3)}
-.node-header{padding:8px 12px;border-radius:8px 8px 0 0;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;color:#fff}
-.node-header .node-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.node-header .node-actions{display:flex;gap:4px}
-.node-header .node-actions button{background:none;border:none;color:rgba(255,255,255,0.6);cursor:pointer;font-size:14px;padding:0 4px;line-height:1}
-.node-header .node-actions button:hover{color:#fff}
-.node-body{padding:8px 12px;font-size:11px;color:var(--text-secondary);min-height:24px;max-height:60px;overflow:hidden}
-.node-port{padding:3px 10px;font-size:11px;color:var(--port-color);cursor:pointer;display:flex;align-items:center;gap:6px;transition:0.15s}
-.node-port:hover{background:rgba(138,170,255,0.1)}
-.node-port .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--port-color);background:var(--bg-body);flex-shrink:0;transition:0.15s}
-.node-port .dot.connected{background:var(--port-color)}
-.node-port .dot:hover{background:var(--port-color)}
-.node-port .dot-output{dot-color:#f8a;border-color:#f8a}
-.node-port .dot-output:hover,.node-port .dot-output.connected{background:#f8a}
-.node-port-label{font-size:10px;opacity:0.7;white-space:nowrap}
-.node-desc{font-size:10px;color:var(--text-secondary);padding:2px 12px 6px;line-height:1.3}
-
-/* Node type header colors */
-.node-type-chat .node-header{background:#0984e3}
-.node-type-rag .node-header{background:#e17055}
-.node-type-math .node-header{background:#00b894}
-.node-type-prompt .node-header{background:#6c5ce7}
-.node-type-plane .node-header{background:#d63031}
-.node-type-ocr .node-header{background:#00cec9}
-.node-type-docloader .node-header{background:#e17055}
-.node-type-textextract .node-header{background:#0984e3}
-.node-type-tablemerge .node-header{background:#00b894}
-.node-type-filemerge .node-header{background:#f39c12}
-.node-type-orgappeal .node-header{background:#d63031}
-.node-type-compliance .node-header{background:#27ae60}
-.node-type-ocrtable .node-header{background:#00cec9}
-.node-type-router .node-header{background:#fdcb6e;color:#1a1a2e}
-
-/* ===== SVG CONNECTIONS ===== */
-.connections-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5}
-.connections-layer svg{width:100%;height:100%}
-.connections-layer .connection{stroke:#8af;stroke-width:2;fill:none;cursor:pointer;pointer-events:stroke}
-.connections-layer .connection:hover{stroke:var(--accent);stroke-width:3}
-.connections-layer .connection.highlighted{stroke:#f8a;stroke-width:3}
-.connections-layer .temp-line{stroke:var(--accent);stroke-width:2;stroke-dasharray:6,3;fill:none;pointer-events:none}
-
-/* ===== CONFIG PANEL ===== */
-.config-overlay{position:fixed;top:0;right:-460px;width:440px;height:100%;background:var(--bg-palette);border-left:1px solid var(--border);z-index:1000;transition:right 0.25s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,0.5)}
-.config-overlay.open{right:0}
-.config-overlay .config-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
-.config-overlay .config-header h2{font-size:15px;font-weight:600;color:var(--accent)}
-.config-overlay .config-header button{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px}
-.config-overlay .config-header button:hover{color:#fff}
-.config-overlay .config-body{flex:1;overflow-y:auto;padding:18px}
-.config-overlay .config-body label{display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:12px}
-.config-overlay .config-body label:first-child{margin-top:0}
-.config-overlay .config-body input,.config-overlay .config-body textarea,.config-overlay .config-body select{width:100%;padding:8px 10px;background:var(--bg-palette-item);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;transition:0.15s}
-.config-overlay .config-body input:focus,.config-overlay .config-body textarea:focus,.config-overlay .config-body select:focus{border-color:var(--accent)}
-.config-overlay .config-body textarea{min-height:80px;resize:vertical}
-.config-overlay .config-footer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border);flex-shrink:0}
-.config-overlay .config-footer button{flex:1;padding:8px 14px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px}
-.config-overlay .config-footer button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.config-overlay .config-footer button.primary:hover{background:#d63851}
-.config-overlay .config-footer button:hover{background:var(--border)}
-
-/* ===== CONTEXT MENU ===== */
-.context-menu{position:fixed;background:var(--bg-palette);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:160px;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none}
-.context-menu button{display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;color:var(--text-primary);font-size:13px;cursor:pointer;border-radius:4px}
-.context-menu button:hover{background:var(--border);color:#fff}
-.context-menu button.danger{color:var(--accent)}
-.context-menu button.danger:hover{background:rgba(233,69,96,0.15)}
-
-/* ===== TOAST ===== */
-.toast-container{position:fixed;bottom:20px;right:20px;z-index:9999}
-.toast{padding:10px 18px;border-radius:8px;font-size:13px;margin-top:8px;animation:toastIn 0.25s}
-.toast.info{background:#0984e3;color:#fff}
-.toast.success{background:#00b894;color:#fff}
-.toast.error{background:var(--accent);color:#fff}
-@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-
-/* ===== SCROLLBAR ===== */
-.palette-list::-webkit-scrollbar,.config-overlay .config-body::-webkit-scrollbar{width:4px}
-.palette-list::-webkit-scrollbar-track,.config-overlay .config-body::-webkit-scrollbar-track{background:transparent}
-.palette-list::-webkit-scrollbar-thumb,.config-overlay .config-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.canvas-viewport::-webkit-scrollbar{width:8px;height:8px}
-.canvas-viewport::-webkit-scrollbar-track{background:transparent}
-.canvas-viewport::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-
-/* ===== CANVAS DOTS ===== */
-.canvas-inner{background-image:radial-gradient(circle,#2a2a4e 1px,transparent 1px);background-size:24px 24px}
-
-/* ===== RUN MODAL ===== */
-.run-modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:3000;display:none;align-items:center;justify-content:center}
-.run-modal-overlay.open{display:flex}
-.run-modal{background:var(--bg-palette);border:1px solid var(--border);border-radius:12px;width:480px;max-width:90vw;box-shadow:0 12px 48px rgba(0,0,0,0.5);overflow:hidden}
-.run-modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.run-modal-header h3{font-size:15px;font-weight:600;color:var(--accent)}
-.run-modal-header button{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px}
-.run-modal-header button:hover{color:#fff}
-.run-modal-body{padding:20px}
-.run-modal-body label{display:block;font-size:13px;color:var(--text-primary);margin-bottom:12px;cursor:pointer}
-.run-modal-body label input[type="radio"]{accent-color:var(--accent);margin-right:8px}
-.run-modal-body .run-summary{background:var(--bg-palette-item);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px}
-.run-modal-body .run-summary .run-chain-viz{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
-.run-modal-body .run-summary .run-chain-viz .rcv-node{padding:4px 10px;background:var(--bg-card,var(--bg-body));border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--text-primary)}
-.run-modal-body .run-summary .run-chain-viz .rcv-arrow{color:var(--text-muted);font-size:12px}
-.run-modal-body .run-progress{margin-top:12px;display:none}
-.run-modal-body .run-progress.show{display:block}
-.run-modal-body .run-progress .rp-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:8px}
-.run-modal-body .run-progress .rp-bar .rp-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s;width:0%}
-.run-modal-body .run-progress .rp-label{font-size:11px;color:var(--text-secondary)}
-.run-modal-body .run-result{margin-top:12px;display:none}
-.run-modal-body .run-result.show{display:block}
-.run-modal-body .run-result .rr-box{padding:10px 12px;background:var(--bg-palette-item);border:1px solid var(--border);border-radius:8px;word-break:break-all;font-size:12px;color:var(--text-primary)}
-.run-modal-body .run-result .rr-box a{color:var(--accent)}
-.run-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
-.run-footer button{padding:8px 20px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px;transition:0.15s}
-.run-footer button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.run-footer button.primary:hover{background:var(--accent-hover)}
-.run-footer button:hover{background:var(--border)}
-/* ===== OPEN NODE BTN ===== */
-.open-node-btn{margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 10px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--port-color);border-radius:4px;cursor:pointer;transition:0.15s;text-decoration:none}
-.open-node-btn:hover{background:var(--border);border-color:var(--port-color);color:#fff}
-</style>
-</head>
-<body>
-
-<!-- TOOLBAR -->
-<div class="toolbar">
-  <h1>⚡ Node Editor <small>Конструктор агентов</small></h1>
-  <div class="tb-group">
-    <button id="btnSave" title="Сохранить схему (Ctrl+S)">💾 Save</button>
-    <button id="btnLoad" title="Загрузить схему">📂 Load</button>
-    <input type="file" id="fileInput" accept=".json">
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <button id="btnRun" title="Запустить цепочку" style="background:var(--accent);color:#fff;border-color:var(--accent)">▶ Run</button>
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <button id="btnExport" title="Экспорт в n8n JSON">🚀 Export n8n</button>
-    <button id="btnExportN8nWorkflow" title="Экспорт как готовый n8n workflow (для импорта в n8n UI)">⚡ Import в n8n</button>
-    <button id="btnClear" title="Очистить холст">🗑 Clear</button>
-    <button id="btnAutoLayout" title="Авторасположение">🔀 Auto Layout</button>
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <button id="btnZoomIn" title="Приблизить (Ctrl+=)">➕</button>
-    <span class="zoom-display" id="zoomDisplay">100%</span>
-    <button id="btnZoomOut" title="Отдалить (Ctrl+-)">➖</button>
-    <button id="btnZoomReset" title="Сбросить масштаб (Ctrl+0)">⟲ 1:1</button>
-  </div>
-  <span class="node-count" id="nodeCount">0 нод</span>
-</div>
-
-<!-- MAIN -->
-<div class="main">
-  <!-- PALETTE -->
-  <div class="palette">
-    <div class="palette-header">🧩 Палитра</div>
-    <div class="palette-list" id="paletteList"></div>
-  </div>
-
-  <!-- CANVAS -->
-  <div class="canvas-wrap" id="canvasWrap">
-    <div class="canvas-viewport" id="canvasViewport">
-      <div class="canvas-inner" id="canvasInner">
-        <svg class="connections-layer" id="connectionsLayer"><defs/><g id="connectionGroup"/></svg>
-      </div>
-    </div>
-  </div>
-
-  <!-- DRAG GHOST -->
-  <div id="dragGhost" style="display:none;position:fixed;pointer-events:none;z-index:9999;padding:8px 14px;background:var(--bg-palette);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.4)">+</div>
-</div>
-
-<!-- CONFIG OVERLAY -->
-<div class="config-overlay" id="configOverlay">
-  <div class="config-header">
-    <h2 id="configTitle">⚙️ Настройки ноды</h2>
-    <button id="configClose" title="Закрыть (Esc)">✕</button>
-  </div>
-  <div class="config-body" id="configBody">
-    <label>Название</label>
-    <input id="cfgName" placeholder="Название ноды">
-    <label>Тип</label>
-    <input id="cfgType" disabled placeholder="—">
-    <label>Описание</label>
-    <input id="cfgDesc" placeholder="Описание (необязательно)">
-    <label>Тег / метка</label>
-    <input id="cfgTag" placeholder="например: main, test, docs">
-    <label>Параметры (JSON)</label>
-    <textarea id="cfgParams" placeholder='{"model":"GigaChat-Pro","temperature":0.7}'></textarea>
-    <label>Действия</label>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-      <a class="open-node-btn" id="cfgOpenAgent" target="_blank" style="display:none">🔗 Открыть агента</a>
-    </div>
-  </div>
-  <div class="config-footer">
-    <button id="cfgDelete" style="background:transparent;color:var(--accent);border-color:rgba(233,69,96,0.3)">Удалить</button>
-    <button id="cfgCancel">Отмена</button>
-    <button class="primary" id="cfgSave">Сохранить</button>
-  </div>
-</div>
-
-<!-- CONTEXT MENU -->
-<div class="context-menu" id="contextMenu">
-  <button data-action="config">⚙️ Настроить</button>
-  <button data-action="duplicate">📋 Дублировать</button>
-  <button data-action="open">🔗 Открыть агента</button>
-  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
-  <button data-action="delete" class="danger">🗑 Удалить</button>
-</div>
-
-<!-- RUN MODAL -->
-<div class="run-modal-overlay" id="runModal" style="display:none">
-  <div class="run-modal">
-    <div class="run-header">
-      <span style="font-weight:600;font-size:1.1em">▶ Запуск цепочки</span>
-      <button class="run-close-btn" id="runModalClose">✕</button>
-    </div>
-    <div class="run-body">
-      <div class="run-progress" id="runProgress">
-        <div class="run-step-info">Подготовка сценария...</div>
-        <div class="run-spinner"></div>
-      </div>
-      <div class="run-result" id="runResult" style="display:none">
-        <div class="run-result-icon" id="runResultIcon">✅</div>
-        <div class="run-result-title" id="runResultTitle">Готово</div>
-        <div class="run-result-msg" id="runResultMsg"></div>
-        <div class="run-result-url" id="runResultUrl" style="display:none">
-          <label>Ссылка на workflow:</label>
-          <input type="text" readonly id="runResultUrlInput" style="width:100%;margin-top:4px">
-        </div>
-      </div>
-    </div>
-    <div class="run-footer">
-      <button class="run-mode-btn" id="runModeLocal" style="background:var(--accent);color:#fff;border-color:var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;border:none;cursor:pointer">🚀 Запустить цепочку</button>
-      <button class="run-mode-btn" id="runModeN8n" style="background:transparent;color:var(--accent);border:1px solid var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer">☁️ Создать workflow в n8n (REST)</button>
-    </div>
-  </div>
-</div>
-
-<!-- TOAST CONTAINER -->
-<div class="toast-container" id="toastContainer"></div>
-
-<style>
-/* Run modal */
-.run-modal-overlay {
-  position:fixed;top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,0,0.5);z-index:2000;
-  display:flex;align-items:center;justify-content:center;
-}
-.run-modal {
-  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
-  width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;
-  box-shadow:0 8px 32px rgba(0,0,0,0.3);
-}
-.run-header {
-  display:flex;align-items:center;justify-content:space-between;
-  padding:16px 20px;border-bottom:1px solid var(--border);
-}
-.run-close-btn {
-  background:none;border:none;font-size:1.2em;cursor:pointer;
-  color:var(--text);opacity:0.6;padding:4px 8px;border-radius:4px;
-}
-.run-close-btn:hover { opacity:1; background:var(--bg-hover); }
-.run-body {
-  padding:20px;
-}
-.run-progress {
-  display:flex;flex-direction:column;align-items:center;gap:12px;
-  padding:32px 0;
-}
-.run-step-info { color:var(--text-dim); font-size:0.95em; }
-.run-spinner {
-  width:32px;height:32px;border:3px solid var(--border);
-  border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform:rotate(360deg) } }
-.run-result {
-  text-align:center;padding:16px 0;
-}
-.run-result-icon { font-size:2.5em; margin-bottom:8px; }
-.run-result-title { font-weight:600; font-size:1.1em; margin-bottom:4px; }
-.run-result-msg { color:var(--text-dim); font-size:0.9em; margin-bottom:12px; }
-.run-result-url {
-  text-align:left;margin-top:12px;padding:12px;
-  background:var(--bg-hover);border-radius:var(--radius);
-}
-.run-result-url label { font-size:0.85em; color:var(--text-dim); }
-.run-result-url input {
-  background:var(--bg);border:1px solid var(--border);
-  border-radius:4px;padding:6px 8px;color:var(--text);font-size:0.85em;
-}
-.run-footer {
-  display:flex;gap:10px;padding:16px 20px;
-  border-top:1px solid var(--border);
-}
-.run-footer .run-mode-btn:hover { opacity:0.9; }
-.run-footer .run-mode-btn:active { transform:scale(0.98); }
-</style>
-
-<script>
-(function(){
-  'use strict';
-
-  // ============================================================
-  // BOOT — проверка авторизации, затем init
-  // ============================================================
-  (function _bootNodeEditor() {
-    GigaChat.auth.requireAuth({
-      onOk: function() {
-        document.documentElement.classList.remove('gc-pending-auth');
-        var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
-        var ctrl = new AbortController();
-        var timer = setTimeout(function(){ ctrl.abort(); }, 3000);
-        fetch(((window.GIGACHAT_CONFIG || {}).N8N_PROXY_BASE || 'http://localhost:8777').replace(/\/$/, '') + '/n8n-healthz', { method: 'HEAD', signal: ctrl.signal })
-          .then(function() {
-            clearTimeout(timer);
-            initEditor();
-          })
-          .catch(function() {
-            clearTimeout(timer);
-            initEditor();
-          });
-      }
-    });
-  })();
-
-  // ============================================================
-  // AGENT TYPES — полный справочник для текущей платформы
-  // ============================================================
-  var AGENT_TYPES = [
-    // === АГЕНТЫ ===
-    { id:'chat',       label:'GigaChat Talk',    section:'agent', color:'#0984e3', icon:'💬', tag:'Диалог',
-      desc:'Свободный диалог с GigaChat', agentFile:'chat-agent.html',
-      ports:{in:['input','context'],out:['response']} },
-    { id:'rag',        label:'GigaChat Docs',    section:'agent', color:'#e17055', icon:'📄', tag:'Документы',
-      desc:'Поиск по документам, ответы на вопросы', agentFile:'rag-agent.html',
-      ports:{in:['query','docs'],out:['answer','sources']} },
-    { id:'math',       label:'GigaChat Math',    section:'agent', color:'#00b894', icon:'📐', tag:'Вычисления',
-      desc:'Решение задач, вычисления через Pyodide', agentFile:'math-agent.html',
-      ports:{in:['expression'],out:['result']} },
-    { id:'prompt',     label:'GigaChat Prompt',  section:'agent', color:'#6c5ce7', icon:'✏️', tag:'Промпты',
-      desc:'Создание, улучшение и оценка промптов', agentFile:'prompt-engineer.html',
-      ports:{in:['input','template'],out:['output']} },
-    { id:'plane',      label:'GigaChat Plane',   section:'agent', color:'#d63031', icon:'✈️', tag:'Проекты',
-      desc:'Управление проектами и задачами в Plane', agentFile:'plane-agent.html',
-      ports:{in:['request'],out:['result','error']} },
-    // === ИНСТРУМЕНТЫ ===
-    { id:'ocr',        label:'Поиск ФИО',        section:'tool', color:'#00cec9', icon:'🔍', tag:'Поиск',
-      desc:'Распознавание документов и поиск ФИО', agentFile:'OCR-search-FIO.html',
-      ports:{in:['image'],out:['text','fio']} },
-    { id:'ocrtable',   label:'OCR+Таблицы',      section:'tool', color:'#00cec9', icon:'📊', tag:'Таблицы',
-      desc:'Извлечение таблиц из изображений и PDF (post /extract-table)', agentFile:null,
-      ports:{in:['image'],out:['markdown','text']} },
-    { id:'docloader',  label:'Document Loader',  section:'tool', color:'#e17055', icon:'📁', tag:'Загрузка',
-      desc:'Загрузка файлов в базу данных', agentFile:'document-loader.html',
-      ports:{in:['file'],out:['content','meta']} },
-    { id:'textextract',label:'Text Extractor',   section:'tool', color:'#0984e3', icon:'📝', tag:'Извлечение',
-      desc:'PDF, Word, Excel, CSV — в чистый текст', agentFile:'text-extractor.html',
-      ports:{in:['document'],out:['text']} },
-    { id:'tablemerge', label:'Table Merger',     section:'tool', color:'#00b894', icon:'🔗', tag:'Таблицы',
-      desc:'Объединение таблиц из Word, Excel, CSV', agentFile:'table-merger.html',
-      ports:{in:['files'],out:['merged']} },
-    { id:'filemerge',  label:'File Merger',      section:'tool', color:'#f39c12', icon:'🗂️', tag:'Файлы',
-      desc:'Word, Excel, PDF, CSV и фото в один документ', agentFile:'file-merger.html',
-      ports:{in:['files'],out:['merged']} },
-    { id:'orgappeal',  label:'Организация обращения', section:'tool', color:'#d63031', icon:'📋', tag:'Обращения',
-      desc:'Извлечение ФИО, СНИЛС и 4-ступенчатая идентификация', agentFile:'organization-appeal.html',
-      ports:{in:['appeal'],out:['decision','status']} },
-    { id:'compliance', label:'Compliance Check',  section:'tool', color:'#27ae60', icon:'🛡️', tag:'Безопасность',
-      desc:'Анализ нарушений ИБ и подбор компенсирующих мер', agentFile:'compliance-agent.html',
-      ports:{in:['report'],out:['decision','measures']} },
-    // === СЛУЖЕБНЫЕ ===
-    { id:'router',     label:'Router',           section:'system',color:'#fdcb6e', icon:'🔀', tag:'Маршрутизация',
-      desc:'Условная маршрутизация между нодами', agentFile:null,
-      ports:{in:['input'],out:['route_a','route_b','route_c']} },
-  ];
-
-  var SECTIONS = [
-    { key:'agent',  label:'🤖 Агенты' },
-    { key:'tool',   label:'🛠 Инструменты' },
-    { key:'system', label:'⚙️ Служебные' },
-  ];
-
-  // ============================================================
-  // STATE
-  // ============================================================
-  var nodes = {};          // id -> node object
-  var connections = [];    // [{fromId,fromPort,toId,toPort}]
-  var nextNodeId = 1;
-  var selectedNodeId = null;
-  var configNodeId = null;
-  var zoomLevel = 1;
-  var isDraggingFromPort = null; // {nodeId, portName, type:'in'|'out', dotEl}
-  var dragState = null;    // {nodeId, startX, startY, mouseStartX, mouseStartY}
-
-  var canvasInner = document.getElementById('canvasInner');
-  var canvasViewport = document.getElementById('canvasViewport');
-  var canvasWrap = document.getElementById('canvasWrap');
-  var connectionsLayer = document.getElementById('connectionsLayer');
-  var connectionGroup = document.getElementById('connectionGroup');
-
-  // Auto-set canvas size
-  var CANVAS_W = 5000, CANVAS_H = 5000;
-  canvasInner.style.width = CANVAS_W + 'px';
-  canvasInner.style.height = CANVAS_H + 'px';
-
-  // ============================================================
-  // BUILD PALETTE
-  // ============================================================
-  function buildPalette() {
-    var list = document.getElementById('paletteList');
-    list.innerHTML = '';
-    SECTIONS.forEach(function(sec) {
-      var types = AGENT_TYPES.filter(function(t){ return t.section === sec.key; });
-      if (!types.length) return;
-      var hdr = document.createElement('div');
-      hdr.className = 'palette-section';
-      hdr.textContent = sec.label;
-      list.appendChild(hdr);
-      types.forEach(function(t){
-        var el = document.createElement('div');
-        el.className = 'palette-item';
-        el.draggable = true;
-        el.dataset.typeId = t.id;
-        el.innerHTML = '<span class="badge" style="background:'+t.color+'"></span>'+
-          '<span class="pi-label">'+t.label+'</span>'+
-          '<span class="pi-type">'+t.tag+'</span>';
-        el.addEventListener('dragstart', function(e) {
-          e.dataTransfer.setData('text/plain', t.id);
-          e.dataTransfer.effectAllowed = 'copy';
-          var ghost = document.getElementById('dragGhost');
-          ghost.textContent = '+ ' + t.label;
-          ghost.style.display = 'block';
-          e.dataTransfer.setDragImage(ghost, 10, 10);
-          setTimeout(function(){ ghost.style.display = 'none'; }, 0);
-        });
-        list.appendChild(el);
-      });
-    });
-  }
-  buildPalette();
-
-  // ============================================================
-  // CANVAS DRAG & DROP
-  // ============================================================
-  canvasWrap.addEventListener('dragover', function(e) { e.preventDefault(); });
-  canvasWrap.addEventListener('drop', function(e) {
-    e.preventDefault();
-    var typeId = e.dataTransfer.getData('text/plain');
-    if (!typeId) return;
-    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
-    if (!type) return;
-    var rect = canvasWrap.getBoundingClientRect();
-    var x = (e.clientX - rect.left + canvasViewport.scrollLeft) / zoomLevel - 95;
-    var y = (e.clientY - rect.top + canvasViewport.scrollTop) / zoomLevel - 20;
-    x = Math.max(0, x); y = Math.max(0, y);
-    createNode(typeId, x, y);
-  });
-
-  // Prevent accidental drag on other elements
-  document.addEventListener('dragover', function(e){ e.preventDefault(); });
-  document.addEventListener('drop', function(e){ e.preventDefault(); });
-
-  // ============================================================
-  // CREATE / DELETE / DUPLICATE NODES
-  // ============================================================
-  function createNode(typeId, x, y, overrides) {
-    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
-    if (!type) return null;
-    var id = 'n' + (nextNodeId++);
-    var node = {
-      id: id,
-      typeId: typeId,
-      label: type.label,
-      desc: type.desc,
-      tag: type.tag || '',
-      color: type.color,
-      agentFile: type.agentFile,
-      ports: JSON.parse(JSON.stringify(type.ports)),
-      params: '{}',
-      x: x || 100,
-      y: y || 100,
-    };
-    if (overrides) {
-      if (overrides.label) node.label = overrides.label;
-      if (overrides.desc) node.desc = overrides.desc;
-      if (overrides.tag) node.tag = overrides.tag;
-      if (overrides.params) node.params = overrides.params;
-      if (overrides.x != null) node.x = overrides.x;
-      if (overrides.y != null) node.y = overrides.y;
-    }
-    nodes[id] = node;
-    renderNode(id);
-    updateNodeCount();
-    updateConnections();
-    return id;
-  }
-
-  function deleteNode(id) {
-    if (!nodes[id]) return;
-    // Remove connections involving this node
-    connections = connections.filter(function(c){
-      return c.fromId !== id && c.toId !== id;
-    });
-    // Remove DOM
-    var el = document.getElementById('node-' + id);
-    if (el) el.remove();
-    delete nodes[id];
-    if (selectedNodeId === id) selectedNodeId = null;
-    if (configNodeId === id) closeConfig();
-    updateNodeCount();
-    updateConnections();
-  }
-
-  function duplicateNode(id) {
-    var src = nodes[id];
-    if (!src) return;
-    var newId = createNode(src.typeId, src.x + 30, src.y + 30, {
-      label: src.label + ' (copy)',
-      desc: src.desc,
-      tag: src.tag,
-      params: src.params,
-    });
-    if (newId) showToast('Дублирована нода: ' + src.label, 'info');
-  }
-
-  function clearAll() {
-    if (Object.keys(nodes).length === 0) return;
-    if (!confirm('Очистить весь холст?')) return;
-    Object.keys(nodes).forEach(function(id){ deleteNode(id); });
-    connections = [];
-    updateConnections();
-    selectedNodeId = null;
-    if (configNodeId) { closeConfig(); }
-    showToast('Холст очищен', 'info');
-  }
-
-  // ============================================================
-  // RENDER NODE
-  // ============================================================
-  function renderNode(id) {
-    var node = nodes[id];
-    if (!node) return;
-    var existing = document.getElementById('node-' + id);
-    if (existing) existing.remove();
-
-    var el = document.createElement('div');
-    el.className = 'node node-type-' + node.typeId;
-    el.id = 'node-' + id;
-    el.style.left = node.x + 'px';
-    el.style.top = node.y + 'px';
-    el.dataset.nodeId = id;
-
-    // Header
-    var hdr = document.createElement('div');
-    hdr.className = 'node-header';
-    hdr.innerHTML = '<span class="node-title">'+escapeHtml(node.label)+'</span>'+
-      '<span class="node-actions"><button class="node-config-btn" title="Настроить" data-action="config">⚙️</button></span>';
-    el.appendChild(hdr);
-
-    // Body
-    var body = document.createElement('div');
-    body.className = 'node-body';
-    body.textContent = node.desc || node.tag || '';
-    body.title = node.desc || '';
-    el.appendChild(body);
-
-    // Input ports
-    if (node.ports.in && node.ports.in.length) {
-      node.ports.in.forEach(function(pname){
-        var port = document.createElement('div');
-        port.className = 'node-port';
-        port.dataset.portName = pname;
-        port.dataset.portDir = 'in';
-        port.innerHTML = '<span class="dot" data-port="'+pname+'"></span><span class="node-port-label">'+pname+'</span>';
-        el.appendChild(port);
-      });
-    }
-
-    // Output ports
-    if (node.ports.out && node.ports.out.length) {
-      node.ports.out.forEach(function(pname){
-        var port = document.createElement('div');
-        port.className = 'node-port output';
-        port.dataset.portName = pname;
-        port.dataset.portDir = 'out';
-        port.style.justifyContent = 'flex-end';
-        port.innerHTML = '<span class="node-port-label">'+pname+'</span><span class="dot" data-port="'+pname+'" style="border-color:#f8a"></span>';
-        el.appendChild(port);
-      });
-    }
-
-    // Events
-    el.addEventListener('mousedown', function(e) {
-      if (e.button !== 0) return;
-      // Ignore if target is a button or inside a port (dot or label)
-      var t = e.target;
-      if (t.tagName === 'BUTTON' || t.closest('.node-port') || t.closest('.node-actions')) return;
-      selectNode(id);
-      startDrag(e, id);
-    });
-
-    el.addEventListener('dblclick', function(e) {
-      openConfig(id);
-    });
-
-    // Config button
-    el.querySelector('.node-config-btn').addEventListener('click', function(e) {
-      e.stopPropagation();
-      openConfig(id);
-    });
-
-    canvasInner.appendChild(el);
-  }
-
-  // ============================================================
-  // NODE DRAG
-  // ============================================================
-  function startDrag(e, nodeId) {
-    var node = nodes[nodeId];
-    if (!node) return;
-    dragState = {
-      nodeId: nodeId,
-      startX: node.x,
-      startY: node.y,
-      mouseStartX: e.clientX,
-      mouseStartY: e.clientY,
-    };
-  }
-
-  document.addEventListener('mousemove', function(e) {
-    if (!dragState) return;
-    var dx = (e.clientX - dragState.mouseStartX) / zoomLevel;
-    var dy = (e.clientY - dragState.mouseStartY) / zoomLevel;
-    var node = nodes[dragState.nodeId];
-    if (!node) { dragState = null; return; }
-    node.x = Math.max(0, dragState.startX + dx);
-    node.y = Math.max(0, dragState.startY + dy);
-    var el = document.getElementById('node-' + dragState.nodeId);
-    if (el) {
-      el.style.left = node.x + 'px';
-      el.style.top = node.y + 'px';
-    }
-    updateConnections();
-  });
-
-  document.addEventListener('mouseup', function(e) {
-    if (isDraggingFromPort) {
-      console.log('[ND] mouseup — isDraggingFromPort present, calling finishPortDrag');
-      // Try to connect to a port under cursor
-      finishPortDrag(e);
-    } else {
-      if (dragState) console.log('[ND] mouseup — dragState present, clearing');
-    }
-    if (dragState) {
-      dragState = null;
-    }
-  });
-
-  // ============================================================
-  // PORT DRAG CONNECTIONS
-  // ============================================================
-  document.addEventListener('mousedown', function(e) {
-    var dot = e.target.closest('.dot');
-    if (!dot || !dot.closest('.node-port')) return;
-    var portEl = dot.closest('.node-port');
-    var nodeEl = portEl.closest('.node');
-    if (!nodeEl) return;
-    e.preventDefault();
-    e.stopPropagation();
-    var nodeId = nodeEl.dataset.nodeId;
-    var portName = portEl.dataset.portName;
-    var dir = portEl.dataset.portDir;
-    console.log('[ND] mousedown on port:', nodeId, portName, dir);
-    if (dir === 'in') { console.log('[ND] input port — ignored'); return; } // только из output в input
-    isDraggingFromPort = {
-      nodeId: nodeId,
-      portName: portName,
-      type: dir,
-      dotEl: dot,
-      mouseStartX: e.clientX,
-      mouseStartY: e.clientY,
-    };
-    console.log('[ND] isDraggingFromPort SET:', isDraggingFromPort);
-  });
-
-  document.addEventListener('mousemove', function(e) {
-    if (!isDraggingFromPort) return;
-    if (!isDraggingFromPort.mouseStartX) { console.warn('[ND] isDraggingFromPort has no mouseStartX'); return; }
-    // Draw temp line
-    var tempLine = connectionsLayer.querySelector('.temp-line');
-    if (!tempLine) {
-      tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      tempLine.classList.add('temp-line');
-      connectionsLayer.appendChild(tempLine);
-    }
-    var wrapRect = canvasWrap.getBoundingClientRect();
-    // Координаты внутри SVG (canvasInner) с учётом transform: scale()
-    // scrollLeft/scrollTop в пикселях холста (unscaled)
-    var x1 = (isDraggingFromPort.mouseStartX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
-    var y1 = (isDraggingFromPort.mouseStartY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
-    var x2 = (e.clientX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
-    var y2 = (e.clientY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
-    var path = bezierPath(x1, y1, x2, y2);
-    tempLine.setAttribute('d', path);
-  });
-
-  function finishPortDrag(e) {
-    var tempLine = connectionsLayer.querySelector('.temp-line');
-    if (tempLine) tempLine.remove();
-
-    console.log('[ND] finishPortDrag — mouseup at', e.clientX, e.clientY);
-
-    // Ищем входной порт строго по bounding-координатам (elementFromPoint
-    // не работает под SVG даже с pointer-events:none — он возвращает
-    // элемент SVG, а не `.dot` под ним). Поэтому используем только fallback.
-    var allDots = document.querySelectorAll('.node-port .dot');
-    var bestPort = null;
-    var bestDist = 20; // радиус захвата
-    console.log('[ND] checking', allDots.length, 'dots');
-    allDots.forEach(function(d){
-      var portEl = d.closest('.node-port');
-      if (!portEl || portEl.dataset.portDir !== 'in') return;
-      var r = d.getBoundingClientRect();
-      var cx = r.left + r.width / 2;
-      var cy = r.top + r.height / 2;
-      var dist = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2));
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPort = portEl;
-        console.log('[ND] best so far:', bestPort.dataset.portName, 'dist:', dist);
-      }
-    });
-
-    if (bestPort) {
-      var targetNodeId = bestPort.closest('.node').dataset.nodeId;
-      var targetPort = bestPort.dataset.portName;
-      console.log('[ND] found target:', targetNodeId, targetPort);
-      if (targetNodeId !== isDraggingFromPort.nodeId) {
-        addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
-      } else {
-        console.log('[ND] same node — skipped');
-      }
-    } else {
-      console.log('[ND] no target port found');
-    }
-    isDraggingFromPort = null;
-  }
-
-  function addConnection(fromId, fromPort, toId, toPort) {
-    console.log('[ND] addConnection:', fromId, fromPort, '->', toId, toPort);
-    // Prevent duplicate
-    var dup = connections.some(function(c){
-      return c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort;
-    });
-    if (dup) { showToast('Соединение уже существует', 'error'); return; }
-    connections.push({ fromId: fromId, fromPort: fromPort, toId: toId, toPort: toPort });
-    console.log('[ND] connections after push:', connections.length);
-    updateConnections();
-    showToast('Соединение создано', 'success');
-  }
-
-  function removeConnection(fromId, fromPort, toId, toPort) {
-    connections = connections.filter(function(c){
-      return !(c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort);
-    });
-    updateConnections();
-  }
-
-  // ============================================================
-  // DRAW SVG CONNECTIONS
-  // ============================================================
-  function updateConnections() {
-    // Clear
-    connectionGroup.innerHTML = '';
-
-    console.log('[ND] updateConnections, count:', connections.length);
-    connections.forEach(function(c){
-      var fromPort = getPortEl(c.fromId, c.fromPort, 'out');
-      var toPort = getPortEl(c.toId, c.toPort, 'in');
-      if (!fromPort || !toPort) {
-        // Важно: если порты не найдены — соединение не рисуется.
-        // Удаляем "мёртвое" соединение, чтобы не захламлять массив.
-        console.warn('[ND] Connection skipped — port not found', c, 'fromPort:', fromPort, 'toPort:', toPort);
-        return;
-      }
-
-      // getBoundingClientRect выдаёт координаты с учётом transform: scale().
-      // Чтобы получить координаты внутри canvasInner (SVG-слой), делим на zoomLevel,
-      // а scroll уже в unscaled-координатах (scrollLeft/scrollTop не масштабируются).
-      var fromRect = fromPort.getBoundingClientRect();
-      var toRect = toPort.getBoundingClientRect();
-      var wrapRect = canvasWrap.getBoundingClientRect();
-
-      var x1 = (fromRect.left + fromRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
-      var y1 = (fromRect.top + fromRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
-      var x2 = (toRect.left + toRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
-      var y2 = (toRect.top + toRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
-
-      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.classList.add('connection');
-      path.setAttribute('d', bezierPath(x1, y1, x2, y2));
-      path.dataset.fromId = c.fromId;
-      path.dataset.fromPort = c.fromPort;
-      path.dataset.toId = c.toId;
-      path.dataset.toPort = c.toPort;
-
-      // Click to delete
-      path.addEventListener('click', function(e) {
-        e.stopPropagation();
-        removeConnection(c.fromId, c.fromPort, c.toId, c.toPort);
-      });
-
-      connectionGroup.appendChild(path);
-    });
-  }
-
-  function getPortEl(nodeId, portName, dir) {
-    var nodeEl = document.getElementById('node-' + nodeId);
-    if (!nodeEl) return null;
-    var portEl = nodeEl.querySelector('.node-port[data-port-name="'+portName+'"][data-port-dir="'+dir+'"]');
-    if (!portEl) return null;
-    return portEl.querySelector('.dot');
-  }
-
-  function bezierPath(x1, y1, x2, y2) {
-    var dx = Math.abs(x2 - x1) * 0.5;
-    if (dx < 40) dx = 40;
-    return 'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2;
-  }
-
-  // ============================================================
-  // SELECT / DESELECT
-  // ============================================================
-  function selectNode(id) {
-    // Deselect all
-    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
-    selectedNodeId = id;
-    var el = document.getElementById('node-' + id);
-    if (el) el.classList.add('selected');
-  }
-
-  document.addEventListener('mousedown', function(e) {
-    if (e.target.closest('.node') || e.target.closest('.config-overlay') || e.target.closest('.context-menu')) return;
-    if (e.target.closest('.dot') && isDraggingFromPort) return;
-    hideContextMenu();
-    // Deselect
-    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
-    selectedNodeId = null;
-  });
-
-  // ============================================================
-  // CONFIG PANEL
-  // ============================================================
-  function openConfig(id) {
-    var node = nodes[id];
-    if (!node) return;
-    configNodeId = id;
-    var overlay = document.getElementById('configOverlay');
-    document.getElementById('configTitle').textContent = '⚙️ ' + node.label;
-    document.getElementById('cfgName').value = node.label;
-    document.getElementById('cfgType').value = AGENT_TYPES.find(function(t){ return t.id === node.typeId; })?.label || node.typeId;
-    document.getElementById('cfgDesc').value = node.desc || '';
-    document.getElementById('cfgTag').value = node.tag || '';
-    document.getElementById('cfgParams').value = node.params || '{}';
-
-    var openBtn = document.getElementById('cfgOpenAgent');
-    if (node.agentFile) {
-      openBtn.style.display = 'inline-flex';
-      openBtn.href = node.agentFile;
-    } else {
-      openBtn.style.display = 'none';
-    }
-
-    overlay.classList.add('open');
-  }
-
-  function closeConfig() {
-    document.getElementById('configOverlay').classList.remove('open');
-    configNodeId = null;
-  }
-
-  function saveConfig() {
-    var id = configNodeId;
-    if (!id || !nodes[id]) return;
-    var node = nodes[id];
-    node.label = document.getElementById('cfgName').value.trim() || node.label;
-    node.desc = document.getElementById('cfgDesc').value.trim();
-    node.tag = document.getElementById('cfgTag').value.trim();
-    var paramsRaw = document.getElementById('cfgParams').value.trim();
-    if (paramsRaw) {
-      try { JSON.parse(paramsRaw); node.params = paramsRaw; }
-      catch(e) { showToast('Ошибка: параметры не являются валидным JSON', 'error'); return; }
-    } else {
-      node.params = '{}';
-    }
-    // Re-render
-    renderNode(id);
-    updateConnections();
-    closeConfig();
-    showToast('Нода обновлена: ' + node.label, 'success');
-  }
-
-  // Config panel buttons
-  document.getElementById('configClose').addEventListener('click', closeConfig);
-  document.getElementById('cfgCancel').addEventListener('click', closeConfig);
-  document.getElementById('cfgSave').addEventListener('click', saveConfig);
-  document.getElementById('cfgDelete').addEventListener('click', function() {
-    if (configNodeId && confirm('Удалить ноду ' + nodes[configNodeId]?.label + '?')) {
-      deleteNode(configNodeId);
-      closeConfig();
-    }
-  });
-
-  // ============================================================
-  // CONTEXT MENU
-  // ============================================================
-  var contextTargetId = null;
-
-  document.addEventListener('contextmenu', function(e) {
-    var nodeEl = e.target.closest('.node');
-    if (!nodeEl) { hideContextMenu(); return; }
-    e.preventDefault();
-    contextTargetId = nodeEl.dataset.nodeId;
-    selectNode(contextTargetId);
-    var menu = document.getElementById('contextMenu');
-    menu.style.display = 'block';
-    menu.style.left = e.clientX + 'px';
-    menu.style.top = e.clientY + 'px';
-  });
-
-  document.getElementById('contextMenu').addEventListener('click', function(e) {
-    var btn = e.target.closest('button');
-    if (!btn) return;
-    var action = btn.dataset.action;
-    var id = contextTargetId;
-    hideContextMenu();
-    if (!id || !nodes[id]) return;
-    switch (action) {
-      case 'config': openConfig(id); break;
-      case 'duplicate': duplicateNode(id); break;
-      case 'delete': deleteNode(id); break;
-      case 'open':
-        var n = nodes[id];
-        if (n.agentFile) window.open(n.agentFile, '_blank');
-        else showToast('Для этой ноды нет отдельной страницы', 'info');
-        break;
-    }
-  });
-
-  function hideContextMenu() {
-    document.getElementById('contextMenu').style.display = 'none';
-    contextTargetId = null;
-  }
-
-  // ============================================================
-  // ZOOM
-  // ============================================================
-  function setZoom(level) {
-    zoomLevel = Math.max(0.2, Math.min(3, level));
-    canvasInner.style.transform = 'scale(' + zoomLevel + ')';
-    document.getElementById('zoomDisplay').textContent = Math.round(zoomLevel * 100) + '%';
-  }
-
-  document.getElementById('btnZoomIn').addEventListener('click', function(){ setZoom(zoomLevel + 0.2); });
-  document.getElementById('btnZoomOut').addEventListener('click', function(){ setZoom(zoomLevel - 0.2); });
-  document.getElementById('btnZoomReset').addEventListener('click', function(){ setZoom(1); });
-
-  canvasWrap.addEventListener('wheel', function(e) {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      var delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(zoomLevel + delta);
-    }
-  }, { passive: false });
-
-  // ============================================================
-  // AUTO LAYOUT (simple grid)
-  // ============================================================
-  function autoLayout() {
-    var ids = Object.keys(nodes);
-    if (!ids.length) return;
-    var cols = Math.ceil(Math.sqrt(ids.length));
-    var spacingX = 220;
-    var spacingY = 180;
-    var startX = 50;
-    var startY = 50;
-    ids.forEach(function(id, i){
-      var node = nodes[id];
-      if (!node) return;
-      node.x = startX + (i % cols) * spacingX;
-      node.y = startY + Math.floor(i / cols) * spacingY;
-      var el = document.getElementById('node-' + id);
-      if (el) {
-        el.style.left = node.x + 'px';
-        el.style.top = node.y + 'px';
-      }
-    });
-    updateConnections();
-    showToast('Авторасположение выполнено', 'info');
-  }
-
-  document.getElementById('btnAutoLayout').addEventListener('click', autoLayout);
-
-  // ============================================================
-  // SAVE / LOAD JSON
-  // ============================================================
-  function saveJSON() {
-    var data = {
-      version: 2,
-      timestamp: new Date().toISOString(),
-      nodes: {},
-      connections: connections,
-      nextNodeId: nextNodeId,
-    };
-    Object.keys(nodes).forEach(function(id){
-      var n = nodes[id];
-      data.nodes[id] = {
-        typeId: n.typeId,
-        label: n.label,
-        desc: n.desc,
-        tag: n.tag,
-        params: n.params,
-        x: n.x,
-        y: n.y,
-      };
-    });
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'node-editor-schema.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Схема сохранена', 'success');
-  }
-
-  function loadJSON(event) {
-    var file = event.target.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        var data = JSON.parse(e.target.result);
-        if (!data.nodes) { showToast('Ошибка: неверный формат файла', 'error'); return; }
-
-        // Clear existing
-        Object.keys(nodes).forEach(function(id){ deleteNode(id); });
-        connections = [];
-
-        // Load nodes
-        Object.keys(data.nodes).forEach(function(id){
-          var ndata = data.nodes[id];
-          if (!data.nodes) return;
-          createNode(ndata.typeId, ndata.x, ndata.y, {
-            label: ndata.label,
-            desc: ndata.desc,
-            tag: ndata.tag,
-            params: ndata.params,
-          });
-        });
-
-        // Map old IDs to new IDs — simple sequential IDs
-        // Since we just created them in order, we can map sequentially
-        var oldIds = Object.keys(data.nodes);
-        var newIds = Object.keys(nodes);
-        if (data.connections) {
-          data.connections.forEach(function(c){
-            var ciFrom = oldIds.indexOf(c.fromId);
-            var ciTo = oldIds.indexOf(c.toId);
-            if (ciFrom >= 0 && ciTo >= 0 && newIds[ciFrom] && newIds[ciTo]) {
-              connections.push({
-                fromId: newIds[ciFrom],
-                fromPort: c.fromPort,
-                toId: newIds[ciTo],
-                toPort: c.toPort,
-              });
-            }
-          });
-        }
-
-        if (data.nextNodeId) nextNodeId = data.nextNodeId;
-        updateConnections();
-        updateNodeCount();
-        showToast('Схема загружена (' + Object.keys(nodes).length + ' нод)', 'success');
-      } catch(err) {
-        showToast('Ошибка загрузки: ' + err.message, 'error');
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  }
-
-  document.getElementById('btnSave').addEventListener('click', saveJSON);
-  document.getElementById('btnLoad').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
-  document.getElementById('fileInput').addEventListener('change', loadJSON);
-  document.getElementById('btnClear').addEventListener('click', clearAll);
-
-  // ============================================================
-  // EXPORT TO n8n
-  // ============================================================
-  function exportConfig() {
-    var ids = Object.keys(nodes);
-    if (!ids.length) {
-      showToast('Добавьте хотя бы одну ноду на холст', 'error');
-      return;
-    }
-
-    var data = {
-      version: 2,
-      name: 'GigaChat Workflow — Node Editor',
-      generatedAt: new Date().toISOString(),
-      nodes: {},
-      connections: connections,
-    };
-
-    ids.forEach(function(id){
-      var n = nodes[id];
-      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
-      data.nodes[id] = {
-        type: n.typeId,
-        label: n.label,
-        description: n.desc,
-        tag: n.tag,
-        webhook_url: type && type.agentFile ? GigaChat.webhookUrl(type.id) : null,
-        agent_file: n.agentFile,
-        params: (function(){
-          try { return JSON.parse(n.params || '{}'); } catch(e) { return {}; }
-        })(),
-      };
-    });
-
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'n8n-workflow-config.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Экспорт n8n выполнен', 'success');
-  }
-
-  document.getElementById('btnExport').addEventListener('click', exportConfig);
-
-  // ============================================================
-  // EXPORT AS n8n WORKFLOW (последовательная цепочка по связям)
-  // ============================================================
-  function exportN8nWorkflow(silent) {
-    var ids = Object.keys(nodes);
-    if (!ids.length) {
-      if (silent) return '';
-      showToast('Добавьте хотя бы одну ноду на холст', 'error');
-      return;
-    }
-
-    // Строим граф соединений: для каждой ноды находим предков и потомков
-    var childrenOf = {};  // nodeId -> массив {toId, toPort}
-    var parentsOf = {};   // nodeId -> массив {fromId, fromPort}
-    connections.forEach(function(c){
-      (childrenOf[c.fromId] = childrenOf[c.fromId] || []).push({ toId: c.toId, toPort: c.toPort });
-      (parentsOf[c.toId] = parentsOf[c.toId] || []).push({ fromId: c.fromId, fromPort: c.fromPort });
-    });
-
-    // Находим стартовые ноды (те, у кого нет родителей)
-    var startIds = ids.filter(function(id){ return !parentsOf[id] || !parentsOf[id].length; });
-    if (!startIds.length) {
-      if (silent) return '';
-      showToast('Нет начальных нод (нужно соединение выход -> вход)', 'error');
-      return;
-    }
-
-    // Топологическая сортировка (BFS от стартовых)
-    var sorted = [];
-    var visited = {};
-    var queue = startIds.slice();
-    while (queue.length) {
-      var id = queue.shift();
-      if (visited[id]) continue;
-      visited[id] = true;
-      sorted.push(id);
-      (childrenOf[id] || []).forEach(function(child){
-        // Добавляем потомка только если все его предки уже посещены
-        var allParentsVisited = (parentsOf[child.toId] || []).every(function(p){
-          return visited[p.fromId];
-        });
-        if (allParentsVisited && !visited[child.toId]) {
-          queue.push(child.toId);
-        }
-      });
-    }
-
-    // Добавляем ноды, не попавшие в топосорт (изолированные)
-    ids.forEach(function(id){
-      if (!visited[id]) sorted.push(id);
-    });
-
-    var n8nNodes = [];
-    var n8nConnections = {};
-    var connectorId = 1;
-    var baseX = 120;
-
-    // 1) Webhook-нода (вход)
-    var webhookNode = {
-      id: 'wh-' + connectorId++,
-      name: 'Webhook',
-      type: 'n8n-nodes-base.webhook',
-      typeVersion: 2.1,
-      position: [baseX, 200],
-      parameters: {
-        httpMethod: 'POST',
-        path: 'gigachat-workflow',
-        responseMode: 'lastNode',
-        options: {}
-      }
-    };
-    n8nNodes.push(webhookNode);
-
-    // 2) Code-нода парсинга
-    var parseNode = {
-      id: 'prs-' + connectorId++,
-      name: 'Парсинг запроса',
-      type: 'n8n-nodes-base.code',
-      typeVersion: 2,
-      position: [baseX + 340, 200],
-      parameters: {
-        jsCode: [
-          'const body = $input.first().json.body || {};',
-          'const msg = (body.message || body.text || \'\').trim();',
-          'const sid = (body.session_id || \'default\').trim();',
-          'const tok = String((body.token || body.apiKey || \'\')).trim();',
-          '',
-          'if (!msg || msg.length < 2) {',
-          '  return [{json: {valid: 0, error: \'Введите сообщение\'}}];',
-          '}',
-          'return [{json: {valid: 1, text: msg, session_id: sid, token: tok}}];'
-        ].join('\n')
-      }
-    };
-    n8nNodes.push(parseNode);
-    n8nConnections['wh-' + (connectorId - 2)] = {
-      main: [[{ node: 'prs-' + (connectorId - 1), type: 'main', index: 0 }]]
-    };
-
-    // 3) Создаём ноды-агенты по топосорту с маппингом origId -> n8nId
-    var origToN8n = {};  // original nodeId -> n8n node id
-    var agentNodeInfos = []; // {origId, n8nId, idx}
-    sorted.forEach(function(id, idx) {
-      var n = nodes[id];
-      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
-      if (!type) return;
-
-      var webhookUrl = GigaChat.webhookUrl(type.id);
-      var n8nAgentId = 'ag-' + (connectorId++);
-
-      // Параметры для body (общие для всех агентов)
-      var paramsMap = [
-        { name: 'message', value: '={{ $json.text || $json.message }}' },
-        { name: 'session_id', value: '={{ $json.session_id }}' },
-        { name: 'token', value: '={{ $json.token }}' },
-        { name: 'body', value: '={{ $json }}' }
-      ];
-      try {
-        var userParams = JSON.parse(n.params || '{}');
-        Object.keys(userParams).forEach(function(k){
-          if (['message','session_id','token','body'].indexOf(k) < 0) {
-            paramsMap.push({ name: k, value: String(userParams[k]) });
-          }
-        });
-      } catch(e) {}
-
-      var agentNode = webhookUrl ? {
-        id: n8nAgentId,
-        name: n.label || type.label,
-        type: 'n8n-nodes-base.httpRequest',
-        typeVersion: 4.1,
-        position: [baseX + 340 + (idx + 1) * 360, 200],
-        parameters: {
-          url: webhookUrl,
-          method: 'POST',
-          authentication: 'none',
-          sendBody: true,
-          bodyParameters: { parameters: paramsMap },
-          options: { timeout: 120000 }
-        }
-      } : {
-        id: n8nAgentId,
-        name: n.label || type.label,
-        type: 'n8n-nodes-base.code',
-        typeVersion: 2,
-        position: [baseX + 340 + (idx + 1) * 360, 200],
-        parameters: {
-          jsCode: [
-            '// ' + (n.label || type.label) + ' (' + n.typeId + ')',
-            '// Параметры: ' + (n.params || '{}'),
-            'return $input.all();'
-          ].join('\n')
-        }
-      };
-      n8nNodes.push(agentNode);
-      origToN8n[id] = n8nAgentId;
-      agentNodeInfos.push({ origId: id, n8nId: n8nAgentId, idx: idx });
-    });
-
-    if (!agentNodeInfos.length) {
-      if (silent) return '';
-      showToast('Не удалось создать ноды агентов', 'error');
-      return;
-    }
-
-    // 4) Строим n8n-соединения ПО РЕАЛЬНЫМ СВЯЗЯМ с холста
-    //    parseNode -> первая нода (если у неё нет родителей)
-    //    Если у ноды есть родители на холсте -> соединяем fromId -> toId
-    //    Если у ноды НЕТ родителей -> соединяем parseNode -> эта нода
-    //    Ноды без детей -> соединяем -> Respond
-
-    var hasIncomingConnection = {}; // отслеживаем, кого уже соединили
-    connections.forEach(function(c) {
-      var fromN8n = origToN8n[c.fromId];
-      var toN8n = origToN8n[c.toId];
-      if (!fromN8n || !toN8n) return;
-      n8nConnections[fromN8n] = n8nConnections[fromN8n] || { main: [[], []] };
-      n8nConnections[fromN8n].main[0].push({ node: toN8n, type: 'main', index: 0 });
-      hasIncomingConnection[toN8n] = true;
-    });
-
-    // Ноды без входящих соединений (стартовые) -> соединяем с parseNode
-    agentNodeInfos.forEach(function(info) {
-      if (!hasIncomingConnection[info.n8nId]) {
-        n8nConnections[parseNode.id] = n8nConnections[parseNode.id] || { main: [[], []] };
-        n8nConnections[parseNode.id].main[0].push({ node: info.n8nId, type: 'main', index: 0 });
-        hasIncomingConnection[info.n8nId] = true;
-      }
-    });
-
-    // 5) Respond-нода (выход)
-    var respondId = 'rsp-' + connectorId++;
-    var respondNode = {
-      id: respondId,
-      name: 'Ответ',
-      type: 'n8n-nodes-base.respondToWebhook',
-      typeVersion: 1,
-      position: [baseX + 340 + (sorted.length + 1) * 360, 200],
-      parameters: {
-        respondWith: 'json',
-        responseBody: '={{ JSON.stringify($json) }}',
-        options: {
-          responseHeaders: {
-            entries: [
-              { name: 'Access-Control-Allow-Origin', value: '*' },
-              { name: 'Access-Control-Allow-Headers', value: 'Content-Type' }
-            ]
-          }
-        }
-      }
-    };
-    n8nNodes.push(respondNode);
-
-    // Ноды без исходящих соединений -> соединяем с Respond
-    var hasOutgoingConnection = {};
-    Object.keys(n8nConnections).forEach(function(fromId) {
-      (n8nConnections[fromId].main[0] || []).forEach(function(conn) {
-        hasOutgoingConnection[fromId] = true;
-      });
-    });
-    agentNodeInfos.forEach(function(info) {
-      if (!hasOutgoingConnection[info.n8nId]) {
-        n8nConnections[info.n8nId] = n8nConnections[info.n8nId] || { main: [[], []] };
-        n8nConnections[info.n8nId].main[0].push({ node: respondId, type: 'main', index: 0 });
-      }
-    });
-
-    var workflow = {
-      name: 'GigaChat Workflow',
-      nodes: n8nNodes,
-      connections: n8nConnections,
-      settings: {
-        timezone: 'Europe/Moscow',
-        saveManualExecutions: true,
-        callerPolicy: 'workflowsFromSameOwner'
-      },
-      staticData: null,
-      tags: []
-    };
-
-    var jsonStr = JSON.stringify(workflow, null, 2);
-    if (silent) return jsonStr;
-
-    var blob = new Blob([jsonStr], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'gigachat-workflow.n8n.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Workflow сгенерирован — импортируй в n8n UI (Settings -> Import)', 'success');
-  }
-
-  document.getElementById('btnExportN8nWorkflow').addEventListener('click', exportN8nWorkflow);
-
-  // ============================================================
-  // RUN CHAIN (▶ Run)
-  // ============================================================
-  var runModalEl = document.getElementById('runModal');
-  var btnRun = document.getElementById('btnRun');
-  var btnRunModalClose = document.getElementById('runModalClose');
-  var btnRunModeLocal = document.getElementById('runModeLocal');
-  var btnRunModeN8n = document.getElementById('runModeN8n');
-
-  function openRunModal() {
-    runModalEl.style.display = 'flex';
-    document.getElementById('runProgress').style.display = 'flex';
-    document.getElementById('runResult').style.display = 'none';
-    // enable buttons
-    btnRunModeLocal.disabled = false;
-    btnRunModeN8n.disabled = false;
-    btnRunModeLocal.style.opacity = '1';
-    btnRunModeN8n.style.opacity = '1';
-    btnRunModeLocal.style.pointerEvents = '';
-    btnRunModeN8n.style.pointerEvents = '';
-  }
-
-  function closeRunModal() {
-    runModalEl.style.display = 'none';
-  }
-
-  function showRunResult(icon, title, msgOpts) {
-    document.getElementById('runProgress').style.display = 'none';
-    var resultDiv = document.getElementById('runResult');
-    resultDiv.style.display = 'block';
-    document.getElementById('runResultIcon').textContent = icon;
-    document.getElementById('runResultTitle').textContent = title;
-    if (typeof msgOpts === 'string') {
-      document.getElementById('runResultMsg').textContent = msgOpts;
-    } else if (msgOpts) {
-      document.getElementById('runResultMsg').textContent = msgOpts.msg || '';
-      var urlDiv = document.getElementById('runResultUrl');
-      if (msgOpts.url) {
-        urlDiv.style.display = 'block';
-        document.getElementById('runResultUrlInput').value = msgOpts.url;
-      } else {
-        urlDiv.style.display = 'none';
-      }
-    }
-  }
-
-  btnRun.addEventListener('click', function() {
-    if (!Object.keys(nodes).length) {
-      showToast('Сначала добавьте агентов на холст', 'error');
-      return;
-    }
-    openRunModal();
-  });
-
-  btnRunModalClose.addEventListener('click', closeRunModal);
-  runModalEl.addEventListener('click', function(e) {
-    if (e.target === runModalEl) closeRunModal();
-  });
-
-  function generateScenarioAndRun() {
-    if (!GigaChat.generateScenario) {
-      showRunResult('❌', 'Ошибка', 'Функция generateScenario недоступна. Проверьте загрузку _shared.js');
-      showToast('generateScenario недоступна', 'error');
-      btnRunModeLocal.disabled = false;
-      btnRunModeN8n.disabled = false;
-      btnRunModeLocal.style.opacity = '1';
-      btnRunModeN8n.style.opacity = '1';
-      btnRunModeLocal.style.pointerEvents = '';
-      btnRunModeN8n.style.pointerEvents = '';
-      return;
-    }
-    var scenario = GigaChat.generateScenario(nodes, connections, AGENT_TYPES);
-    if (!scenario || !scenario.steps || !scenario.steps.length) {
-      showRunResult('❌', 'Ошибка', 'Не удалось построить сценарий. Проверьте соединения между нодами.');
-      showToast('Не удалось построить сценарий', 'error');
-      return;
-    }
-    // Mark local mode in progress
-    btnRunModeLocal.disabled = true;
-    btnRunModeN8n.disabled = true;
-    btnRunModeLocal.style.opacity = '0.5';
-    btnRunModeN8n.style.opacity = '0.5';
-    btnRunModeLocal.style.pointerEvents = 'none';
-    btnRunModeN8n.style.pointerEvents = 'none';
-
-    document.querySelector('.run-step-info').textContent =
-      'Сценарий готов: ' + scenario.steps.length + ' шагов. Открываем chain-player...';
-
-    // Сохраняем сценарий в sessionStorage (надёжнее, чем hash/base64)
-    // и открываем chain-player в новом окне
-    var jsonStr = JSON.stringify(scenario);
-    try { sessionStorage.setItem('gc_scenario', jsonStr); } catch(e) {}
-    var chainUrl = window.location.href.replace(/\/[^/]*$/, '/chain-player.html');
-
-    setTimeout(function() {
-      showRunResult('✅', 'Сценарий готов',
-        { msg: scenario.steps.length + ' шагов. Цепочка открывается в chain-player.' });
-      window.location.href = chainUrl;
-      // re-enable after 2s
-      setTimeout(function() {
-        btnRunModeLocal.disabled = false;
-        btnRunModeN8n.disabled = false;
-        btnRunModeLocal.style.opacity = '1';
-        btnRunModeN8n.style.opacity = '1';
-        btnRunModeLocal.style.pointerEvents = '';
-        btnRunModeN8n.style.pointerEvents = '';
-      }, 2000);
-    }, 300);
-  }
-
-  btnRunModeLocal.addEventListener('click', generateScenarioAndRun);
-
-  btnRunModeN8n.addEventListener('click', function() {
-    // ВАЖНО: это НЕ запуск цепочки, а создание workflow через n8n REST API.
-    // В обычном режиме пользователю нужен левый вариант: «Запустить цепочку».
-    // REST API n8n часто требует отдельную авторизацию и даёт 401 Unauthorized.
-    if (!(window.GIGACHAT_CONFIG && window.GIGACHAT_CONFIG.ALLOW_N8N_REST_EXPORT === true)) {
-      showRunResult('⚠️ Не тот режим', 'Создание workflow в n8n отключено',
-        'Этот режим требует авторизацию n8n REST API и не нужен для обычного запуска цепочки. Нажмите «🚀 Запустить цепочку».');
-      showToast('Для запуска цепочки используйте «Запустить цепочку», не REST export', 'info');
-      return;
-    }
-    // n8n mode — create workflow via API
-    btnRunModeLocal.disabled = true;
-    btnRunModeN8n.disabled = true;
-    btnRunModeLocal.style.opacity = '0.5';
-    btnRunModeN8n.style.opacity = '0.5';
-    btnRunModeLocal.style.pointerEvents = 'none';
-    btnRunModeN8n.style.pointerEvents = 'none';
-
-    document.querySelector('.run-step-info').textContent = 'Создание workflow в n8n...';
-
-    try {
-      var workflowJson = exportN8nWorkflow(true); // silent mode — returns JSON string
-      var parsed;
-      try { parsed = JSON.parse(workflowJson); } catch(e) { parsed = null; }
-
-      var name = 'Chain: ' + (Object.keys(nodes).map(function(id) {
-        var n = nodes[id];
-        var typeId = n.typeId || 'agent';
-        for (var k in AGENT_TYPES) {
-          if (AGENT_TYPES[k].id === typeId) return AGENT_TYPES[k].label;
-        }
-        return typeId;
-      }).join(' → ') || 'Untitled');
-
-      if (typeof GigaChat.n8nApi !== 'undefined' && GigaChat.n8nApi.createWorkflow) {
-        var n8nWorkflowData = {
-          name: name,
-          nodes: parsed && parsed.nodes ? parsed.nodes : [],
-          connections: parsed && parsed.connections ? parsed.connections : {},
-          settings: {},
-          staticData: null,
-          tags: []
-        };
-
-        GigaChat.n8nApi.createWorkflow(n8nWorkflowData).then(function(result) {
-          var wfId = result && (result.id || result.data && result.data.id);
-          if (wfId) {
-            // Try to activate
-            return GigaChat.n8nApi.activateWorkflow(wfId).then(function() {
-              var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
-              var wfUrl = n8nBase + '/workflow/' + wfId;
-              showRunResult('✅', 'Workflow создан и активирован',
-                { msg: 'ID: ' + wfId, url: wfUrl });
-              showToast('Workflow #' + wfId + ' создан', 'success');
-            });
-          } else {
-            showRunResult('⚠️', 'Workflow создан (JSON)',
-              { msg: 'Ответ n8n: ' + JSON.stringify(result) });
-          }
-        }).catch(function(err) {
-          showRunResult('❌', 'Ошибка n8n', 'Не удалось создать workflow: ' + (err.message || err));
-          showToast('Ошибка n8n: ' + (err.message || err), 'error');
-        }).finally(function() {
-          btnRunModeLocal.disabled = false;
-          btnRunModeN8n.disabled = false;
-          btnRunModeLocal.style.opacity = '1';
-          btnRunModeN8n.style.opacity = '1';
-          btnRunModeLocal.style.pointerEvents = '';
-          btnRunModeN8n.style.pointerEvents = '';
-        });
-      } else {
-        // Fallback: download JSON
-        var blob = new Blob([workflowJson], {type: 'application/json'});
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'n8n-workflow.json';
-        a.click();
-        URL.revokeObjectURL(a.href);
-        showRunResult('⬇️', 'JSON скачан',
-          { msg: 'n8n API не настроен. Файл готов для ручного импорта.' });
-        btnRunModeLocal.disabled = false;
-        btnRunModeN8n.disabled = false;
-        btnRunModeLocal.style.opacity = '1';
-        btnRunModeN8n.style.opacity = '1';
-        btnRunModeLocal.style.pointerEvents = '';
-        btnRunModeN8n.style.pointerEvents = '';
-      }
-    } catch(e) {
-      showRunResult('❌', 'Ошибка', e.message || String(e));
-      showToast('Ошибка: ' + (e.message || e), 'error');
-      btnRunModeLocal.disabled = false;
-      btnRunModeN8n.disabled = false;
-      btnRunModeLocal.style.opacity = '1';
-      btnRunModeN8n.style.opacity = '1';
-      btnRunModeLocal.style.pointerEvents = '';
-      btnRunModeN8n.style.pointerEvents = '';
-    }
-  });
-
-  // ============================================================
-  // KEYBOARD SHORTCUTS
-  // ============================================================
-  document.addEventListener('keydown', function(e) {
-    // Esc — close config / context menu / deselect
-    if (e.key === 'Escape') {
-      if (document.getElementById('configOverlay').classList.contains('open')) {
-        closeConfig(); return;
-      }
-      hideContextMenu();
-      document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
-      selectedNodeId = null;
-      return;
-    }
-
-    // Delete / Backspace — delete selected node
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      deleteNode(selectedNodeId);
-      e.preventDefault();
-      return;
-    }
-
-    // Ctrl+S — save
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-      e.preventDefault();
-      saveJSON();
-      return;
-    }
-
-    // Ctrl+Z — zoom in
-    if ((e.ctrlKey || e.metaKey) && e.key === '=') {
-      e.preventDefault();
-      setZoom(zoomLevel + 0.2);
-      return;
-    }
-    // Ctrl+- — zoom out
-    if ((e.ctrlKey || e.metaKey) && e.key === '-') {
-      e.preventDefault();
-      setZoom(zoomLevel - 0.2);
-      return;
-    }
-    // Ctrl+0 — reset zoom
-    if ((e.ctrlKey || e.metaKey) && e.key === '0') {
-      e.preventDefault();
-      setZoom(1);
-      return;
-    }
-  });
-
-  // ============================================================
-  // HELPER FUNCTIONS
-  // ============================================================
-  function escapeHtml(text) {
-    if (text == null) return '';
-    var div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
-  }
-
-  function updateNodeCount() {
-    var count = Object.keys(nodes).length;
-    document.getElementById('nodeCount').textContent = count + ' нод' + (count === 1 ? 'а' : (count >= 2 && count <= 4 ? 'ы' : ''));
-  }
-
-  function showToast(msg, type) {
-    type = type || 'info';
-    var container = document.getElementById('toastContainer');
-    var el = document.createElement('div');
-    el.className = 'toast ' + type;
-    el.textContent = msg;
-    container.appendChild(el);
-    setTimeout(function(){ el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2500);
-    setTimeout(function(){ el.remove(); }, 3000);
-  }
-
-  // ============================================================
-  // RECALCULATE CONNECTIONS ON SCROLL / RESIZE
-  // ============================================================
-  function scheduleRedraw() {
-    if (window._redrawPending) return;
-    window._redrawPending = true;
-    requestAnimationFrame(function(){
-      window._redrawPending = false;
-      updateConnections();
-    });
-  }
-
-  canvasViewport.addEventListener('scroll', scheduleRedraw);
-  window.addEventListener('resize', scheduleRedraw);
-
-  // Redraw connections when nodes are dragged (also handled by mousemove)
-
-  // ============================================================
-  // INIT
-  // ============================================================
-  function initEditor() {
-    console.log('[ND] initEditor called');
-    // Apply platform theme — inject the same CSS styles as other tools
-    GigaChat.injectToolCss();
-    // Start with zoom reset
-    setZoom(1);
-    // Draw updates periodically
-    setInterval(updateConnections, 2000);
-    showToast('Node Editor готов. Перетащите агенты на холст!', 'info');
-    console.log('[ND] initEditor done — handlers registered. isDraggingFromPort:', !!isDraggingFromPort, 'zoom:', zoomLevel);
-  }
-
-  // Expose for debugging
-  window.__nodeEditor = {
-    nodes: nodes,
-    connections: connections,
-    AGENT_TYPES: AGENT_TYPES,
-    createNode: createNode,
-    deleteNode: deleteNode,
-    saveJSON: saveJSON,
-    exportConfig: exportConfig,
-    autoLayout: autoLayout,
-  };
-
-})();
-</script>
-</body>
-</html>
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Node Editor — Визуальный конструктор</title>
+<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+<script src="_shared-guard.js"></script>
+<script src="_config.js"></script>
+<script src="_shared.js"></script>
+<style>
+/* Light theme overrides via CSS variables */
+:root[data-theme="light"] {
+  --bg-body: #fafaf7;
+  --bg-toolbar: #f4f3ee;
+  --bg-palette: #f4f3ee;
+  --bg-palette-item: #ffffff;
+  --bg-node: #ffffff;
+  --bg-canvas: #f4f3ee;
+  --bg-config: #f4f3ee;
+  --border: rgba(15, 15, 12, .09);
+  --border-accent: #1d414e;
+  --text-primary: #1a1a17;
+  --text-secondary: #6b6a64;
+  --accent: #1d414e;
+  --accent-hover: #536e77;
+  --port-color: #1d414e;
+  --port-output: #536e77;
+}
+:root {
+  --bg-body: #0c0c0c;
+  --bg-toolbar: #08080a;
+  --bg-palette: #08080a;
+  --bg-palette-item: #161617;
+  --bg-node: #161617;
+  --bg-canvas: #08080a;
+  --bg-config: #08080a;
+  --border: #1d414e;
+  --border-accent: #1d414e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #888;
+  --accent: #1d414e;
+  --accent-hover: #536e77;
+  --port-color: #8af;
+  --port-output: #f8a;
+}
+
+/* ===== RESET & BASE ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-body);color:var(--text-primary);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+html{overflow-y:hidden!important}
+/* ===== TOOLBAR ===== */
+.toolbar{display:flex;align-items:center;gap:10px;padding:10px 20px;background:var(--bg-toolbar);border-bottom:1px solid var(--border);flex-shrink:0}
+.toolbar h1{font-size:16px;font-weight:600;color:var(--accent);margin-right:auto;display:flex;align-items:center;gap:10px}
+.toolbar h1 small{font-size:11px;font-weight:400;color:var(--text-secondary);opacity:0.7}
+.toolbar .tb-group{display:flex;align-items:center;gap:6px;padding:0 4px}
+.toolbar .tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px}
+.toolbar button{padding:6px 14px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px;transition:0.15s;white-space:nowrap}
+.toolbar button:hover{background:var(--border);border-color:var(--accent)}
+.toolbar button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.toolbar input[type="file"]{display:none}
+.toolbar .node-count{font-size:12px;color:var(--text-secondary);margin-left:8px}
+.toolbar .zoom-display{font-size:12px;color:var(--text-secondary);min-width:40px;text-align:center}
+
+/* ===== MAIN LAYOUT ===== */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* ===== PALETTE ===== */
+.palette{width:220px;min-width:220px;background:var(--bg-palette);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.palette-header{padding:12px 14px 8px;font-size:13px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--border);flex-shrink:0}
+.palette-section{padding:6px 14px 2px;font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text-secondary);letter-spacing:1px;background:var(--bg-toolbar)}
+.palette-list{flex:1;overflow-y:auto;padding:8px}
+.palette-item{padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:grab;font-size:13px;color:var(--text-primary);background:var(--bg-palette-item);border:1px solid transparent;transition:0.15s;user-select:none;display:flex;align-items:center;gap:8px}
+.palette-item:hover{background:var(--border);border-color:var(--accent);color:#fff}
+.palette-item:active{cursor:grabbing}
+.palette-item .badge{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.palette-item .pi-icon{width:16px;height:16px;flex-shrink:0;opacity:0.7}
+.palette-item .pi-label{flex:1}
+.palette-item .pi-type{font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px}
+
+/* ===== CANVAS ===== */
+.canvas-wrap{flex:1;position:relative;overflow:hidden}
+.canvas-viewport{position:absolute;inset:0;overflow:auto}
+.canvas-inner{position:relative;transform-origin:0 0}
+
+/* ===== NODE ===== */
+.node{position:absolute;width:190px;background:var(--bg-node);border:2px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);cursor:move;user-select:none;z-index:10}
+.node.selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(233,69,96,0.3)}
+.node-header{padding:8px 12px;border-radius:8px 8px 0 0;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;color:#fff}
+.node-header .node-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-header .node-actions{display:flex;gap:4px}
+.node-header .node-actions button{background:none;border:none;color:rgba(255,255,255,0.6);cursor:pointer;font-size:14px;padding:0 4px;line-height:1}
+.node-header .node-actions button:hover{color:#fff}
+.node-body{padding:8px 12px;font-size:11px;color:var(--text-secondary);min-height:24px;max-height:60px;overflow:hidden}
+.node-port{padding:3px 10px;font-size:11px;color:var(--port-color);cursor:pointer;display:flex;align-items:center;gap:6px;transition:0.15s}
+.node-port:hover{background:rgba(138,170,255,0.1)}
+.node-port .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--port-color);background:var(--bg-body);flex-shrink:0;transition:0.15s}
+.node-port .dot.connected{background:var(--port-color)}
+.node-port .dot:hover{background:var(--port-color)}
+.node-port .dot-output{dot-color:#f8a;border-color:#f8a}
+.node-port .dot-output:hover,.node-port .dot-output.connected{background:#f8a}
+.node-port-label{font-size:10px;opacity:0.7;white-space:nowrap}
+.node-desc{font-size:10px;color:var(--text-secondary);padding:2px 12px 6px;line-height:1.3}
+
+/* Node type header colors */
+.node-type-chat .node-header{background:#0984e3}
+.node-type-rag .node-header{background:#e17055}
+.node-type-math .node-header{background:#00b894}
+.node-type-prompt .node-header{background:#6c5ce7}
+.node-type-plane .node-header{background:#d63031}
+.node-type-ocr .node-header{background:#00cec9}
+.node-type-docloader .node-header{background:#e17055}
+.node-type-textextract .node-header{background:#0984e3}
+.node-type-tablemerge .node-header{background:#00b894}
+.node-type-filemerge .node-header{background:#f39c12}
+.node-type-orgappeal .node-header{background:#d63031}
+.node-type-compliance .node-header{background:#27ae60}
+.node-type-ocrtable .node-header{background:#00cec9}
+.node-type-router .node-header{background:#fdcb6e;color:#0c0c0c}
+
+/* ===== SVG CONNECTIONS ===== */
+.connections-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5}
+.connections-layer svg{width:100%;height:100%}
+.connections-layer .connection{stroke:#8af;stroke-width:2;fill:none;cursor:pointer;pointer-events:stroke}
+.connections-layer .connection:hover{stroke:var(--accent);stroke-width:3}
+.connections-layer .connection.highlighted{stroke:#f8a;stroke-width:3}
+.connections-layer .temp-line{stroke:var(--accent);stroke-width:2;stroke-dasharray:6,3;fill:none;pointer-events:none}
+
+/* ===== CONFIG PANEL ===== */
+.config-overlay{position:fixed;top:0;right:-460px;width:440px;height:100%;background:var(--bg-palette);border-left:1px solid var(--border);z-index:1000;transition:right 0.25s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,0.5)}
+.config-overlay.open{right:0}
+.config-overlay .config-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
+.config-overlay .config-header h2{font-size:15px;font-weight:600;color:var(--accent)}
+.config-overlay .config-header button{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px}
+.config-overlay .config-header button:hover{color:#fff}
+.config-overlay .config-body{flex:1;overflow-y:auto;padding:18px}
+.config-overlay .config-body label{display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:12px}
+.config-overlay .config-body label:first-child{margin-top:0}
+.config-overlay .config-body input,.config-overlay .config-body textarea,.config-overlay .config-body select{width:100%;padding:8px 10px;background:var(--bg-palette-item);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;transition:0.15s}
+.config-overlay .config-body input:focus,.config-overlay .config-body textarea:focus,.config-overlay .config-body select:focus{border-color:var(--accent)}
+.config-overlay .config-body textarea{min-height:80px;resize:vertical}
+.config-overlay .config-footer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border);flex-shrink:0}
+.config-overlay .config-footer button{flex:1;padding:8px 14px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px}
+.config-overlay .config-footer button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.config-overlay .config-footer button.primary:hover{background:#d63851}
+.config-overlay .config-footer button:hover{background:var(--border)}
+
+/* ===== CONTEXT MENU ===== */
+.context-menu{position:fixed;background:var(--bg-palette);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:160px;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none}
+.context-menu button{display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;color:var(--text-primary);font-size:13px;cursor:pointer;border-radius:4px}
+.context-menu button:hover{background:var(--border);color:#fff}
+.context-menu button.danger{color:var(--accent)}
+.context-menu button.danger:hover{background:rgba(233,69,96,0.15)}
+
+/* ===== TOAST ===== */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:9999}
+.toast{padding:10px 18px;border-radius:8px;font-size:13px;margin-top:8px;animation:toastIn 0.25s}
+.toast.info{background:#0984e3;color:#fff}
+.toast.success{background:#00b894;color:#fff}
+.toast.error{background:var(--accent);color:#fff}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== SCROLLBAR ===== */
+.palette-list::-webkit-scrollbar,.config-overlay .config-body::-webkit-scrollbar{width:4px}
+.palette-list::-webkit-scrollbar-track,.config-overlay .config-body::-webkit-scrollbar-track{background:transparent}
+.palette-list::-webkit-scrollbar-thumb,.config-overlay .config-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.canvas-viewport::-webkit-scrollbar{width:8px;height:8px}
+.canvas-viewport::-webkit-scrollbar-track{background:transparent}
+.canvas-viewport::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+/* ===== CANVAS DOTS ===== */
+.canvas-inner{background-image:radial-gradient(circle,#2a2a4e 1px,transparent 1px);background-size:24px 24px}
+
+/* ===== RUN MODAL ===== */
+.run-modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:3000;display:none;align-items:center;justify-content:center}
+.run-modal-overlay.open{display:flex}
+.run-modal{background:var(--bg-palette);border:1px solid var(--border);border-radius:12px;width:480px;max-width:90vw;box-shadow:0 12px 48px rgba(0,0,0,0.5);overflow:hidden}
+.run-modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.run-modal-header h3{font-size:15px;font-weight:600;color:var(--accent)}
+.run-modal-header button{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px}
+.run-modal-header button:hover{color:#fff}
+.run-modal-body{padding:20px}
+.run-modal-body label{display:block;font-size:13px;color:var(--text-primary);margin-bottom:12px;cursor:pointer}
+.run-modal-body label input[type="radio"]{accent-color:var(--accent);margin-right:8px}
+.run-modal-body .run-summary{background:var(--bg-palette-item);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px}
+.run-modal-body .run-summary .run-chain-viz{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.run-modal-body .run-summary .run-chain-viz .rcv-node{padding:4px 10px;background:var(--bg-card,var(--bg-body));border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--text-primary)}
+.run-modal-body .run-summary .run-chain-viz .rcv-arrow{color:var(--text-muted);font-size:12px}
+.run-modal-body .run-progress{margin-top:12px;display:none}
+.run-modal-body .run-progress.show{display:block}
+.run-modal-body .run-progress .rp-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:8px}
+.run-modal-body .run-progress .rp-bar .rp-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s;width:0%}
+.run-modal-body .run-progress .rp-label{font-size:11px;color:var(--text-secondary)}
+.run-modal-body .run-result{margin-top:12px;display:none}
+.run-modal-body .run-result.show{display:block}
+.run-modal-body .run-result .rr-box{padding:10px 12px;background:var(--bg-palette-item);border:1px solid var(--border);border-radius:8px;word-break:break-all;font-size:12px;color:var(--text-primary)}
+.run-modal-body .run-result .rr-box a{color:var(--accent)}
+.run-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.run-footer button{padding:8px 20px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:13px;transition:0.15s}
+.run-footer button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.run-footer button.primary:hover{background:var(--accent-hover)}
+.run-footer button:hover{background:var(--border)}
+/* ===== OPEN NODE BTN ===== */
+.open-node-btn{margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 10px;border:1px solid var(--border);background:var(--bg-palette-item);color:var(--port-color);border-radius:4px;cursor:pointer;transition:0.15s;text-decoration:none}
+.open-node-btn:hover{background:var(--border);border-color:var(--port-color);color:#fff}
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <h1>⚡ Node Editor <small>Конструктор агентов</small></h1>
+  <div class="tb-group">
+    <button id="btnSave" title="Сохранить схему (Ctrl+S)">💾 Save</button>
+    <button id="btnLoad" title="Загрузить схему">📂 Load</button>
+    <input type="file" id="fileInput" accept=".json">
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnRun" title="Запустить цепочку" style="background:var(--accent);color:#fff;border-color:var(--accent)">▶ Run</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnExport" title="Экспорт в n8n JSON">🚀 Export n8n</button>
+    <button id="btnExportN8nWorkflow" title="Экспорт как готовый n8n workflow (для импорта в n8n UI)">⚡ Import в n8n</button>
+    <button id="btnClear" title="Очистить холст">🗑 Clear</button>
+    <button id="btnAutoLayout" title="Авторасположение">🔀 Auto Layout</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnZoomIn" title="Приблизить (Ctrl+=)">➕</button>
+    <span class="zoom-display" id="zoomDisplay">100%</span>
+    <button id="btnZoomOut" title="Отдалить (Ctrl+-)">➖</button>
+    <button id="btnZoomReset" title="Сбросить масштаб (Ctrl+0)">⟲ 1:1</button>
+  </div>
+  <span class="node-count" id="nodeCount">0 нод</span>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- PALETTE -->
+  <div class="palette">
+    <div class="palette-header">🧩 Палитра</div>
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+
+  <!-- CANVAS -->
+  <div class="canvas-wrap" id="canvasWrap">
+    <div class="canvas-viewport" id="canvasViewport">
+      <div class="canvas-inner" id="canvasInner">
+        <svg class="connections-layer" id="connectionsLayer"><defs/><g id="connectionGroup"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- DRAG GHOST -->
+  <div id="dragGhost" style="display:none;position:fixed;pointer-events:none;z-index:9999;padding:8px 14px;background:var(--bg-palette);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.4)">+</div>
+</div>
+
+<!-- CONFIG OVERLAY -->
+<div class="config-overlay" id="configOverlay">
+  <div class="config-header">
+    <h2 id="configTitle">⚙️ Настройки ноды</h2>
+    <button id="configClose" title="Закрыть (Esc)">✕</button>
+  </div>
+  <div class="config-body" id="configBody">
+    <label>Название</label>
+    <input id="cfgName" placeholder="Название ноды">
+    <label>Тип</label>
+    <input id="cfgType" disabled placeholder="—">
+    <label>Описание</label>
+    <input id="cfgDesc" placeholder="Описание (необязательно)">
+    <label>Тег / метка</label>
+    <input id="cfgTag" placeholder="например: main, test, docs">
+    <label>Параметры (JSON)</label>
+    <textarea id="cfgParams" placeholder='{"model":"GigaChat-Pro","temperature":0.7}'></textarea>
+    <label>Действия</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+      <a class="open-node-btn" id="cfgOpenAgent" target="_blank" style="display:none">🔗 Открыть агента</a>
+    </div>
+  </div>
+  <div class="config-footer">
+    <button id="cfgDelete" style="background:transparent;color:var(--accent);border-color:rgba(233,69,96,0.3)">Удалить</button>
+    <button id="cfgCancel">Отмена</button>
+    <button class="primary" id="cfgSave">Сохранить</button>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="context-menu" id="contextMenu">
+  <button data-action="config">⚙️ Настроить</button>
+  <button data-action="duplicate">📋 Дублировать</button>
+  <button data-action="open">🔗 Открыть агента</button>
+  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+  <button data-action="delete" class="danger">🗑 Удалить</button>
+</div>
+
+<!-- RUN MODAL -->
+<div class="run-modal-overlay" id="runModal" style="display:none">
+  <div class="run-modal">
+    <div class="run-header">
+      <span style="font-weight:600;font-size:1.1em">▶ Запуск цепочки</span>
+      <button class="run-close-btn" id="runModalClose">✕</button>
+    </div>
+    <div class="run-body">
+      <div class="run-progress" id="runProgress">
+        <div class="run-step-info">Подготовка сценария...</div>
+        <div class="run-spinner"></div>
+      </div>
+      <div class="run-result" id="runResult" style="display:none">
+        <div class="run-result-icon" id="runResultIcon">✅</div>
+        <div class="run-result-title" id="runResultTitle">Готово</div>
+        <div class="run-result-msg" id="runResultMsg"></div>
+        <div class="run-result-url" id="runResultUrl" style="display:none">
+          <label>Ссылка на workflow:</label>
+          <input type="text" readonly id="runResultUrlInput" style="width:100%;margin-top:4px">
+        </div>
+      </div>
+    </div>
+    <div class="run-footer">
+      <button class="run-mode-btn" id="runModeLocal" style="background:var(--accent);color:#fff;border-color:var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;border:none;cursor:pointer">🚀 Запустить цепочку</button>
+      <button class="run-mode-btn" id="runModeN8n" style="background:transparent;color:var(--accent);border:1px solid var(--accent);flex:1;padding:10px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer">☁️ Создать workflow в n8n (REST)</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<style>
+/* Run modal */
+.run-modal-overlay {
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.5);z-index:2000;
+  display:flex;align-items:center;justify-content:center;
+}
+.run-modal {
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;
+  box-shadow:0 8px 32px rgba(0,0,0,0.3);
+}
+.run-header {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--border);
+}
+.run-close-btn {
+  background:none;border:none;font-size:1.2em;cursor:pointer;
+  color:var(--text);opacity:0.6;padding:4px 8px;border-radius:4px;
+}
+.run-close-btn:hover { opacity:1; background:var(--bg-hover); }
+.run-body {
+  padding:20px;
+}
+.run-progress {
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding:32px 0;
+}
+.run-step-info { color:var(--text-dim); font-size:0.95em; }
+.run-spinner {
+  width:32px;height:32px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg) } }
+.run-result {
+  text-align:center;padding:16px 0;
+}
+.run-result-icon { font-size:2.5em; margin-bottom:8px; }
+.run-result-title { font-weight:600; font-size:1.1em; margin-bottom:4px; }
+.run-result-msg { color:var(--text-dim); font-size:0.9em; margin-bottom:12px; }
+.run-result-url {
+  text-align:left;margin-top:12px;padding:12px;
+  background:var(--bg-hover);border-radius:var(--radius);
+}
+.run-result-url label { font-size:0.85em; color:var(--text-dim); }
+.run-result-url input {
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;padding:6px 8px;color:var(--text);font-size:0.85em;
+}
+.run-footer {
+  display:flex;gap:10px;padding:16px 20px;
+  border-top:1px solid var(--border);
+}
+.run-footer .run-mode-btn:hover { opacity:0.9; }
+.run-footer .run-mode-btn:active { transform:scale(0.98); }
+</style>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // BOOT — проверка авторизации, затем init
+  // ============================================================
+  (function _bootNodeEditor() {
+    GigaChat.auth.requireAuth({
+      onOk: function() {
+        document.documentElement.classList.remove('gc-pending-auth');
+        var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+        var ctrl = new AbortController();
+        var timer = setTimeout(function(){ ctrl.abort(); }, 3000);
+        fetch(((window.GIGACHAT_CONFIG || {}).N8N_PROXY_BASE || 'http://localhost:8777').replace(/\/$/, '') + '/n8n-healthz', { method: 'HEAD', signal: ctrl.signal })
+          .then(function() {
+            clearTimeout(timer);
+            initEditor();
+          })
+          .catch(function() {
+            clearTimeout(timer);
+            initEditor();
+          });
+      }
+    });
+  })();
+
+  // ============================================================
+  // AGENT TYPES — полный справочник для текущей платформы
+  // ============================================================
+  var AGENT_TYPES = [
+    // === АГЕНТЫ ===
+    { id:'chat',       label:'GigaChat Talk',    section:'agent', color:'#0984e3', icon:'💬', tag:'Диалог',
+      desc:'Свободный диалог с GigaChat', agentFile:'chat-agent.html',
+      ports:{in:['input','context'],out:['response']} },
+    { id:'rag',        label:'GigaChat Docs',    section:'agent', color:'#e17055', icon:'📄', tag:'Документы',
+      desc:'Поиск по документам, ответы на вопросы', agentFile:'rag-agent.html',
+      ports:{in:['query','docs'],out:['answer','sources']} },
+    { id:'math',       label:'GigaChat Math',    section:'agent', color:'#00b894', icon:'📐', tag:'Вычисления',
+      desc:'Решение задач, вычисления через Pyodide', agentFile:'math-agent.html',
+      ports:{in:['expression'],out:['result']} },
+    { id:'prompt',     label:'GigaChat Prompt',  section:'agent', color:'#6c5ce7', icon:'✏️', tag:'Промпты',
+      desc:'Создание, улучшение и оценка промптов', agentFile:'prompt-engineer.html',
+      ports:{in:['input','template'],out:['output']} },
+    { id:'plane',      label:'GigaChat Plane',   section:'agent', color:'#d63031', icon:'✈️', tag:'Проекты',
+      desc:'Управление проектами и задачами в Plane', agentFile:'plane-agent.html',
+      ports:{in:['request'],out:['result','error']} },
+    // === ИНСТРУМЕНТЫ ===
+    { id:'ocr',        label:'Поиск ФИО',        section:'tool', color:'#00cec9', icon:'🔍', tag:'Поиск',
+      desc:'Распознавание документов и поиск ФИО', agentFile:'OCR-search-FIO.html',
+      ports:{in:['image'],out:['text','fio']} },
+    { id:'ocrtable',   label:'OCR+Таблицы',      section:'tool', color:'#00cec9', icon:'📊', tag:'Таблицы',
+      desc:'Извлечение таблиц из изображений и PDF (post /extract-table)', agentFile:null,
+      ports:{in:['image'],out:['markdown','text']} },
+    { id:'docloader',  label:'Document Loader',  section:'tool', color:'#e17055', icon:'📁', tag:'Загрузка',
+      desc:'Загрузка файлов в базу данных', agentFile:'document-loader.html',
+      ports:{in:['file'],out:['content','meta']} },
+    { id:'textextract',label:'Text Extractor',   section:'tool', color:'#0984e3', icon:'📝', tag:'Извлечение',
+      desc:'PDF, Word, Excel, CSV — в чистый текст', agentFile:'text-extractor.html',
+      ports:{in:['document'],out:['text']} },
+    { id:'tablemerge', label:'Table Merger',     section:'tool', color:'#00b894', icon:'🔗', tag:'Таблицы',
+      desc:'Объединение таблиц из Word, Excel, CSV', agentFile:'table-merger.html',
+      ports:{in:['files'],out:['merged']} },
+    { id:'filemerge',  label:'File Merger',      section:'tool', color:'#f39c12', icon:'🗂️', tag:'Файлы',
+      desc:'Word, Excel, PDF, CSV и фото в один документ', agentFile:'file-merger.html',
+      ports:{in:['files'],out:['merged']} },
+    { id:'orgappeal',  label:'Организация обращения', section:'tool', color:'#d63031', icon:'📋', tag:'Обращения',
+      desc:'Извлечение ФИО, СНИЛС и 4-ступенчатая идентификация', agentFile:'organization-appeal.html',
+      ports:{in:['appeal'],out:['decision','status']} },
+    { id:'compliance', label:'Compliance Check',  section:'tool', color:'#27ae60', icon:'🛡️', tag:'Безопасность',
+      desc:'Анализ нарушений ИБ и подбор компенсирующих мер', agentFile:'compliance-agent.html',
+      ports:{in:['report'],out:['decision','measures']} },
+    // === СЛУЖЕБНЫЕ ===
+    { id:'router',     label:'Router',           section:'system',color:'#fdcb6e', icon:'🔀', tag:'Маршрутизация',
+      desc:'Условная маршрутизация между нодами', agentFile:null,
+      ports:{in:['input'],out:['route_a','route_b','route_c']} },
+  ];
+
+  var SECTIONS = [
+    { key:'agent',  label:'🤖 Агенты' },
+    { key:'tool',   label:'🛠 Инструменты' },
+    { key:'system', label:'⚙️ Служебные' },
+  ];
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  var nodes = {};          // id -> node object
+  var connections = [];    // [{fromId,fromPort,toId,toPort}]
+  var nextNodeId = 1;
+  var selectedNodeId = null;
+  var configNodeId = null;
+  var zoomLevel = 1;
+  var isDraggingFromPort = null; // {nodeId, portName, type:'in'|'out', dotEl}
+  var dragState = null;    // {nodeId, startX, startY, mouseStartX, mouseStartY}
+
+  var canvasInner = document.getElementById('canvasInner');
+  var canvasViewport = document.getElementById('canvasViewport');
+  var canvasWrap = document.getElementById('canvasWrap');
+  var connectionsLayer = document.getElementById('connectionsLayer');
+  var connectionGroup = document.getElementById('connectionGroup');
+
+  // Auto-set canvas size
+  var CANVAS_W = 5000, CANVAS_H = 5000;
+  canvasInner.style.width = CANVAS_W + 'px';
+  canvasInner.style.height = CANVAS_H + 'px';
+
+  // ============================================================
+  // BUILD PALETTE
+  // ============================================================
+  function buildPalette() {
+    var list = document.getElementById('paletteList');
+    list.innerHTML = '';
+    SECTIONS.forEach(function(sec) {
+      var types = AGENT_TYPES.filter(function(t){ return t.section === sec.key; });
+      if (!types.length) return;
+      var hdr = document.createElement('div');
+      hdr.className = 'palette-section';
+      hdr.textContent = sec.label;
+      list.appendChild(hdr);
+      types.forEach(function(t){
+        var el = document.createElement('div');
+        el.className = 'palette-item';
+        el.draggable = true;
+        el.dataset.typeId = t.id;
+        el.innerHTML = '<span class="badge" style="background:'+t.color+'"></span>'+
+          '<span class="pi-label">'+t.label+'</span>'+
+          '<span class="pi-type">'+t.tag+'</span>';
+        el.addEventListener('dragstart', function(e) {
+          e.dataTransfer.setData('text/plain', t.id);
+          e.dataTransfer.effectAllowed = 'copy';
+          var ghost = document.getElementById('dragGhost');
+          ghost.textContent = '+ ' + t.label;
+          ghost.style.display = 'block';
+          e.dataTransfer.setDragImage(ghost, 10, 10);
+          setTimeout(function(){ ghost.style.display = 'none'; }, 0);
+        });
+        list.appendChild(el);
+      });
+    });
+  }
+  buildPalette();
+
+  // ============================================================
+  // CANVAS DRAG & DROP
+  // ============================================================
+  canvasWrap.addEventListener('dragover', function(e) { e.preventDefault(); });
+  canvasWrap.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var typeId = e.dataTransfer.getData('text/plain');
+    if (!typeId) return;
+    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
+    if (!type) return;
+    var rect = canvasWrap.getBoundingClientRect();
+    var x = (e.clientX - rect.left + canvasViewport.scrollLeft) / zoomLevel - 95;
+    var y = (e.clientY - rect.top + canvasViewport.scrollTop) / zoomLevel - 20;
+    x = Math.max(0, x); y = Math.max(0, y);
+    createNode(typeId, x, y);
+  });
+
+  // Prevent accidental drag on other elements
+  document.addEventListener('dragover', function(e){ e.preventDefault(); });
+  document.addEventListener('drop', function(e){ e.preventDefault(); });
+
+  // ============================================================
+  // CREATE / DELETE / DUPLICATE NODES
+  // ============================================================
+  function createNode(typeId, x, y, overrides) {
+    var type = AGENT_TYPES.find(function(t){ return t.id === typeId; });
+    if (!type) return null;
+    var id = 'n' + (nextNodeId++);
+    var node = {
+      id: id,
+      typeId: typeId,
+      label: type.label,
+      desc: type.desc,
+      tag: type.tag || '',
+      color: type.color,
+      agentFile: type.agentFile,
+      ports: JSON.parse(JSON.stringify(type.ports)),
+      params: '{}',
+      x: x || 100,
+      y: y || 100,
+    };
+    if (overrides) {
+      if (overrides.label) node.label = overrides.label;
+      if (overrides.desc) node.desc = overrides.desc;
+      if (overrides.tag) node.tag = overrides.tag;
+      if (overrides.params) node.params = overrides.params;
+      if (overrides.x != null) node.x = overrides.x;
+      if (overrides.y != null) node.y = overrides.y;
+    }
+    nodes[id] = node;
+    renderNode(id);
+    updateNodeCount();
+    updateConnections();
+    return id;
+  }
+
+  function deleteNode(id) {
+    if (!nodes[id]) return;
+    // Remove connections involving this node
+    connections = connections.filter(function(c){
+      return c.fromId !== id && c.toId !== id;
+    });
+    // Remove DOM
+    var el = document.getElementById('node-' + id);
+    if (el) el.remove();
+    delete nodes[id];
+    if (selectedNodeId === id) selectedNodeId = null;
+    if (configNodeId === id) closeConfig();
+    updateNodeCount();
+    updateConnections();
+  }
+
+  function duplicateNode(id) {
+    var src = nodes[id];
+    if (!src) return;
+    var newId = createNode(src.typeId, src.x + 30, src.y + 30, {
+      label: src.label + ' (copy)',
+      desc: src.desc,
+      tag: src.tag,
+      params: src.params,
+    });
+    if (newId) showToast('Дублирована нода: ' + src.label, 'info');
+  }
+
+  function clearAll() {
+    if (Object.keys(nodes).length === 0) return;
+    if (!confirm('Очистить весь холст?')) return;
+    Object.keys(nodes).forEach(function(id){ deleteNode(id); });
+    connections = [];
+    updateConnections();
+    selectedNodeId = null;
+    if (configNodeId) { closeConfig(); }
+    showToast('Холст очищен', 'info');
+  }
+
+  // ============================================================
+  // RENDER NODE
+  // ============================================================
+  function renderNode(id) {
+    var node = nodes[id];
+    if (!node) return;
+    var existing = document.getElementById('node-' + id);
+    if (existing) existing.remove();
+
+    var el = document.createElement('div');
+    el.className = 'node node-type-' + node.typeId;
+    el.id = 'node-' + id;
+    el.style.left = node.x + 'px';
+    el.style.top = node.y + 'px';
+    el.dataset.nodeId = id;
+
+    // Header
+    var hdr = document.createElement('div');
+    hdr.className = 'node-header';
+    hdr.innerHTML = '<span class="node-title">'+escapeHtml(node.label)+'</span>'+
+      '<span class="node-actions"><button class="node-config-btn" title="Настроить" data-action="config">⚙️</button></span>';
+    el.appendChild(hdr);
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'node-body';
+    body.textContent = node.desc || node.tag || '';
+    body.title = node.desc || '';
+    el.appendChild(body);
+
+    // Input ports
+    if (node.ports.in && node.ports.in.length) {
+      node.ports.in.forEach(function(pname){
+        var port = document.createElement('div');
+        port.className = 'node-port';
+        port.dataset.portName = pname;
+        port.dataset.portDir = 'in';
+        port.innerHTML = '<span class="dot" data-port="'+pname+'"></span><span class="node-port-label">'+pname+'</span>';
+        el.appendChild(port);
+      });
+    }
+
+    // Output ports
+    if (node.ports.out && node.ports.out.length) {
+      node.ports.out.forEach(function(pname){
+        var port = document.createElement('div');
+        port.className = 'node-port output';
+        port.dataset.portName = pname;
+        port.dataset.portDir = 'out';
+        port.style.justifyContent = 'flex-end';
+        port.innerHTML = '<span class="node-port-label">'+pname+'</span><span class="dot" data-port="'+pname+'" style="border-color:#f8a"></span>';
+        el.appendChild(port);
+      });
+    }
+
+    // Events
+    el.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      // Ignore if target is a button or inside a port (dot or label)
+      var t = e.target;
+      if (t.tagName === 'BUTTON' || t.closest('.node-port') || t.closest('.node-actions')) return;
+      selectNode(id);
+      startDrag(e, id);
+    });
+
+    el.addEventListener('dblclick', function(e) {
+      openConfig(id);
+    });
+
+    // Config button
+    el.querySelector('.node-config-btn').addEventListener('click', function(e) {
+      e.stopPropagation();
+      openConfig(id);
+    });
+
+    canvasInner.appendChild(el);
+  }
+
+  // ============================================================
+  // NODE DRAG
+  // ============================================================
+  function startDrag(e, nodeId) {
+    var node = nodes[nodeId];
+    if (!node) return;
+    dragState = {
+      nodeId: nodeId,
+      startX: node.x,
+      startY: node.y,
+      mouseStartX: e.clientX,
+      mouseStartY: e.clientY,
+    };
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragState) return;
+    var dx = (e.clientX - dragState.mouseStartX) / zoomLevel;
+    var dy = (e.clientY - dragState.mouseStartY) / zoomLevel;
+    var node = nodes[dragState.nodeId];
+    if (!node) { dragState = null; return; }
+    node.x = Math.max(0, dragState.startX + dx);
+    node.y = Math.max(0, dragState.startY + dy);
+    var el = document.getElementById('node-' + dragState.nodeId);
+    if (el) {
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+    }
+    updateConnections();
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (isDraggingFromPort) {
+      console.log('[ND] mouseup — isDraggingFromPort present, calling finishPortDrag');
+      // Try to connect to a port under cursor
+      finishPortDrag(e);
+    } else {
+      if (dragState) console.log('[ND] mouseup — dragState present, clearing');
+    }
+    if (dragState) {
+      dragState = null;
+    }
+  });
+
+  // ============================================================
+  // PORT DRAG CONNECTIONS
+  // ============================================================
+  document.addEventListener('mousedown', function(e) {
+    var dot = e.target.closest('.dot');
+    if (!dot || !dot.closest('.node-port')) return;
+    var portEl = dot.closest('.node-port');
+    var nodeEl = portEl.closest('.node');
+    if (!nodeEl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var nodeId = nodeEl.dataset.nodeId;
+    var portName = portEl.dataset.portName;
+    var dir = portEl.dataset.portDir;
+    console.log('[ND] mousedown on port:', nodeId, portName, dir);
+    if (dir === 'in') { console.log('[ND] input port — ignored'); return; } // только из output в input
+    isDraggingFromPort = {
+      nodeId: nodeId,
+      portName: portName,
+      type: dir,
+      dotEl: dot,
+      mouseStartX: e.clientX,
+      mouseStartY: e.clientY,
+    };
+    console.log('[ND] isDraggingFromPort SET:', isDraggingFromPort);
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDraggingFromPort) return;
+    if (!isDraggingFromPort.mouseStartX) { console.warn('[ND] isDraggingFromPort has no mouseStartX'); return; }
+    // Draw temp line
+    var tempLine = connectionsLayer.querySelector('.temp-line');
+    if (!tempLine) {
+      tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      tempLine.classList.add('temp-line');
+      connectionsLayer.appendChild(tempLine);
+    }
+    var wrapRect = canvasWrap.getBoundingClientRect();
+    // Координаты внутри SVG (canvasInner) с учётом transform: scale()
+    // scrollLeft/scrollTop в пикселях холста (unscaled)
+    var x1 = (isDraggingFromPort.mouseStartX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+    var y1 = (isDraggingFromPort.mouseStartY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+    var x2 = (e.clientX - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+    var y2 = (e.clientY - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+    var path = bezierPath(x1, y1, x2, y2);
+    tempLine.setAttribute('d', path);
+  });
+
+  function finishPortDrag(e) {
+    var tempLine = connectionsLayer.querySelector('.temp-line');
+    if (tempLine) tempLine.remove();
+
+    console.log('[ND] finishPortDrag — mouseup at', e.clientX, e.clientY);
+
+    // Ищем входной порт строго по bounding-координатам (elementFromPoint
+    // не работает под SVG даже с pointer-events:none — он возвращает
+    // элемент SVG, а не `.dot` под ним). Поэтому используем только fallback.
+    var allDots = document.querySelectorAll('.node-port .dot');
+    var bestPort = null;
+    var bestDist = 20; // радиус захвата
+    console.log('[ND] checking', allDots.length, 'dots');
+    allDots.forEach(function(d){
+      var portEl = d.closest('.node-port');
+      if (!portEl || portEl.dataset.portDir !== 'in') return;
+      var r = d.getBoundingClientRect();
+      var cx = r.left + r.width / 2;
+      var cy = r.top + r.height / 2;
+      var dist = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2));
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPort = portEl;
+        console.log('[ND] best so far:', bestPort.dataset.portName, 'dist:', dist);
+      }
+    });
+
+    if (bestPort) {
+      var targetNodeId = bestPort.closest('.node').dataset.nodeId;
+      var targetPort = bestPort.dataset.portName;
+      console.log('[ND] found target:', targetNodeId, targetPort);
+      if (targetNodeId !== isDraggingFromPort.nodeId) {
+        addConnection(isDraggingFromPort.nodeId, isDraggingFromPort.portName, targetNodeId, targetPort);
+      } else {
+        console.log('[ND] same node — skipped');
+      }
+    } else {
+      console.log('[ND] no target port found');
+    }
+    isDraggingFromPort = null;
+  }
+
+  function addConnection(fromId, fromPort, toId, toPort) {
+    console.log('[ND] addConnection:', fromId, fromPort, '->', toId, toPort);
+    // Prevent duplicate
+    var dup = connections.some(function(c){
+      return c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort;
+    });
+    if (dup) { showToast('Соединение уже существует', 'error'); return; }
+    connections.push({ fromId: fromId, fromPort: fromPort, toId: toId, toPort: toPort });
+    console.log('[ND] connections after push:', connections.length);
+    updateConnections();
+    showToast('Соединение создано', 'success');
+  }
+
+  function removeConnection(fromId, fromPort, toId, toPort) {
+    connections = connections.filter(function(c){
+      return !(c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort);
+    });
+    updateConnections();
+  }
+
+  // ============================================================
+  // DRAW SVG CONNECTIONS
+  // ============================================================
+  function updateConnections() {
+    // Clear
+    connectionGroup.innerHTML = '';
+
+    console.log('[ND] updateConnections, count:', connections.length);
+    connections.forEach(function(c){
+      var fromPort = getPortEl(c.fromId, c.fromPort, 'out');
+      var toPort = getPortEl(c.toId, c.toPort, 'in');
+      if (!fromPort || !toPort) {
+        // Важно: если порты не найдены — соединение не рисуется.
+        // Удаляем "мёртвое" соединение, чтобы не захламлять массив.
+        console.warn('[ND] Connection skipped — port not found', c, 'fromPort:', fromPort, 'toPort:', toPort);
+        return;
+      }
+
+      // getBoundingClientRect выдаёт координаты с учётом transform: scale().
+      // Чтобы получить координаты внутри canvasInner (SVG-слой), делим на zoomLevel,
+      // а scroll уже в unscaled-координатах (scrollLeft/scrollTop не масштабируются).
+      var fromRect = fromPort.getBoundingClientRect();
+      var toRect = toPort.getBoundingClientRect();
+      var wrapRect = canvasWrap.getBoundingClientRect();
+
+      var x1 = (fromRect.left + fromRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+      var y1 = (fromRect.top + fromRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+      var x2 = (toRect.left + toRect.width/2 - wrapRect.left) / zoomLevel + canvasViewport.scrollLeft;
+      var y2 = (toRect.top + toRect.height/2 - wrapRect.top) / zoomLevel + canvasViewport.scrollTop;
+
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.classList.add('connection');
+      path.setAttribute('d', bezierPath(x1, y1, x2, y2));
+      path.dataset.fromId = c.fromId;
+      path.dataset.fromPort = c.fromPort;
+      path.dataset.toId = c.toId;
+      path.dataset.toPort = c.toPort;
+
+      // Click to delete
+      path.addEventListener('click', function(e) {
+        e.stopPropagation();
+        removeConnection(c.fromId, c.fromPort, c.toId, c.toPort);
+      });
+
+      connectionGroup.appendChild(path);
+    });
+  }
+
+  function getPortEl(nodeId, portName, dir) {
+    var nodeEl = document.getElementById('node-' + nodeId);
+    if (!nodeEl) return null;
+    var portEl = nodeEl.querySelector('.node-port[data-port-name="'+portName+'"][data-port-dir="'+dir+'"]');
+    if (!portEl) return null;
+    return portEl.querySelector('.dot');
+  }
+
+  function bezierPath(x1, y1, x2, y2) {
+    var dx = Math.abs(x2 - x1) * 0.5;
+    if (dx < 40) dx = 40;
+    return 'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2;
+  }
+
+  // ============================================================
+  // SELECT / DESELECT
+  // ============================================================
+  function selectNode(id) {
+    // Deselect all
+    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+    selectedNodeId = id;
+    var el = document.getElementById('node-' + id);
+    if (el) el.classList.add('selected');
+  }
+
+  document.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.node') || e.target.closest('.config-overlay') || e.target.closest('.context-menu')) return;
+    if (e.target.closest('.dot') && isDraggingFromPort) return;
+    hideContextMenu();
+    // Deselect
+    document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+    selectedNodeId = null;
+  });
+
+  // ============================================================
+  // CONFIG PANEL
+  // ============================================================
+  function openConfig(id) {
+    var node = nodes[id];
+    if (!node) return;
+    configNodeId = id;
+    var overlay = document.getElementById('configOverlay');
+    document.getElementById('configTitle').textContent = '⚙️ ' + node.label;
+    document.getElementById('cfgName').value = node.label;
+    document.getElementById('cfgType').value = AGENT_TYPES.find(function(t){ return t.id === node.typeId; })?.label || node.typeId;
+    document.getElementById('cfgDesc').value = node.desc || '';
+    document.getElementById('cfgTag').value = node.tag || '';
+    document.getElementById('cfgParams').value = node.params || '{}';
+
+    var openBtn = document.getElementById('cfgOpenAgent');
+    if (node.agentFile) {
+      openBtn.style.display = 'inline-flex';
+      openBtn.href = node.agentFile;
+    } else {
+      openBtn.style.display = 'none';
+    }
+
+    overlay.classList.add('open');
+  }
+
+  function closeConfig() {
+    document.getElementById('configOverlay').classList.remove('open');
+    configNodeId = null;
+  }
+
+  function saveConfig() {
+    var id = configNodeId;
+    if (!id || !nodes[id]) return;
+    var node = nodes[id];
+    node.label = document.getElementById('cfgName').value.trim() || node.label;
+    node.desc = document.getElementById('cfgDesc').value.trim();
+    node.tag = document.getElementById('cfgTag').value.trim();
+    var paramsRaw = document.getElementById('cfgParams').value.trim();
+    if (paramsRaw) {
+      try { JSON.parse(paramsRaw); node.params = paramsRaw; }
+      catch(e) { showToast('Ошибка: параметры не являются валидным JSON', 'error'); return; }
+    } else {
+      node.params = '{}';
+    }
+    // Re-render
+    renderNode(id);
+    updateConnections();
+    closeConfig();
+    showToast('Нода обновлена: ' + node.label, 'success');
+  }
+
+  // Config panel buttons
+  document.getElementById('configClose').addEventListener('click', closeConfig);
+  document.getElementById('cfgCancel').addEventListener('click', closeConfig);
+  document.getElementById('cfgSave').addEventListener('click', saveConfig);
+  document.getElementById('cfgDelete').addEventListener('click', function() {
+    if (configNodeId && confirm('Удалить ноду ' + nodes[configNodeId]?.label + '?')) {
+      deleteNode(configNodeId);
+      closeConfig();
+    }
+  });
+
+  // ============================================================
+  // CONTEXT MENU
+  // ============================================================
+  var contextTargetId = null;
+
+  document.addEventListener('contextmenu', function(e) {
+    var nodeEl = e.target.closest('.node');
+    if (!nodeEl) { hideContextMenu(); return; }
+    e.preventDefault();
+    contextTargetId = nodeEl.dataset.nodeId;
+    selectNode(contextTargetId);
+    var menu = document.getElementById('contextMenu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+  });
+
+  document.getElementById('contextMenu').addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var action = btn.dataset.action;
+    var id = contextTargetId;
+    hideContextMenu();
+    if (!id || !nodes[id]) return;
+    switch (action) {
+      case 'config': openConfig(id); break;
+      case 'duplicate': duplicateNode(id); break;
+      case 'delete': deleteNode(id); break;
+      case 'open':
+        var n = nodes[id];
+        if (n.agentFile) window.open(n.agentFile, '_blank');
+        else showToast('Для этой ноды нет отдельной страницы', 'info');
+        break;
+    }
+  });
+
+  function hideContextMenu() {
+    document.getElementById('contextMenu').style.display = 'none';
+    contextTargetId = null;
+  }
+
+  // ============================================================
+  // ZOOM
+  // ============================================================
+  function setZoom(level) {
+    zoomLevel = Math.max(0.2, Math.min(3, level));
+    canvasInner.style.transform = 'scale(' + zoomLevel + ')';
+    document.getElementById('zoomDisplay').textContent = Math.round(zoomLevel * 100) + '%';
+  }
+
+  document.getElementById('btnZoomIn').addEventListener('click', function(){ setZoom(zoomLevel + 0.2); });
+  document.getElementById('btnZoomOut').addEventListener('click', function(){ setZoom(zoomLevel - 0.2); });
+  document.getElementById('btnZoomReset').addEventListener('click', function(){ setZoom(1); });
+
+  canvasWrap.addEventListener('wheel', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(zoomLevel + delta);
+    }
+  }, { passive: false });
+
+  // ============================================================
+  // AUTO LAYOUT (simple grid)
+  // ============================================================
+  function autoLayout() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) return;
+    var cols = Math.ceil(Math.sqrt(ids.length));
+    var spacingX = 220;
+    var spacingY = 180;
+    var startX = 50;
+    var startY = 50;
+    ids.forEach(function(id, i){
+      var node = nodes[id];
+      if (!node) return;
+      node.x = startX + (i % cols) * spacingX;
+      node.y = startY + Math.floor(i / cols) * spacingY;
+      var el = document.getElementById('node-' + id);
+      if (el) {
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+      }
+    });
+    updateConnections();
+    showToast('Авторасположение выполнено', 'info');
+  }
+
+  document.getElementById('btnAutoLayout').addEventListener('click', autoLayout);
+
+  // ============================================================
+  // SAVE / LOAD JSON
+  // ============================================================
+  function saveJSON() {
+    var data = {
+      version: 2,
+      timestamp: new Date().toISOString(),
+      nodes: {},
+      connections: connections,
+      nextNodeId: nextNodeId,
+    };
+    Object.keys(nodes).forEach(function(id){
+      var n = nodes[id];
+      data.nodes[id] = {
+        typeId: n.typeId,
+        label: n.label,
+        desc: n.desc,
+        tag: n.tag,
+        params: n.params,
+        x: n.x,
+        y: n.y,
+      };
+    });
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'node-editor-schema.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Схема сохранена', 'success');
+  }
+
+  function loadJSON(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = JSON.parse(e.target.result);
+        if (!data.nodes) { showToast('Ошибка: неверный формат файла', 'error'); return; }
+
+        // Clear existing
+        Object.keys(nodes).forEach(function(id){ deleteNode(id); });
+        connections = [];
+
+        // Load nodes
+        Object.keys(data.nodes).forEach(function(id){
+          var ndata = data.nodes[id];
+          if (!data.nodes) return;
+          createNode(ndata.typeId, ndata.x, ndata.y, {
+            label: ndata.label,
+            desc: ndata.desc,
+            tag: ndata.tag,
+            params: ndata.params,
+          });
+        });
+
+        // Map old IDs to new IDs — simple sequential IDs
+        // Since we just created them in order, we can map sequentially
+        var oldIds = Object.keys(data.nodes);
+        var newIds = Object.keys(nodes);
+        if (data.connections) {
+          data.connections.forEach(function(c){
+            var ciFrom = oldIds.indexOf(c.fromId);
+            var ciTo = oldIds.indexOf(c.toId);
+            if (ciFrom >= 0 && ciTo >= 0 && newIds[ciFrom] && newIds[ciTo]) {
+              connections.push({
+                fromId: newIds[ciFrom],
+                fromPort: c.fromPort,
+                toId: newIds[ciTo],
+                toPort: c.toPort,
+              });
+            }
+          });
+        }
+
+        if (data.nextNodeId) nextNodeId = data.nextNodeId;
+        updateConnections();
+        updateNodeCount();
+        showToast('Схема загружена (' + Object.keys(nodes).length + ' нод)', 'success');
+      } catch(err) {
+        showToast('Ошибка загрузки: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  document.getElementById('btnSave').addEventListener('click', saveJSON);
+  document.getElementById('btnLoad').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
+  document.getElementById('fileInput').addEventListener('change', loadJSON);
+  document.getElementById('btnClear').addEventListener('click', clearAll);
+
+  // ============================================================
+  // EXPORT TO n8n
+  // ============================================================
+  function exportConfig() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) {
+      showToast('Добавьте хотя бы одну ноду на холст', 'error');
+      return;
+    }
+
+    var data = {
+      version: 2,
+      name: 'GigaChat Workflow — Node Editor',
+      generatedAt: new Date().toISOString(),
+      nodes: {},
+      connections: connections,
+    };
+
+    ids.forEach(function(id){
+      var n = nodes[id];
+      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
+      data.nodes[id] = {
+        type: n.typeId,
+        label: n.label,
+        description: n.desc,
+        tag: n.tag,
+        webhook_url: type && type.agentFile ? GigaChat.webhookUrl(type.id) : null,
+        agent_file: n.agentFile,
+        params: (function(){
+          try { return JSON.parse(n.params || '{}'); } catch(e) { return {}; }
+        })(),
+      };
+    });
+
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'n8n-workflow-config.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Экспорт n8n выполнен', 'success');
+  }
+
+  document.getElementById('btnExport').addEventListener('click', exportConfig);
+
+  // ============================================================
+  // EXPORT AS n8n WORKFLOW (последовательная цепочка по связям)
+  // ============================================================
+  function exportN8nWorkflow(silent) {
+    var ids = Object.keys(nodes);
+    if (!ids.length) {
+      if (silent) return '';
+      showToast('Добавьте хотя бы одну ноду на холст', 'error');
+      return;
+    }
+
+    // Строим граф соединений: для каждой ноды находим предков и потомков
+    var childrenOf = {};  // nodeId -> массив {toId, toPort}
+    var parentsOf = {};   // nodeId -> массив {fromId, fromPort}
+    connections.forEach(function(c){
+      (childrenOf[c.fromId] = childrenOf[c.fromId] || []).push({ toId: c.toId, toPort: c.toPort });
+      (parentsOf[c.toId] = parentsOf[c.toId] || []).push({ fromId: c.fromId, fromPort: c.fromPort });
+    });
+
+    // Находим стартовые ноды (те, у кого нет родителей)
+    var startIds = ids.filter(function(id){ return !parentsOf[id] || !parentsOf[id].length; });
+    if (!startIds.length) {
+      if (silent) return '';
+      showToast('Нет начальных нод (нужно соединение выход -> вход)', 'error');
+      return;
+    }
+
+    // Топологическая сортировка (BFS от стартовых)
+    var sorted = [];
+    var visited = {};
+    var queue = startIds.slice();
+    while (queue.length) {
+      var id = queue.shift();
+      if (visited[id]) continue;
+      visited[id] = true;
+      sorted.push(id);
+      (childrenOf[id] || []).forEach(function(child){
+        // Добавляем потомка только если все его предки уже посещены
+        var allParentsVisited = (parentsOf[child.toId] || []).every(function(p){
+          return visited[p.fromId];
+        });
+        if (allParentsVisited && !visited[child.toId]) {
+          queue.push(child.toId);
+        }
+      });
+    }
+
+    // Добавляем ноды, не попавшие в топосорт (изолированные)
+    ids.forEach(function(id){
+      if (!visited[id]) sorted.push(id);
+    });
+
+    var n8nNodes = [];
+    var n8nConnections = {};
+    var connectorId = 1;
+    var baseX = 120;
+
+    // 1) Webhook-нода (вход)
+    var webhookNode = {
+      id: 'wh-' + connectorId++,
+      name: 'Webhook',
+      type: 'n8n-nodes-base.webhook',
+      typeVersion: 2.1,
+      position: [baseX, 200],
+      parameters: {
+        httpMethod: 'POST',
+        path: 'gigachat-workflow',
+        responseMode: 'lastNode',
+        options: {}
+      }
+    };
+    n8nNodes.push(webhookNode);
+
+    // 2) Code-нода парсинга
+    var parseNode = {
+      id: 'prs-' + connectorId++,
+      name: 'Парсинг запроса',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [baseX + 340, 200],
+      parameters: {
+        jsCode: [
+          'const body = $input.first().json.body || {};',
+          'const msg = (body.message || body.text || \'\').trim();',
+          'const sid = (body.session_id || \'default\').trim();',
+          'const tok = String((body.token || body.apiKey || \'\')).trim();',
+          '',
+          'if (!msg || msg.length < 2) {',
+          '  return [{json: {valid: 0, error: \'Введите сообщение\'}}];',
+          '}',
+          'return [{json: {valid: 1, text: msg, session_id: sid, token: tok}}];'
+        ].join('\n')
+      }
+    };
+    n8nNodes.push(parseNode);
+    n8nConnections['wh-' + (connectorId - 2)] = {
+      main: [[{ node: 'prs-' + (connectorId - 1), type: 'main', index: 0 }]]
+    };
+
+    // 3) Создаём ноды-агенты по топосорту с маппингом origId -> n8nId
+    var origToN8n = {};  // original nodeId -> n8n node id
+    var agentNodeInfos = []; // {origId, n8nId, idx}
+    sorted.forEach(function(id, idx) {
+      var n = nodes[id];
+      var type = AGENT_TYPES.find(function(t){ return t.id === n.typeId; });
+      if (!type) return;
+
+      var webhookUrl = GigaChat.webhookUrl(type.id);
+      var n8nAgentId = 'ag-' + (connectorId++);
+
+      // Параметры для body (общие для всех агентов)
+      var paramsMap = [
+        { name: 'message', value: '={{ $json.text || $json.message }}' },
+        { name: 'session_id', value: '={{ $json.session_id }}' },
+        { name: 'token', value: '={{ $json.token }}' },
+        { name: 'body', value: '={{ $json }}' }
+      ];
+      try {
+        var userParams = JSON.parse(n.params || '{}');
+        Object.keys(userParams).forEach(function(k){
+          if (['message','session_id','token','body'].indexOf(k) < 0) {
+            paramsMap.push({ name: k, value: String(userParams[k]) });
+          }
+        });
+      } catch(e) {}
+
+      var agentNode = webhookUrl ? {
+        id: n8nAgentId,
+        name: n.label || type.label,
+        type: 'n8n-nodes-base.httpRequest',
+        typeVersion: 4.1,
+        position: [baseX + 340 + (idx + 1) * 360, 200],
+        parameters: {
+          url: webhookUrl,
+          method: 'POST',
+          authentication: 'none',
+          sendBody: true,
+          bodyParameters: { parameters: paramsMap },
+          options: { timeout: 120000 }
+        }
+      } : {
+        id: n8nAgentId,
+        name: n.label || type.label,
+        type: 'n8n-nodes-base.code',
+        typeVersion: 2,
+        position: [baseX + 340 + (idx + 1) * 360, 200],
+        parameters: {
+          jsCode: [
+            '// ' + (n.label || type.label) + ' (' + n.typeId + ')',
+            '// Параметры: ' + (n.params || '{}'),
+            'return $input.all();'
+          ].join('\n')
+        }
+      };
+      n8nNodes.push(agentNode);
+      origToN8n[id] = n8nAgentId;
+      agentNodeInfos.push({ origId: id, n8nId: n8nAgentId, idx: idx });
+    });
+
+    if (!agentNodeInfos.length) {
+      if (silent) return '';
+      showToast('Не удалось создать ноды агентов', 'error');
+      return;
+    }
+
+    // 4) Строим n8n-соединения ПО РЕАЛЬНЫМ СВЯЗЯМ с холста
+    //    parseNode -> первая нода (если у неё нет родителей)
+    //    Если у ноды есть родители на холсте -> соединяем fromId -> toId
+    //    Если у ноды НЕТ родителей -> соединяем parseNode -> эта нода
+    //    Ноды без детей -> соединяем -> Respond
+
+    var hasIncomingConnection = {}; // отслеживаем, кого уже соединили
+    connections.forEach(function(c) {
+      var fromN8n = origToN8n[c.fromId];
+      var toN8n = origToN8n[c.toId];
+      if (!fromN8n || !toN8n) return;
+      n8nConnections[fromN8n] = n8nConnections[fromN8n] || { main: [[], []] };
+      n8nConnections[fromN8n].main[0].push({ node: toN8n, type: 'main', index: 0 });
+      hasIncomingConnection[toN8n] = true;
+    });
+
+    // Ноды без входящих соединений (стартовые) -> соединяем с parseNode
+    agentNodeInfos.forEach(function(info) {
+      if (!hasIncomingConnection[info.n8nId]) {
+        n8nConnections[parseNode.id] = n8nConnections[parseNode.id] || { main: [[], []] };
+        n8nConnections[parseNode.id].main[0].push({ node: info.n8nId, type: 'main', index: 0 });
+        hasIncomingConnection[info.n8nId] = true;
+      }
+    });
+
+    // 5) Respond-нода (выход)
+    var respondId = 'rsp-' + connectorId++;
+    var respondNode = {
+      id: respondId,
+      name: 'Ответ',
+      type: 'n8n-nodes-base.respondToWebhook',
+      typeVersion: 1,
+      position: [baseX + 340 + (sorted.length + 1) * 360, 200],
+      parameters: {
+        respondWith: 'json',
+        responseBody: '={{ JSON.stringify($json) }}',
+        options: {
+          responseHeaders: {
+            entries: [
+              { name: 'Access-Control-Allow-Origin', value: '*' },
+              { name: 'Access-Control-Allow-Headers', value: 'Content-Type' }
+            ]
+          }
+        }
+      }
+    };
+    n8nNodes.push(respondNode);
+
+    // Ноды без исходящих соединений -> соединяем с Respond
+    var hasOutgoingConnection = {};
+    Object.keys(n8nConnections).forEach(function(fromId) {
+      (n8nConnections[fromId].main[0] || []).forEach(function(conn) {
+        hasOutgoingConnection[fromId] = true;
+      });
+    });
+    agentNodeInfos.forEach(function(info) {
+      if (!hasOutgoingConnection[info.n8nId]) {
+        n8nConnections[info.n8nId] = n8nConnections[info.n8nId] || { main: [[], []] };
+        n8nConnections[info.n8nId].main[0].push({ node: respondId, type: 'main', index: 0 });
+      }
+    });
+
+    var workflow = {
+      name: 'GigaChat Workflow',
+      nodes: n8nNodes,
+      connections: n8nConnections,
+      settings: {
+        timezone: 'Europe/Moscow',
+        saveManualExecutions: true,
+        callerPolicy: 'workflowsFromSameOwner'
+      },
+      staticData: null,
+      tags: []
+    };
+
+    var jsonStr = JSON.stringify(workflow, null, 2);
+    if (silent) return jsonStr;
+
+    var blob = new Blob([jsonStr], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'gigachat-workflow.n8n.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Workflow сгенерирован — импортируй в n8n UI (Settings -> Import)', 'success');
+  }
+
+  document.getElementById('btnExportN8nWorkflow').addEventListener('click', exportN8nWorkflow);
+
+  // ============================================================
+  // RUN CHAIN (▶ Run)
+  // ============================================================
+  var runModalEl = document.getElementById('runModal');
+  var btnRun = document.getElementById('btnRun');
+  var btnRunModalClose = document.getElementById('runModalClose');
+  var btnRunModeLocal = document.getElementById('runModeLocal');
+  var btnRunModeN8n = document.getElementById('runModeN8n');
+
+  function openRunModal() {
+    runModalEl.style.display = 'flex';
+    document.getElementById('runProgress').style.display = 'flex';
+    document.getElementById('runResult').style.display = 'none';
+    // enable buttons
+    btnRunModeLocal.disabled = false;
+    btnRunModeN8n.disabled = false;
+    btnRunModeLocal.style.opacity = '1';
+    btnRunModeN8n.style.opacity = '1';
+    btnRunModeLocal.style.pointerEvents = '';
+    btnRunModeN8n.style.pointerEvents = '';
+  }
+
+  function closeRunModal() {
+    runModalEl.style.display = 'none';
+  }
+
+  function showRunResult(icon, title, msgOpts) {
+    document.getElementById('runProgress').style.display = 'none';
+    var resultDiv = document.getElementById('runResult');
+    resultDiv.style.display = 'block';
+    document.getElementById('runResultIcon').textContent = icon;
+    document.getElementById('runResultTitle').textContent = title;
+    if (typeof msgOpts === 'string') {
+      document.getElementById('runResultMsg').textContent = msgOpts;
+    } else if (msgOpts) {
+      document.getElementById('runResultMsg').textContent = msgOpts.msg || '';
+      var urlDiv = document.getElementById('runResultUrl');
+      if (msgOpts.url) {
+        urlDiv.style.display = 'block';
+        document.getElementById('runResultUrlInput').value = msgOpts.url;
+      } else {
+        urlDiv.style.display = 'none';
+      }
+    }
+  }
+
+  btnRun.addEventListener('click', function() {
+    if (!Object.keys(nodes).length) {
+      showToast('Сначала добавьте агентов на холст', 'error');
+      return;
+    }
+    openRunModal();
+  });
+
+  btnRunModalClose.addEventListener('click', closeRunModal);
+  runModalEl.addEventListener('click', function(e) {
+    if (e.target === runModalEl) closeRunModal();
+  });
+
+  function generateScenarioAndRun() {
+    if (!GigaChat.generateScenario) {
+      showRunResult('❌', 'Ошибка', 'Функция generateScenario недоступна. Проверьте загрузку _shared.js');
+      showToast('generateScenario недоступна', 'error');
+      btnRunModeLocal.disabled = false;
+      btnRunModeN8n.disabled = false;
+      btnRunModeLocal.style.opacity = '1';
+      btnRunModeN8n.style.opacity = '1';
+      btnRunModeLocal.style.pointerEvents = '';
+      btnRunModeN8n.style.pointerEvents = '';
+      return;
+    }
+    var scenario = GigaChat.generateScenario(nodes, connections, AGENT_TYPES);
+    if (!scenario || !scenario.steps || !scenario.steps.length) {
+      showRunResult('❌', 'Ошибка', 'Не удалось построить сценарий. Проверьте соединения между нодами.');
+      showToast('Не удалось построить сценарий', 'error');
+      return;
+    }
+    // Mark local mode in progress
+    btnRunModeLocal.disabled = true;
+    btnRunModeN8n.disabled = true;
+    btnRunModeLocal.style.opacity = '0.5';
+    btnRunModeN8n.style.opacity = '0.5';
+    btnRunModeLocal.style.pointerEvents = 'none';
+    btnRunModeN8n.style.pointerEvents = 'none';
+
+    document.querySelector('.run-step-info').textContent =
+      'Сценарий готов: ' + scenario.steps.length + ' шагов. Открываем chain-player...';
+
+    // Сохраняем сценарий в sessionStorage (надёжнее, чем hash/base64)
+    // и открываем chain-player в новом окне
+    var jsonStr = JSON.stringify(scenario);
+    try { sessionStorage.setItem('gc_scenario', jsonStr); } catch(e) {}
+    var chainUrl = window.location.href.replace(/\/[^/]*$/, '/chain-player.html');
+
+    setTimeout(function() {
+      showRunResult('✅', 'Сценарий готов',
+        { msg: scenario.steps.length + ' шагов. Цепочка открывается в chain-player.' });
+      window.location.href = chainUrl;
+      // re-enable after 2s
+      setTimeout(function() {
+        btnRunModeLocal.disabled = false;
+        btnRunModeN8n.disabled = false;
+        btnRunModeLocal.style.opacity = '1';
+        btnRunModeN8n.style.opacity = '1';
+        btnRunModeLocal.style.pointerEvents = '';
+        btnRunModeN8n.style.pointerEvents = '';
+      }, 2000);
+    }, 300);
+  }
+
+  btnRunModeLocal.addEventListener('click', generateScenarioAndRun);
+
+  btnRunModeN8n.addEventListener('click', function() {
+    // ВАЖНО: это НЕ запуск цепочки, а создание workflow через n8n REST API.
+    // В обычном режиме пользователю нужен левый вариант: «Запустить цепочку».
+    // REST API n8n часто требует отдельную авторизацию и даёт 401 Unauthorized.
+    if (!(window.GIGACHAT_CONFIG && window.GIGACHAT_CONFIG.ALLOW_N8N_REST_EXPORT === true)) {
+      showRunResult('⚠️ Не тот режим', 'Создание workflow в n8n отключено',
+        'Этот режим требует авторизацию n8n REST API и не нужен для обычного запуска цепочки. Нажмите «🚀 Запустить цепочку».');
+      showToast('Для запуска цепочки используйте «Запустить цепочку», не REST export', 'info');
+      return;
+    }
+    // n8n mode — create workflow via API
+    btnRunModeLocal.disabled = true;
+    btnRunModeN8n.disabled = true;
+    btnRunModeLocal.style.opacity = '0.5';
+    btnRunModeN8n.style.opacity = '0.5';
+    btnRunModeLocal.style.pointerEvents = 'none';
+    btnRunModeN8n.style.pointerEvents = 'none';
+
+    document.querySelector('.run-step-info').textContent = 'Создание workflow в n8n...';
+
+    try {
+      var workflowJson = exportN8nWorkflow(true); // silent mode — returns JSON string
+      var parsed;
+      try { parsed = JSON.parse(workflowJson); } catch(e) { parsed = null; }
+
+      var name = 'Chain: ' + (Object.keys(nodes).map(function(id) {
+        var n = nodes[id];
+        var typeId = n.typeId || 'agent';
+        for (var k in AGENT_TYPES) {
+          if (AGENT_TYPES[k].id === typeId) return AGENT_TYPES[k].label;
+        }
+        return typeId;
+      }).join(' → ') || 'Untitled');
+
+      if (typeof GigaChat.n8nApi !== 'undefined' && GigaChat.n8nApi.createWorkflow) {
+        var n8nWorkflowData = {
+          name: name,
+          nodes: parsed && parsed.nodes ? parsed.nodes : [],
+          connections: parsed && parsed.connections ? parsed.connections : {},
+          settings: {},
+          staticData: null,
+          tags: []
+        };
+
+        GigaChat.n8nApi.createWorkflow(n8nWorkflowData).then(function(result) {
+          var wfId = result && (result.id || result.data && result.data.id);
+          if (wfId) {
+            // Try to activate
+            return GigaChat.n8nApi.activateWorkflow(wfId).then(function() {
+              var n8nBase = (window.GIGACHAT_CONFIG || {}).N8N_BASE || 'http://localhost:5678';
+              var wfUrl = n8nBase + '/workflow/' + wfId;
+              showRunResult('✅', 'Workflow создан и активирован',
+                { msg: 'ID: ' + wfId, url: wfUrl });
+              showToast('Workflow #' + wfId + ' создан', 'success');
+            });
+          } else {
+            showRunResult('⚠️', 'Workflow создан (JSON)',
+              { msg: 'Ответ n8n: ' + JSON.stringify(result) });
+          }
+        }).catch(function(err) {
+          showRunResult('❌', 'Ошибка n8n', 'Не удалось создать workflow: ' + (err.message || err));
+          showToast('Ошибка n8n: ' + (err.message || err), 'error');
+        }).finally(function() {
+          btnRunModeLocal.disabled = false;
+          btnRunModeN8n.disabled = false;
+          btnRunModeLocal.style.opacity = '1';
+          btnRunModeN8n.style.opacity = '1';
+          btnRunModeLocal.style.pointerEvents = '';
+          btnRunModeN8n.style.pointerEvents = '';
+        });
+      } else {
+        // Fallback: download JSON
+        var blob = new Blob([workflowJson], {type: 'application/json'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'n8n-workflow.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showRunResult('⬇️', 'JSON скачан',
+          { msg: 'n8n API не настроен. Файл готов для ручного импорта.' });
+        btnRunModeLocal.disabled = false;
+        btnRunModeN8n.disabled = false;
+        btnRunModeLocal.style.opacity = '1';
+        btnRunModeN8n.style.opacity = '1';
+        btnRunModeLocal.style.pointerEvents = '';
+        btnRunModeN8n.style.pointerEvents = '';
+      }
+    } catch(e) {
+      showRunResult('❌', 'Ошибка', e.message || String(e));
+      showToast('Ошибка: ' + (e.message || e), 'error');
+      btnRunModeLocal.disabled = false;
+      btnRunModeN8n.disabled = false;
+      btnRunModeLocal.style.opacity = '1';
+      btnRunModeN8n.style.opacity = '1';
+      btnRunModeLocal.style.pointerEvents = '';
+      btnRunModeN8n.style.pointerEvents = '';
+    }
+  });
+
+  // ============================================================
+  // KEYBOARD SHORTCUTS
+  // ============================================================
+  document.addEventListener('keydown', function(e) {
+    // Esc — close config / context menu / deselect
+    if (e.key === 'Escape') {
+      if (document.getElementById('configOverlay').classList.contains('open')) {
+        closeConfig(); return;
+      }
+      hideContextMenu();
+      document.querySelectorAll('.node.selected').forEach(function(el){ el.classList.remove('selected'); });
+      selectedNodeId = null;
+      return;
+    }
+
+    // Delete / Backspace — delete selected node
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      deleteNode(selectedNodeId);
+      e.preventDefault();
+      return;
+    }
+
+    // Ctrl+S — save
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      saveJSON();
+      return;
+    }
+
+    // Ctrl+Z — zoom in
+    if ((e.ctrlKey || e.metaKey) && e.key === '=') {
+      e.preventDefault();
+      setZoom(zoomLevel + 0.2);
+      return;
+    }
+    // Ctrl+- — zoom out
+    if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+      e.preventDefault();
+      setZoom(zoomLevel - 0.2);
+      return;
+    }
+    // Ctrl+0 — reset zoom
+    if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      e.preventDefault();
+      setZoom(1);
+      return;
+    }
+  });
+
+  // ============================================================
+  // HELPER FUNCTIONS
+  // ============================================================
+  function escapeHtml(text) {
+    if (text == null) return '';
+    var div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+  }
+
+  function updateNodeCount() {
+    var count = Object.keys(nodes).length;
+    document.getElementById('nodeCount').textContent = count + ' нод' + (count === 1 ? 'а' : (count >= 2 && count <= 4 ? 'ы' : ''));
+  }
+
+  function showToast(msg, type) {
+    type = type || 'info';
+    var container = document.getElementById('toastContainer');
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(function(){ el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2500);
+    setTimeout(function(){ el.remove(); }, 3000);
+  }
+
+  // ============================================================
+  // RECALCULATE CONNECTIONS ON SCROLL / RESIZE
+  // ============================================================
+  function scheduleRedraw() {
+    if (window._redrawPending) return;
+    window._redrawPending = true;
+    requestAnimationFrame(function(){
+      window._redrawPending = false;
+      updateConnections();
+    });
+  }
+
+  canvasViewport.addEventListener('scroll', scheduleRedraw);
+  window.addEventListener('resize', scheduleRedraw);
+
+  // Redraw connections when nodes are dragged (also handled by mousemove)
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  function initEditor() {
+    console.log('[ND] initEditor called');
+    // Apply platform theme — inject the same CSS styles as other tools
+    GigaChat.injectToolCss();
+    // Start with zoom reset
+    setZoom(1);
+    // Draw updates periodically
+    setInterval(updateConnections, 2000);
+    showToast('Node Editor готов. Перетащите агенты на холст!', 'info');
+    console.log('[ND] initEditor done — handlers registered. isDraggingFromPort:', !!isDraggingFromPort, 'zoom:', zoomLevel);
+  }
+
+  // Expose for debugging
+  window.__nodeEditor = {
+    nodes: nodes,
+    connections: connections,
+    AGENT_TYPES: AGENT_TYPES,
+    createNode: createNode,
+    deleteNode: deleteNode,
+    saveJSON: saveJSON,
+    exportConfig: exportConfig,
+    autoLayout: autoLayout,
+  };
+
+})();
+</script>
+</body>
+</html>
+

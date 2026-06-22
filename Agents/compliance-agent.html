@@ -1,844 +1,846 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Меры информационной безопасности — GigaChat</title>
-<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
-<style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
-<style>
-:root {
-    --bg-primary: #1f1f1e; --bg-secondary: #1f1e1c; --bg-input: #2c2c2a; --bg-card: #1f1e1c;
-    --border: #363432; --text-primary: #d4d4d4; --text-secondary: #8a8a8a; --text-muted: #5a5a5a;
-    --accent: #d4a574; --accent-hover: #c08a5a; --accent-light: rgba(212,165,116,0.12);
-    --success: #10b981; --warning: #f59e0b; --orange: #f97316; --error: #ef4444;
-    --bg-hover: rgba(212,165,116,0.08);
-}
-:root[data-theme="light"] {
-    --bg-primary: #fdfdfc; --bg-secondary: #f3f1ec; --bg-input: #fffffe; --bg-card: #fffffe;
-    --border: #e3dfd5; --text-primary: #1f1f1e; --text-secondary: #6b6b68; --text-muted: #a8a59f;
-    --accent: #b8895d; --accent-hover: #a0764d; --accent-light: rgba(184,137,93,0.15);
-    --bg-hover: rgba(184,137,93,0.07);
-}
-/* Базовый shell (body/header/main/btn-home/status-bar/btn-primary/drop-zone/loading/
-   progress-bar/error-box) — из GigaChat.injectToolCss(). Ниже — кастом этого агента. */
-
-/* ===== Карточка-обёртка ===== */
-.panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
-.panel h2.sec { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .8px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
-.panel h2.sec svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; }
-
-/* ===== Переключатель режима ввода ===== */
-.mode-tabs { display: inline-flex; gap: 4px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 4px; margin-bottom: 16px; }
-.mode-tab { padding: 8px 16px; border-radius: 7px; font-size: 13.5px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border: none; background: transparent; transition: all .18s; display: inline-flex; align-items: center; gap: 7px; }
-.mode-tab svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
-.mode-tab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-light); }
-.mode-tab:not(.active):hover { color: var(--text-primary); background: var(--bg-hover); }
-
-.mode-pane { display: none; animation: fadeUp .25s ease; }
-.mode-pane.show { display: block; }
-
-/* ===== Форма ===== */
-.field { margin-bottom: 14px; }
-.field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-.field label .req { color: var(--accent); }
-.field input[type=text], .field textarea {
-    width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border);
-    border-radius: 9px; color: var(--text-primary); padding: 11px 13px; font-size: 14px; font-family: inherit;
-    outline: none; transition: border-color .15s; resize: vertical;
-}
-.field textarea { min-height: 86px; line-height: 1.5; }
-.field input:focus, .field textarea:focus { border-color: var(--accent); }
-.field-row { display: flex; gap: 14px; flex-wrap: wrap; }
-.field-row > .field { flex: 1; min-width: 200px; }
-
-/* Сегментированный выбор критичности/риска */
-.seg { display: flex; gap: 6px; flex-wrap: wrap; }
-.seg-btn { padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--bg-input); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; }
-.seg-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-.seg-btn.active { color: #fff; border-color: transparent; }
-.seg-btn.active[data-v=low]      { background: var(--success); }
-.seg-btn.active[data-v=medium]   { background: var(--warning); }
-.seg-btn.active[data-v=high]     { background: var(--orange); }
-.seg-btn.active[data-v=critical] { background: var(--error); }
-
-/* ===== Кнопки действий ===== */
-.actions-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.btn-ghost { padding: 11px 18px; border-radius: 9px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 13.5px; font-weight: 500; cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 7px; }
-.btn-ghost svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
-.btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
-
-/* ===== Результат ===== */
-#result { display: none; }
-#result.show { display: block; }
-.reveal { animation: fadeUp .4s ease both; }
-
-.vio-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.vio-title { font-size: 19px; font-weight: 600; color: var(--text-primary); line-height: 1.3; margin: 0 0 8px; }
-.chips { display: flex; gap: 7px; flex-wrap: wrap; }
-.chip { font-size: 12px; padding: 4px 11px; border-radius: 20px; background: var(--accent-light); color: var(--accent); font-weight: 500; border: 1px solid var(--accent-light); }
-.chip.proc { background: var(--bg-input); color: var(--text-secondary); border-color: var(--border); }
-
-.badge { font-size: 12px; font-weight: 700; padding: 5px 13px; border-radius: 8px; color: #fff; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
-.badge.low { background: var(--success); } .badge.medium { background: var(--warning); }
-.badge.high { background: var(--orange); } .badge.critical { background: var(--error); }
-
-/* Шкала риска */
-.gauge { margin-top: 6px; }
-.gauge-track { display: flex; gap: 4px; height: 10px; }
-.gauge-seg { flex: 1; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border); transition: all .5s; }
-.gauge-seg.on.low { background: var(--success); border-color: var(--success); }
-.gauge-seg.on.medium { background: var(--warning); border-color: var(--warning); }
-.gauge-seg.on.high { background: var(--orange); border-color: var(--orange); }
-.gauge-seg.on.critical { background: var(--error); border-color: var(--error); }
-.gauge-labels { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-muted); margin-top: 5px; }
-
-.risk-row { display: flex; gap: 22px; flex-wrap: wrap; }
-.risk-box { flex: 1; min-width: 220px; }
-.risk-box .lbl { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
-
-/* Требования */
-.req-item { display: flex; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border); }
-.req-item:last-child { border-bottom: none; }
-.req-item .num { flex: 0 0 22px; height: 22px; border-radius: 6px; background: var(--accent-light); color: var(--accent); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-.req-item .body { flex: 1; }
-.req-item .txt { font-size: 14px; color: var(--text-primary); line-height: 1.45; }
-.req-item .src { font-size: 12px; color: var(--accent); margin-top: 4px; }
-
-/* Меры — вкладки по типам */
-.mtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-.mtab { padding: 9px 15px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-input); cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary); transition: all .15s; display: inline-flex; align-items: center; gap: 8px; }
-.mtab .cnt { font-size: 11px; font-weight: 700; min-width: 18px; height: 18px; border-radius: 9px; background: var(--border); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
-.mtab.active { border-color: var(--accent); color: var(--text-primary); background: var(--bg-hover); }
-.mtab.active .cnt { background: var(--accent); color: #fff; }
-.mtab:hover:not(.active) { color: var(--text-primary); }
-
-.mgroup { display: none; }
-.mgroup.show { display: block; }
-.measure { border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; margin-bottom: 11px; background: var(--bg-input); transition: border-color .15s, transform .15s; cursor: pointer; }
-.measure:hover { border-color: var(--accent); }
-.measure .m-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.measure .m-name { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.35; }
-.measure .m-eff { font-size: 11.5px; color: var(--success); background: rgba(16,185,129,.12); padding: 4px 10px; border-radius: 14px; white-space: nowrap; font-weight: 500; }
-.measure .m-desc { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px; }
-.measure .m-just { font-size: 13px; color: var(--text-primary); line-height: 1.55; margin-top: 10px; padding: 10px 12px; background: var(--accent-light); border-radius: 8px; border-left: 3px solid var(--accent); display: none; }
-.measure.open .m-just { display: block; animation: fadeUp .22s ease; }
-.measure .m-toggle { font-size: 12px; color: var(--accent); margin-top: 9px; user-select: none; display: inline-flex; align-items: center; gap: 5px; }
-.measure .m-toggle svg { width: 13px; height: 13px; transition: transform .2s; stroke: currentColor; fill: none; stroke-width: 2.5; }
-.measure.open .m-toggle svg { transform: rotate(180deg); }
-
-/* Сроки */
-.dl-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
-.dl-item:last-child { border-bottom: none; }
-.dl-item .dl-m { color: var(--text-primary); flex: 1; }
-.dl-item .dl-t { color: var(--accent); font-weight: 600; white-space: nowrap; }
-
-/* История */
-.hist-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: all .15s; }
-.hist-item:hover { border-color: var(--accent); background: var(--bg-hover); }
-.hist-item .h-t { font-size: 13.5px; color: var(--text-primary); font-weight: 500; }
-.hist-item .h-m { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
-.empty-hint { font-size: 13px; color: var(--text-muted); text-align: center; padding: 16px; }
-
-@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.muted { color: var(--text-muted); font-size: 12.5px; }
-
-/* Навигация по разделам */
-.topnav { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-.nav-tab { background: none; border: none; padding: 10px 16px; font-size: 14px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; }
-.nav-tab:hover { color: var(--text-primary); }
-.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
-.view { display: none; }
-.view.show { display: block; animation: fadeUp .2s ease; }
-/* Подвкладки и формы базы знаний */
-.kb-subtabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-.kb-subtab { background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all .15s; }
-.kb-subtab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.kb-pane { display: none; }
-.kb-pane.show { display: block; }
-.kb-checks { display: flex; flex-wrap: wrap; gap: 8px; max-height: 140px; overflow-y: auto; padding: 4px 0; }
-.kb-checks label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); border-radius: 7px; padding: 5px 9px; cursor: pointer; }
-.kb-msg { margin-left: 12px; }
-.kb-file-link { display: inline-block; margin-top: 7px; font-size: 12.5px; color: var(--accent); cursor: pointer; text-decoration: underline; }
-.kb-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px; }
-.kb-row .k-t { font-size: 13px; color: var(--text-primary); }
-.kb-row .k-m { font-size: 11px; color: var(--text-muted); }
-.kb-del { background: none; border: none; color: var(--danger, #e5484d); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
-.kb-del:hover { background: rgba(229,72,77,.12); }
-.kb-group-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 7px; }
-/* Бейджи источника меры + summary */
-.m-src { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 20px; margin-left: 8px; vertical-align: 1px; }
-.m-src.ai { background: rgba(124,92,255,.16); color: #9d86ff; }
-.m-src.base { background: var(--bg-hover); color: var(--text-muted); }
-.ai-summary { display: flex; gap: 10px; align-items: flex-start; background: linear-gradient(90deg, rgba(124,92,255,.1), transparent); border: 1px solid rgba(124,92,255,.25); border-radius: 11px; padding: 12px 14px; margin-bottom: 14px; font-size: 13.5px; color: var(--text-primary); }
-.ai-summary svg { width: 18px; height: 18px; stroke: #9d86ff; fill: none; stroke-width: 2; flex: 0 0 auto; margin-top: 1px; }
-</style>
-<script src="_config.js"></script>
-<script src="_shared-guard.js"></script>
-<script src="_shared.js"></script>
-</head>
-<body>
-
-<header>
-    <div class="header-left"><a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a><h1>Меры информационной безопасности</h1></div>
-    <div class="header-right">
-        <div class="status-bar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
-    </div>
-</header>
-
-<main>
-    <nav class="topnav">
-        <button class="nav-tab active" data-view="analyze" onclick="switchView('analyze')">Анализ нарушения</button>
-        <button class="nav-tab" data-view="history" onclick="switchView('history')">История</button>
-        <button class="nav-tab" id="navKb" data-view="kb" onclick="switchView('kb')">База знаний</button>
-    </nav>
-
-    <div id="viewAnalyze" class="view show">
-    <div class="intro">
-        <h2>Что делает агент</h2>
-        <p>Принимает выявленное нарушение информационной безопасности — и формирует <b>компенсирующие меры</b> (организационные, технические, административные, контролирующие) с обоснованием, ссылками на нормативы и оценкой остаточного риска. Можно ввести описание вручную или загрузить акт проверки.</p>
-    </div>
-
-    <!-- ВВОД -->
-    <div class="panel">
-        <div class="mode-tabs">
-            <button class="mode-tab active" data-mode="form" onclick="switchMode('form')"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Описание</button>
-            <button class="mode-tab" data-mode="file" onclick="switchMode('file')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Загрузить акт</button>
-        </div>
-
-        <!-- режим: форма -->
-        <div class="mode-pane show" id="paneForm">
-            <div class="field">
-                <label>Нарушение <span class="req">*</span></label>
-                <input type="text" id="fViolation" maxlength="500" placeholder="Краткая формулировка нарушения">
-            </div>
-            <div class="field">
-                <label>Описание нарушения</label>
-                <textarea id="fDescription" placeholder="Подробное описание: что выявлено, при каких условиях…"></textarea>
-            </div>
-            <div class="field-row">
-                <div class="field"><label>Объект контроля</label><input type="text" id="fObject" maxlength="300" placeholder="Система / сервер / процесс"></div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <label>Уровень критичности</label>
-                    <div class="seg" id="segCrit">
-                        <button class="seg-btn" data-v="low" onclick="pickSeg('segCrit',this)">Низкий</button>
-                        <button class="seg-btn active" data-v="medium" onclick="pickSeg('segCrit',this)">Средний</button>
-                        <button class="seg-btn" data-v="high" onclick="pickSeg('segCrit',this)">Высокий</button>
-                        <button class="seg-btn" data-v="critical" onclick="pickSeg('segCrit',this)">Критический</button>
-                    </div>
-                </div>
-                <div class="field">
-                    <label>Уровень риска</label>
-                    <div class="seg" id="segRisk">
-                        <button class="seg-btn" data-v="low" onclick="pickSeg('segRisk',this)">Низкий</button>
-                        <button class="seg-btn active" data-v="medium" onclick="pickSeg('segRisk',this)">Средний</button>
-                        <button class="seg-btn" data-v="high" onclick="pickSeg('segRisk',this)">Высокий</button>
-                        <button class="seg-btn" data-v="critical" onclick="pickSeg('segRisk',this)">Критический</button>
-                    </div>
-                </div>
-            </div>
-            <div class="field">
-                <label>Результаты проверок</label>
-                <textarea id="fChecks" placeholder="Выдержки из акта / заключения комиссии (необязательно)"></textarea>
-            </div>
-        </div>
-
-        <!-- режим: файл -->
-        <div class="mode-pane" id="paneFile">
-            <label class="drop-zone" id="uploadArea" for="fileInput">
-                <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></div>
-                <div class="title">Перетащите акт проверки сюда или нажмите</div>
-                <div class="hint">DOCX, PDF, XLSX, CSV, TXT (макс. 50 МБ)</div>
-                <div class="filename" id="fileName"></div>
-            </label>
-            <input type="file" id="fileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.rtf,.odt" onchange="fileSelected(this)">
-        </div>
-
-        <div class="actions-row" style="margin-top:6px">
-            <button class="btn-primary" id="analyzeBtn" onclick="analyze()" style="flex:0 0 auto;min-width:220px">Сформировать меры</button>
-            <button class="btn-ghost" onclick="loadExample()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Пример</button>
-            <button class="btn-ghost" onclick="resetAll()"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.4 2.6L3 8"/><path d="M3 3v5h5"/></svg>Сброс</button>
-        </div>
-    </div>
-
-    <div class="loading" id="loading">
-        <div>Анализирую нарушение и подбираю меры...</div>
-        <div class="timer" id="timer">0 сек</div>
-        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
-    </div>
-    <div class="error-box" id="errorBox"></div>
-
-    <!-- РЕЗУЛЬТАТ -->
-    <div id="result"></div>
-    </div><!-- /viewAnalyze -->
-
-    <!-- ИСТОРИЯ -->
-    <div id="viewHistory" class="view">
-        <div class="panel">
-            <h2 class="sec" style="margin-top:0"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>История разборов</h2>
-            <p class="muted" style="margin:-4px 0 12px">Ваши прошлые анализы нарушений. Нажмите на запись, чтобы открыть отчёт.</p>
-            <div id="histList"><div class="empty-hint">Загрузка…</div></div>
-        </div>
-    </div>
-
-    <!-- БАЗА ЗНАНИЙ (только админ) -->
-    <div id="viewKb" class="view">
-        <div class="panel">
-            <h2 class="sec" style="margin-top:0"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>База знаний</h2>
-            <p class="muted" style="margin:-4px 0 12px">Пополняйте базу — на ней строятся меры и поиск нарушений. Каждая запись автоматически векторизуется для семантического поиска.</p>
-            <div class="kb-subtabs">
-                <button class="kb-subtab active" data-kb="vio" onclick="kbSub('vio')">Нарушение</button>
-                <button class="kb-subtab" data-kb="meas" onclick="kbSub('meas')">Мера</button>
-                <button class="kb-subtab" data-kb="req" onclick="kbSub('req')">Требование</button>
-                <button class="kb-subtab" data-kb="norm" onclick="kbSub('norm')">Нормативный документ</button>
-            </div>
-
-            <!-- добавить нарушение -->
-            <div class="kb-pane show" id="kbVio">
-                <div class="field"><label>Название нарушения <span class="req">*</span></label><input type="text" id="kbvTitle" maxlength="500" placeholder="Напр.: Отсутствует резервное копирование"></div>
-                <div class="field-row">
-                    <div class="field"><label>Категория</label><input type="text" id="kbvCat" maxlength="120" placeholder="Напр.: Резервное копирование"></div>
-                    <div class="field"><label>Затронутые процессы</label><input type="text" id="kbvProc" maxlength="200" placeholder="через ; — напр.: Хранение данных; Восстановление"></div>
-                </div>
-                <div class="field"><label>Описание</label><textarea id="kbvDesc" placeholder="Подробности (помогают семантическому поиску)"></textarea></div>
-                <div class="field"><label>Критичность</label><div class="seg" id="kbvCrit">
-                    <button class="seg-btn" data-v="low" onclick="pickSeg('kbvCrit',this)">Низкий</button>
-                    <button class="seg-btn active" data-v="medium" onclick="pickSeg('kbvCrit',this)">Средний</button>
-                    <button class="seg-btn" data-v="high" onclick="pickSeg('kbvCrit',this)">Высокий</button>
-                    <button class="seg-btn" data-v="critical" onclick="pickSeg('kbvCrit',this)">Критический</button>
-                </div></div>
-                <div class="field"><label>Связанные меры (необязательно)</label><div id="kbvMeasures" class="kb-checks"><span class="muted">список загрузится…</span></div></div>
-                <button class="btn-primary" onclick="kbAddViolation()" style="min-width:200px">Сохранить нарушение</button>
-                <span class="muted kb-msg" id="kbvMsg"></span>
-            </div>
-
-            <!-- добавить меру -->
-            <div class="kb-pane" id="kbMeas">
-                <div class="field"><label>Тип меры</label><div class="seg" id="kbmType">
-                    <button class="seg-btn active" data-v="organizational" onclick="pickSeg('kbmType',this)">Орг.</button>
-                    <button class="seg-btn" data-v="technical" onclick="pickSeg('kbmType',this)">Тех.</button>
-                    <button class="seg-btn" data-v="administrative" onclick="pickSeg('kbmType',this)">Адм.</button>
-                    <button class="seg-btn" data-v="controlling" onclick="pickSeg('kbmType',this)">Контр.</button>
-                </div></div>
-                <div class="field"><label>Название меры <span class="req">*</span></label><input type="text" id="kbmName" maxlength="500" placeholder="Напр.: Внедрить автоматизированное резервное копирование"></div>
-                <div class="field"><label>Описание</label><textarea id="kbmDesc" placeholder="Что конкретно сделать"></textarea></div>
-                <div class="field"><label>Ожидаемый эффект</label><input type="text" id="kbmEff" maxlength="500" placeholder="Что даст мера"></div>
-                <button class="btn-primary" onclick="kbAddMeasure()" style="min-width:200px">Сохранить меру</button>
-                <span class="muted kb-msg" id="kbmMsg"></span>
-            </div>
-
-            <!-- добавить требование -->
-            <div class="kb-pane" id="kbReq">
-                <div class="field"><label>Текст требования <span class="req">*</span></label><textarea id="kbrText" placeholder="Напр.: Обеспечить резервное копирование критичных систем"></textarea></div>
-                <div class="field"><label>Источник (документ, пункт)</label><input type="text" id="kbrRef" maxlength="500" placeholder="Напр.: Политика ИБ, разд. 5.2"></div>
-                <button class="btn-primary" onclick="kbAddRequirement()" style="min-width:200px">Сохранить требование</button>
-                <span class="muted kb-msg" id="kbrMsg"></span>
-            </div>
-
-            <!-- добавить нормативный документ -->
-            <div class="kb-pane" id="kbNorm">
-                <div class="field-row">
-                    <div class="field"><label>Название документа <span class="req">*</span></label><input type="text" id="kbnName" maxlength="500" placeholder="Напр.: ГОСТ Р 57580 / Политика ИБ"></div>
-                    <div class="field"><label>Версия / редакция</label><input type="text" id="kbnVer" maxlength="50" placeholder="Напр.: 2024"></div>
-                </div>
-                <div class="field"><label>Раздел (необязательно)</label><input type="text" id="kbnSection" maxlength="200" placeholder="Напр.: Раздел 7"></div>
-                <div class="field"><label>Текст документа <span class="req">*</span></label>
-                    <textarea id="kbnText" style="min-height:120px" placeholder="Вставьте текст нормативного документа — он будет нарезан на фрагменты и векторизован для семантического поиска требований."></textarea>
-                    <label class="kb-file-link" for="kbnFile">или загрузить файл (DOCX, PDF, TXT) — текст подставится сюда</label>
-                    <input type="file" id="kbnFile" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.rtf,.odt" onchange="kbNormFile(this)">
-                    <span class="muted" id="kbnFileMsg"></span>
-                </div>
-                <button class="btn-primary" onclick="kbAddNorm()" style="min-width:200px">Сохранить документ</button>
-                <span class="muted kb-msg" id="kbnMsg"></span>
-            </div>
-
-            <h2 class="sec" style="margin-top:20px"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Содержимое базы знаний</h2>
-            <div id="kbContents"><div class="empty-hint">Загрузка…</div></div>
-        </div>
-    </div>
-</main>
-
-<script>
-GigaChat.auth.requireAuth({ onOk: function () {
-    document.documentElement.classList.remove('gc-pending-auth');
-} });
-GigaChat.injectToolCss();
-var esc = GigaChat.escapeHtml;
-var ICON_DOC = '<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:2;vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-var ICON_OK = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--success);fill:none;stroke-width:2.6;vertical-align:-2px"><polyline points="20 6 9 17 4 12"/></svg>';
-var WEBHOOK_URL = GigaChat.webhookUrl('compliance');
-var statusDot = document.getElementById('statusDot'), statusText = document.getElementById('statusText');
-GigaChat.startHealthCheck(WEBHOOK_URL, statusDot, statusText);
-
-var MODE = 'form';
-var selectedFile = null;
-var seg = { crit: 'medium', risk: 'medium' };
-var lastResult = null;
-var lastIncidentId = null; // id инцидента из ответа analyze — нужен approve, чтобы перевести его в status='approved'
-var busy = false, timerInt = null, t0 = 0;
-
-var TYPE_META = {
-    organizational: { label: 'Организационные', icon: '<path d="M3 21h18M5 21V7l8-4 8 4v14M9 9h0M9 13h0M9 17h0"/>' },
-    technical:      { label: 'Технические',     icon: '<path d="M14.7 6.3a4 4 0 0 1-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5z"/>' },
-    administrative: { label: 'Административные', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>' },
-    controlling:    { label: 'Контролирующие',  icon: '<path d="M9 11l3 3 8-8"/><path d="M21 12a9 9 0 1 1-6.2-8.5"/>' }
-};
-var CRIT_RU = { low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический' };
-var CRIT_ORDER = ['low','medium','high','critical'];
-
-function switchMode(m) {
-    MODE = m;
-    document.querySelectorAll('.mode-tab').forEach(function (b) { b.classList.toggle('active', b.dataset.mode === m); });
-    document.getElementById('paneForm').classList.toggle('show', m === 'form');
-    document.getElementById('paneFile').classList.toggle('show', m === 'file');
-}
-function pickSeg(group, btn) {
-    var el = document.getElementById(group);
-    el.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
-    btn.classList.add('active');
-    var key = group === 'segCrit' ? 'crit' : (group === 'segRisk' ? 'risk' : group);
-    seg[key] = btn.dataset.v;
-}
-
-// ---- файл ----
-function hasFiles(e) { var t = e.dataTransfer && e.dataTransfer.types; if (!t) return false; for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true; return false; }
-var uploadArea = document.getElementById('uploadArea');
-uploadArea.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); uploadArea.classList.add('dragging'); });
-uploadArea.addEventListener('dragleave', function (e) { if (e.relatedTarget && uploadArea.contains(e.relatedTarget)) return; uploadArea.classList.remove('dragging'); });
-uploadArea.addEventListener('drop', function (e) { e.preventDefault(); uploadArea.classList.remove('dragging'); if (e.dataTransfer.files.length) { selectedFile = e.dataTransfer.files[0]; document.getElementById('fileName').textContent = selectedFile.name; } });
-function fileSelected(input) { if (input.files.length) { selectedFile = input.files[0]; document.getElementById('fileName').textContent = selectedFile.name; } }
-
-// ---- таймер/лоадер ----
-function startTimer() { t0 = Date.now(); var el = document.getElementById('timer'), pf = document.getElementById('progressFill'); timerInt = setInterval(function () { var s = Math.floor((Date.now() - t0) / 1000); el.textContent = s + ' сек'; pf.style.width = Math.min(95, (s / 30) * 100) + '%'; }, 500); }
-function stopTimer() { if (timerInt) { clearInterval(timerInt); timerInt = null; } document.getElementById('progressFill').style.width = '100%'; }
-
-// ---- анализ ----
-async function analyze() {
-    if (busy) return;
-    var payload;
-    if (MODE === 'form') {
-        var v = document.getElementById('fViolation').value.trim();
-        if (!v) { showErr('Укажите нарушение (поле обязательно).'); return; }
-        payload = {
-            violation: v,
-            description: document.getElementById('fDescription').value.trim(),
-            control_object: document.getElementById('fObject').value.trim(),
-            criticality: seg.crit, risk_level: seg.risk,
-            check_results: document.getElementById('fChecks').value.trim()
-        };
-    } else {
-        if (!selectedFile) { showErr('Загрузите файл акта проверки.'); return; }
-        var text = '';
-        try {
-            if (GigaChat.canExtractInBrowser && GigaChat.canExtractInBrowser(selectedFile.name)) {
-                text = await GigaChat.extractBrowserText(selectedFile);
-            }
-        } catch (e) { /* отдадим файл бэкенду как есть */ }
-        payload = { violation: selectedFile.name, description: text, criticality: seg.crit, risk_level: seg.risk, _filename: selectedFile.name };
-    }
-
-    busy = true; document.getElementById('analyzeBtn').disabled = true;
-    document.getElementById('errorBox').style.display = 'none';
-    document.getElementById('result').classList.remove('show');
-    document.getElementById('loading').classList.add('show');
-    document.getElementById('progressBar').classList.add('show');
-    startTimer();
-
-    try {
-        var res = await fetch(WEBHOOK_URL, {
-            method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify(Object.assign({ action: 'analyze', token: GigaChat.auth.getToken() }, payload))
-        });
-        if (res.status === 401 || res.status === 403) { stopTimer(); document.getElementById('loading').classList.remove('show'); GigaChat.auth.clearAuth(); GigaChat.auth.redirectToLogin(); return; }
-        if (!res.ok) throw new Error('Сервер вернул ' + res.status);
-        var data = await res.json();
-        if (data && data.auth_required) { stopTimer(); document.getElementById('loading').classList.remove('show'); GigaChat.auth.clearAuth(); GigaChat.auth.redirectToLogin(); return; }
-        stopTimer(); document.getElementById('loading').classList.remove('show');
-        lastIncidentId = (data && data.incident_id) || null;
-        render(normalize(data, payload));
-    } catch (e) {
-        stopTimer(); document.getElementById('loading').classList.remove('show');
-        showErr('Бэкенд агента ещё не настроен или недоступен (' + esc(e.message) + '). Нажмите «Пример», чтобы увидеть, как выглядит результат.');
-    } finally {
-        busy = false; document.getElementById('analyzeBtn').disabled = false;
-    }
-}
-
-function showErr(msg) { var b = document.getElementById('errorBox'); b.innerHTML = msg; b.style.display = 'block'; }
-
-// Приводим ответ бэкенда к единому виду (на случай разных схем).
-function normalize(data, payload) {
-    data = data || {};
-    var m = data.measures || {};
-    return {
-        violation: data.violation || (payload && payload.violation) || '—',
-        category: data.category || 'Не определена',
-        criticality: data.criticality || (payload && payload.criticality) || 'medium',
-        processes: data.processes || [],
-        risk_level: data.risk_level || (payload && payload.risk_level) || 'medium',
-        residual_risk: data.residual_risk || 'low',
-        requirements: data.requirements || [],
-        measures: {
-            organizational: m.organizational || [], technical: m.technical || [],
-            administrative: m.administrative || [], controlling: m.controlling || []
-        },
-        deadlines: data.deadlines || [],
-        summary: data.summary || '', match_method: data.match_method || '', ai_used: !!data.ai_used
-    };
-}
-
-// ---- рендер ----
-function render(r) {
-    lastResult = r;
-    var total = ['organizational','technical','administrative','controlling']
-        .reduce(function (a, t) { return a + (r.measures[t] || []).length; }, 0);
-
-    var html = '';
-    // 1. Нарушение
-    html += '<div class="panel reveal" style="animation-delay:.02s">' +
-        '<div class="vio-head"><div style="flex:1;min-width:240px">' +
-        '<div class="vio-title">' + esc(r.violation) + '</div>' +
-        '<div class="chips"><span class="chip">' + esc(r.category) + '</span>' +
-        (r.processes || []).map(function (p) { return '<span class="chip proc">' + esc(p) + '</span>'; }).join('') +
-        '</div></div>' +
-        '<span class="badge ' + r.criticality + '">' + (CRIT_RU[r.criticality] || r.criticality) + '</span></div></div>';
-
-    // Резюме от ИИ (если включился LLM)
-    if (r.summary) {
-        html += '<div class="ai-summary reveal" style="animation-delay:.04s"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21l2.3-7.4-6-4.6h7.6z"/></svg><div>' + esc(r.summary) + '</div></div>';
-    }
-
-    // 2. Риск
-    html += '<div class="panel reveal" style="animation-delay:.06s"><h2 class="sec"><svg viewBox="0 0 24 24"><path d="M12 2 2 7v6c0 5 4 9 10 11 6-2 10-6 10-11V7z"/></svg>Оценка риска</h2>' +
-        '<div class="risk-row">' +
-        '<div class="risk-box"><div class="lbl">Уровень риска нарушения</div>' + gauge(r.risk_level) + '</div>' +
-        '<div class="risk-box"><div class="lbl">Ожидаемый остаточный риск (после мер)</div>' + gauge(r.residual_risk) + '</div>' +
-        '</div></div>';
-
-    // 3. Нарушенные требования
-    if (r.requirements && r.requirements.length) {
-        html += '<div class="panel reveal" style="animation-delay:.1s"><h2 class="sec"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Нарушенные нормативные требования</h2>' +
-            r.requirements.map(function (q, i) {
-                return '<div class="req-item"><div class="num">' + (i + 1) + '</div><div class="body"><div class="txt">' + esc(q.text || q) + '</div>' +
-                    (q.source ? '<div class="src">' + ICON_DOC + ' ' + esc(q.source) + '</div>' : '') + '</div></div>';
-            }).join('') + '</div>';
-    }
-
-    // 4. Меры (вкладки)
-    html += '<div class="panel reveal" style="animation-delay:.14s"><h2 class="sec"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Компенсирующие меры (' + total + ')</h2>';
-    html += '<div class="mtabs">';
-    var firstType = null;
-    ['organizational','technical','administrative','controlling'].forEach(function (t) {
-        var n = (r.measures[t] || []).length;
-        if (n && !firstType) firstType = t;
-        html += '<button class="mtab" data-mt="' + t + '" onclick="showMtab(\'' + t + '\')">' +
-            '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--accent);fill:none;stroke-width:2">' + TYPE_META[t].icon + '</svg>' +
-            TYPE_META[t].label + '<span class="cnt">' + n + '</span></button>';
-    });
-    html += '</div>';
-    ['organizational','technical','administrative','controlling'].forEach(function (t) {
-        html += '<div class="mgroup" data-mg="' + t + '">';
-        var arr = r.measures[t] || [];
-        if (!arr.length) html += '<div class="empty-hint">Меры этого типа не сформированы.</div>';
-        arr.forEach(function (m, i) {
-            var srcBadge = m.source === 'ai' ? '<span class="m-src ai">ИИ</span>' : (m.source === 'base' ? '<span class="m-src base">базовая</span>' : '');
-            html += '<div class="measure" onclick="this.classList.toggle(\'open\')">' +
-                '<div class="m-head"><div class="m-name">' + esc(m.name || '') + srcBadge + '</div>' +
-                (m.effect ? '<div class="m-eff">' + esc(m.effect) + '</div>' : '') + '</div>' +
-                (m.description ? '<div class="m-desc">' + esc(m.description) + '</div>' : '') +
-                (m.justification ? '<div class="m-toggle">Обоснование <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div><div class="m-just">' + esc(m.justification) + '</div>' : '') +
-                '</div>';
-        });
-        html += '</div>';
-    });
-    html += '</div>';
-
-    // 5. Сроки
-    if (r.deadlines && r.deadlines.length) {
-        html += '<div class="panel reveal" style="animation-delay:.18s"><h2 class="sec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Рекомендуемые сроки реализации</h2>' +
-            r.deadlines.map(function (d) { return '<div class="dl-item"><div class="dl-m">' + esc(d.measure || d.name || '') + '</div><div class="dl-t">' + esc(d.term || d.deadline || '') + '</div></div>'; }).join('') + '</div>';
-    }
-
-    // 6. Действия
-    html += '<div class="panel reveal" style="animation-delay:.22s"><div class="actions-row">' +
-        '<button class="btn-ghost" onclick="approve()"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Утвердить</button>' +
-        '<button class="btn-ghost" onclick="exportReport()"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Экспорт отчёта</button>' +
-        '<button class="btn-ghost" onclick="copyReport()"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Копировать</button>' +
-        '<span class="muted" id="actMsg"></span>' +
-        '</div></div>';
-
-    var box = document.getElementById('result');
-    box.innerHTML = html;
-    box.classList.add('show');
-    // активируем первую непустую вкладку мер + анимируем шкалы
-    if (firstType) showMtab(firstType);
-    setTimeout(function () { box.querySelectorAll('.gauge-seg').forEach(function (s) { s.classList.add('on'); }); }, 60);
-    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function gauge(level) {
-    var idx = CRIT_ORDER.indexOf(level); if (idx < 0) idx = 1;
-    // Сегменты до текущего уровня (включительно) получают класс уровня → красятся
-    // в render() при добавлении .on (анимация). Остальные остаются приглушёнными.
-    var segs = CRIT_ORDER.map(function (lv, i) {
-        return '<div class="gauge-seg' + (i <= idx ? ' ' + level : '') + '"></div>';
-    }).join('');
-    return '<div class="gauge"><div class="gauge-track">' + segs + '</div>' +
-        '<div class="gauge-labels"><span>Низкий</span><span>Средний</span><span>Высокий</span><span>Критич.</span></div>' +
-        '<div style="margin-top:7px"><span class="badge ' + level + '" style="font-size:11px">' + (CRIT_RU[level] || level) + '</span></div></div>';
-}
-function showMtab(t) {
-    document.querySelectorAll('.mtab').forEach(function (b) { b.classList.toggle('active', b.dataset.mt === t); });
-    document.querySelectorAll('.mgroup').forEach(function (g) { g.classList.toggle('show', g.dataset.mg === t); });
-}
-
-// ---- утвердить / экспорт / копировать ----
-async function approve() {
-    if (!lastResult) return;
-    var msg = document.getElementById('actMsg');
-    try {
-        // incident_id — чтобы бэкенд перевёл инцидент в status='approved' (а не только записал кейс)
-        var res = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ action: 'approve', token: GigaChat.auth.getToken(), result: lastResult, incident_id: lastIncidentId || '' }) });
-        var d = null; try { d = await res.json(); } catch (e2) {}
-        if (res.ok && d && d.ok) {
-            msg.innerHTML = ICON_OK + ' Утверждено — кейс добавлен в базу знаний';
-        } else {
-            msg.textContent = 'Не удалось утвердить: ' + ((d && (d.response || d.error)) || ('сервер вернул ' + res.status)) + '. Повтори позже.';
-        }
-    } catch (e) { msg.textContent = 'Не удалось утвердить — бэкенд недоступен. Повтори позже.'; }
-}
-function reportText() {
-    var r = lastResult; if (!r) return '';
-    var L = [];
-    L.push('ОТЧЁТ О КОМПЕНСИРУЮЩИХ МЕРАХ');
-    L.push('');
-    L.push('Нарушение: ' + r.violation);
-    L.push('Категория: ' + r.category + '   Критичность: ' + (CRIT_RU[r.criticality] || r.criticality));
-    if ((r.processes || []).length) L.push('Затронутые процессы: ' + r.processes.join('; '));
-    L.push('Уровень риска: ' + (CRIT_RU[r.risk_level] || r.risk_level) + '   Остаточный риск: ' + (CRIT_RU[r.residual_risk] || r.residual_risk));
-    if ((r.requirements || []).length) {
-        L.push(''); L.push('Нарушенные требования:');
-        r.requirements.forEach(function (q, i) { L.push('  ' + (i + 1) + '. ' + (q.text || q) + (q.source ? ' [' + q.source + ']' : '')); });
-    }
-    L.push(''); L.push('Компенсирующие меры:');
-    ['organizational','technical','administrative','controlling'].forEach(function (t) {
-        var arr = r.measures[t] || []; if (!arr.length) return;
-        L.push('  ' + TYPE_META[t].label + ':');
-        arr.forEach(function (m, i) {
-            L.push('    ' + (i + 1) + ') ' + m.name);
-            if (m.description) L.push('       ' + m.description);
-            if (m.justification) L.push('       Обоснование: ' + m.justification);
-            if (m.effect) L.push('       Ожидаемый эффект: ' + m.effect);
-        });
-    });
-    if ((r.deadlines || []).length) {
-        L.push(''); L.push('Сроки реализации:');
-        r.deadlines.forEach(function (d) { L.push('  • ' + (d.measure || d.name) + ' — ' + (d.term || d.deadline)); });
-    }
-    return L.join('\n');
-}
-function exportReport() {
-    var txt = reportText(); if (!txt) return;
-    var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-    var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'Меры_информационной_безопасности_отчёт.txt'; a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-}
-function copyReport() {
-    var txt = reportText(); if (!txt) return;
-    GigaChat.copyToClipboard(txt).then(function (ok) { document.getElementById('actMsg').innerHTML = ok ? (ICON_OK + ' Скопировано') : 'Не удалось скопировать'; });
-}
-
-// ---- сброс ----
-function resetAll() {
-    document.getElementById('fViolation').value = '';
-    document.getElementById('fDescription').value = '';
-    document.getElementById('fObject').value = '';
-    document.getElementById('fChecks').value = '';
-    selectedFile = null; document.getElementById('fileName').textContent = '';
-    document.getElementById('fileInput').value = '';
-    document.getElementById('result').classList.remove('show');
-    document.getElementById('errorBox').style.display = 'none';
-    document.getElementById('progressBar').classList.remove('show');
-}
-
-// ---- встроенный пример (демо без бэкенда) ----
-function loadExample() {
-    switchMode('form');
-    document.getElementById('fViolation').value = 'Отсутствует резервное копирование критически важных серверов';
-    document.getElementById('fDescription').value = 'Для группы критичных серверов не настроено резервное копирование; восстановление данных при сбое или шифровальщике не гарантировано.';
-    document.getElementById('fObject').value = 'Серверная инфраструктура (критичные серверы и СУБД)';
-    pickSeg('segCrit', document.querySelector('#segCrit [data-v=critical]'));
-    pickSeg('segRisk', document.querySelector('#segRisk [data-v=critical]'));
-    render({
-        violation: 'Отсутствует резервное копирование критически важных серверов',
-        category: 'Резервное копирование', criticality: 'critical',
-        processes: ['Восстановление данных', 'Непрерывность деятельности', 'Хранение данных'],
-        risk_level: 'critical', residual_risk: 'low',
-        requirements: [{ text: 'Обеспечить резервное копирование и восстановление информации критичных систем.', source: 'Политика информационной безопасности, разд. «Резервное копирование» (пример — заменить реальным пунктом ГОСТ/приказа)' }],
-        measures: {
-            technical: [{ name: 'Внедрить автоматизированное резервное копирование', description: 'Настроить ежедневное автоматическое резервное копирование критичных серверов и СУБД.', justification: 'Автоматизация исключает человеческий фактор и обеспечивает регулярность копий.', effect: 'Гарантированное восстановление данных' }],
-            organizational: [{ name: 'Организовать хранение копий на отдельной площадке', description: 'Хранить резервные копии географически отдельно (offsite / отдельный сегмент сети).', justification: 'Защищает копии при физическом инциденте на основной площадке.', effect: 'Сохранность копий при инциденте' }],
-            controlling: [{ name: 'Проводить ежеквартальную проверку восстановления', description: 'Регулярно тест-восстанавливать данные из копий и фиксировать результат.', justification: 'Подтверждает реальную работоспособность процедуры восстановления.', effect: 'Подтверждённая восстановимость' }],
-            administrative: [{ name: 'Назначить ответственных за контроль процедур', description: 'Закрепить приказом ответственных за выполнение и контроль резервного копирования.', justification: 'Персональная ответственность обеспечивает исполнимость процедур.', effect: 'Исполнимость и подотчётность' }]
-        },
-        deadlines: [
-            { measure: 'Внедрить автоматизированное резервное копирование', term: '14 дней' },
-            { measure: 'Организовать offsite-хранение копий', term: '30 дней' },
-            { measure: 'Назначить ответственных', term: '7 дней' },
-            { measure: 'Первая проверка восстановления', term: '45 дней' }
-        ]
-    });
-    document.getElementById('actMsg') && (document.getElementById('actMsg').textContent = '');
-}
-
-// ===================== РАЗДЕЛЫ: Анализ / История / База знаний =====================
-var KB_URL = GigaChat.webhookUrl('compliance-kb');
-var kbCache = null; // {violations, measures, requirements, risks, norms}
-
-function switchView(v) {
-    document.querySelectorAll('.nav-tab').forEach(function (b) { b.classList.toggle('active', b.dataset.view === v); });
-    document.querySelectorAll('.view').forEach(function (el) { el.classList.remove('show'); });
-    var el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
-    if (el) el.classList.add('show');
-    if (v === 'history') loadHistory();
-    if (v === 'kb') loadKb();
-}
-
-// -------- История --------
-async function loadHistory() {
-    var box = document.getElementById('histList');
-    box.innerHTML = '<div class="empty-hint">Загрузка…</div>';
-    try {
-        var res = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ action: 'history', token: GigaChat.auth.getToken() }) });
-        var d = await res.json();
-        var items = (d && d.incidents) || [];
-        if (!items.length) { box.innerHTML = '<div class="empty-hint">Пока нет разборов. Сформируйте меры на вкладке «Анализ нарушения».</div>'; return; }
-        var ST = { draft: 'черновик', approved: 'утверждён', rejected: 'отклонён' };
-        box.innerHTML = items.map(function (it, i) {
-            return '<div class="hist-item" onclick="openHistory(' + i + ')">' +
-                '<div style="flex:1;min-width:0"><div class="h-t">' + esc(it.violation || '—') + '</div>' +
-                '<div class="h-m">' + esc(it.created || '') + ' · ' + esc(it.category || '') + ' · ' + (ST[it.status] || it.status || '') + '</div></div>' +
-                '<span class="badge ' + (it.criticality || 'medium') + '" style="font-size:10.5px">' + (CRIT_RU[it.criticality] || it.criticality || '') + '</span></div>';
-        }).join('');
-        window._histItems = items;
-    } catch (e) { box.innerHTML = '<div class="empty-hint">Не удалось загрузить историю (сервис недоступен).</div>'; }
-}
-function openHistory(i) {
-    var it = (window._histItems || [])[i]; if (!it) return;
-    var rep = it.report; if (typeof rep === 'string') { try { rep = JSON.parse(rep); } catch (e) { rep = null; } }
-    if (!rep || !rep.measures) { alert('Отчёт по этой записи недоступен.'); return; }
-    switchView('analyze');
-    render(normalize(rep, null));
-}
-
-// -------- База знаний --------
-function kbSub(s) {
-    document.querySelectorAll('.kb-subtab').forEach(function (b) { b.classList.toggle('active', b.dataset.kb === s); });
-    var map = { vio: 'kbVio', meas: 'kbMeas', req: 'kbReq', norm: 'kbNorm' };
-    document.querySelectorAll('.kb-pane').forEach(function (p) { p.classList.remove('show'); });
-    document.getElementById(map[s]).classList.add('show');
-}
-async function kbCall(payload) {
-    payload.token = GigaChat.auth.getToken();
-    var res = await fetch(KB_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify(payload) });
-    var d = null; try { d = await res.json(); } catch (e) {}
-    return d || { ok: false, error: 'Сервер вернул ' + res.status };
-}
-function kbMsg(id, ok, text) { var el = document.getElementById(id); el.innerHTML = (ok ? ICON_OK + ' ' : '') + esc(text); el.style.color = ok ? '' : 'var(--danger,#e5484d)'; }
-
-async function loadKb() {
-    var box = document.getElementById('kbContents');
-    if (!kbCache) box.innerHTML = '<div class="empty-hint">Загрузка…</div>';
-    var d = await kbCall({ action: 'kb_list' });
-    if (!d.ok) { box.innerHTML = '<div class="empty-hint">' + esc(d.error || 'Не удалось загрузить') + '</div>'; return; }
-    kbCache = d;
-    // чекбоксы мер в форме нарушения
-    var mc = document.getElementById('kbvMeasures');
-    mc.innerHTML = (d.measures || []).length ? (d.measures.map(function (m) {
-        return '<label><input type="checkbox" value="' + m.id + '"> ' + esc(m.name) + '</label>';
-    }).join('')) : '<span class="muted">Сначала добавьте меры.</span>';
-    // список содержимого
-    function grp(title, arr, type, label) {
-        if (!arr || !arr.length) return '';
-        return '<div class="kb-group-title">' + title + ' (' + arr.length + ')</div>' + arr.map(label).join('');
-    }
-    var html = '';
-    html += grp('Нарушения', d.violations, 'violation', function (v) {
-        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc(v.title) + '</div><div class="k-m">' + esc(v.category || '') + ' · ' + (CRIT_RU[v.criticality] || '') + (v.has_vec ? ' · ✓ вектор' : ' · без вектора') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'violation\',' + v.id + ',null,this)">×</button></div>';
-    });
-    html += grp('Меры', d.measures, 'measure', function (m) {
-        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc(m.name) + '</div><div class="k-m">' + esc(m.type || '') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'measure\',' + m.id + ',null,this)">×</button></div>';
-    });
-    html += grp('Требования', d.requirements, 'requirement', function (r) {
-        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc((r.text || '').slice(0, 120)) + '</div><div class="k-m">' + esc(r.source || '') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'requirement\',' + r.id + ',null,this)">×</button></div>';
-    });
-    html += grp('Нормативные документы', d.norms, 'norm', function (n) {
-        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc(n.doc_name) + '</div><div class="k-m">' + (n.chunks || 0) + ' фрагм.' + (n.has_vec ? ' · ✓ вектор' : '') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'norm\',null,\'' + esc((n.doc_name || '').replace(/\x27/g, '')) + '\',this)">×</button></div>';
-    });
-    box.innerHTML = html || '<div class="empty-hint">База знаний пуста.</div>';
-}
-async function kbDelete(entity, id, doc_name, btn) {
-    if (!confirm('Удалить эту запись из Базы знаний?')) return;
-    if (btn) btn.disabled = true;
-    var d = await kbCall({ action: 'kb_delete', entity: entity, id: id || 0, doc_name: doc_name || '' });
-    if (d.ok) { kbCache = null; loadKb(); } else { alert('Не удалось удалить: ' + (d.error || d.message || '')); if (btn) btn.disabled = false; }
-}
-async function kbAddViolation() {
-    var title = document.getElementById('kbvTitle').value.trim();
-    if (!title) { kbMsg('kbvMsg', false, 'Укажите название нарушения'); return; }
-    var mids = Array.prototype.slice.call(document.querySelectorAll('#kbvMeasures input:checked')).map(function (c) { return parseInt(c.value, 10); });
-    kbMsg('kbvMsg', false, 'Сохранение…');
-    var d = await kbCall({ action: 'kb_add_violation', title: title, category: document.getElementById('kbvCat').value.trim(),
-        processes: document.getElementById('kbvProc').value.trim(), description: document.getElementById('kbvDesc').value.trim(),
-        criticality: seg.kbvCrit || 'medium', measure_ids: mids });
-    if (d.ok) { kbMsg('kbvMsg', true, d.message || 'Сохранено'); document.getElementById('kbvTitle').value = ''; document.getElementById('kbvDesc').value = ''; kbCache = null; loadKb(); }
-    else kbMsg('kbvMsg', false, d.error || 'Ошибка');
-}
-async function kbAddMeasure() {
-    var name = document.getElementById('kbmName').value.trim();
-    if (!name) { kbMsg('kbmMsg', false, 'Укажите название меры'); return; }
-    kbMsg('kbmMsg', false, 'Сохранение…');
-    var d = await kbCall({ action: 'kb_add_measure', mtype: seg.kbmType || 'organizational', name: name,
-        description: document.getElementById('kbmDesc').value.trim(), effect: document.getElementById('kbmEff').value.trim() });
-    if (d.ok) { kbMsg('kbmMsg', true, d.message || 'Сохранено'); document.getElementById('kbmName').value = ''; document.getElementById('kbmDesc').value = ''; document.getElementById('kbmEff').value = ''; kbCache = null; loadKb(); }
-    else kbMsg('kbmMsg', false, d.error || 'Ошибка');
-}
-async function kbAddRequirement() {
-    var text = document.getElementById('kbrText').value.trim();
-    if (!text) { kbMsg('kbrMsg', false, 'Укажите текст требования'); return; }
-    kbMsg('kbrMsg', false, 'Сохранение…');
-    var d = await kbCall({ action: 'kb_add_requirement', text: text, norm_ref: document.getElementById('kbrRef').value.trim(), criticality: 'medium' });
-    if (d.ok) { kbMsg('kbrMsg', true, d.message || 'Сохранено'); document.getElementById('kbrText').value = ''; kbCache = null; loadKb(); }
-    else kbMsg('kbrMsg', false, d.error || 'Ошибка');
-}
-async function kbNormFile(input) {
-    var f = input.files && input.files[0]; if (!f) return;
-    var msg = document.getElementById('kbnFileMsg'); msg.textContent = 'Извлекаю текст…';
-    try {
-        var txt = '';
-        if (GigaChat.canExtractInBrowser && GigaChat.canExtractInBrowser(f.name)) { txt = await GigaChat.extractBrowserText(f); }
-        else if (/\.(txt|csv|md)$/i.test(f.name)) { txt = await f.text(); }
-        else { msg.textContent = 'Этот формат разбирается на сервере — вставьте текст вручную.'; return; }
-        document.getElementById('kbnText').value = txt || '';
-        if (!document.getElementById('kbnName').value.trim()) document.getElementById('kbnName').value = f.name.replace(/\.[^.]+$/, '');
-        msg.textContent = txt ? ('Текст извлечён (' + txt.length + ' симв.)') : 'Текст не извлечён';
-    } catch (e) { msg.textContent = 'Не удалось извлечь текст — вставьте вручную.'; }
-}
-async function kbAddNorm() {
-    var name = document.getElementById('kbnName').value.trim();
-    var text = document.getElementById('kbnText').value.trim();
-    if (!name || !text) { kbMsg('kbnMsg', false, 'Укажите название и текст документа'); return; }
-    kbMsg('kbnMsg', false, 'Сохранение и векторизация…');
-    var d = await kbCall({ action: 'kb_add_norm', doc_name: name, doc_version: document.getElementById('kbnVer').value.trim(),
-        section: document.getElementById('kbnSection').value.trim(), text: text });
-    if (d.ok) { kbMsg('kbnMsg', true, d.message || 'Сохранено'); document.getElementById('kbnText').value = ''; kbCache = null; loadKb(); }
-    else kbMsg('kbnMsg', false, d.error || 'Ошибка');
-}
-</script>
-</body>
-</html>
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Меры информационной безопасности — GigaChat</title>
+<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+<style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
+<style>
+:root {
+    --bg-primary: #0c0c0c; --bg-secondary: #08080a; --bg-input: #161617; --bg-card: #08080a;
+    --border: rgba(255, 255, 255, .08); --text-primary: #ececea; --text-secondary: #9b9b96; --text-muted: #6c6c66;
+    --accent: #1d414e; --accent-hover: #536e77; --accent-light: rgba(212,165,116,0.12);
+    --success: #10b981; --warning: #f59e0b; --orange: #f97316; --error: #ef4444;
+    --bg-hover: rgba(212,165,116,0.08);
+}
+:root[data-theme="light"] {
+    --bg-primary: #fafaf7; --bg-secondary: #f4f3ee; --bg-input: #ffffff; --bg-card: #ffffff;
+    --border: rgba(15, 15, 12, .09); --text-primary: #1a1a17; --text-secondary: #6b6a64; --text-muted: #a09e96;
+    --accent: #1d414e; --accent-hover: #2b4d59; --accent-light: rgba(184,137,93,0.15);
+    --bg-hover: rgba(184,137,93,0.07);
+}
+/* Базовый shell (body/header/main/btn-home/status-bar/btn-primary/drop-zone/loading/
+   progress-bar/error-box) — из GigaChat.injectToolCss(). Ниже — кастом этого агента. */
+
+/* ===== Карточка-обёртка ===== */
+.panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
+.panel h2.sec { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .8px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
+.panel h2.sec svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; }
+
+/* ===== Переключатель режима ввода ===== */
+.mode-tabs { display: inline-flex; gap: 4px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 4px; margin-bottom: 16px; }
+.mode-tab { padding: 8px 16px; border-radius: 7px; font-size: 13.5px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border: none; background: transparent; transition: all .18s; display: inline-flex; align-items: center; gap: 7px; }
+.mode-tab svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
+.mode-tab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-light); }
+.mode-tab:not(.active):hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.mode-pane { display: none; animation: fadeUp .25s ease; }
+.mode-pane.show { display: block; }
+
+/* ===== Форма ===== */
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.field label .req { color: var(--accent); }
+.field input[type=text], .field textarea {
+    width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: 9px; color: var(--text-primary); padding: 11px 13px; font-size: 14px; font-family: inherit;
+    outline: none; transition: border-color .15s; resize: vertical;
+}
+.field textarea { min-height: 86px; line-height: 1.5; }
+.field input:focus, .field textarea:focus { border-color: var(--accent); }
+.field-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.field-row > .field { flex: 1; min-width: 200px; }
+
+/* Сегментированный выбор критичности/риска */
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg-btn { padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--bg-input); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; }
+.seg-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.seg-btn.active { color: #fff; border-color: transparent; }
+.seg-btn.active[data-v=low]      { background: var(--success); }
+.seg-btn.active[data-v=medium]   { background: var(--warning); }
+.seg-btn.active[data-v=high]     { background: var(--orange); }
+.seg-btn.active[data-v=critical] { background: var(--error); }
+
+/* ===== Кнопки действий ===== */
+.actions-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn-ghost { padding: 11px 18px; border-radius: 9px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 13.5px; font-weight: 500; cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 7px; }
+.btn-ghost svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
+
+/* ===== Результат ===== */
+#result { display: none; }
+#result.show { display: block; }
+.reveal { animation: fadeUp .4s ease both; }
+
+.vio-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.vio-title { font-size: 19px; font-weight: 600; color: var(--text-primary); line-height: 1.3; margin: 0 0 8px; }
+.chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.chip { font-size: 12px; padding: 4px 11px; border-radius: 20px; background: var(--accent-light); color: var(--accent); font-weight: 500; border: 1px solid var(--accent-light); }
+.chip.proc { background: var(--bg-input); color: var(--text-secondary); border-color: var(--border); }
+
+.badge { font-size: 12px; font-weight: 700; padding: 5px 13px; border-radius: 8px; color: #fff; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+.badge.low { background: var(--success); } .badge.medium { background: var(--warning); }
+.badge.high { background: var(--orange); } .badge.critical { background: var(--error); }
+
+/* Шкала риска */
+.gauge { margin-top: 6px; }
+.gauge-track { display: flex; gap: 4px; height: 10px; }
+.gauge-seg { flex: 1; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border); transition: all .5s; }
+.gauge-seg.on.low { background: var(--success); border-color: var(--success); }
+.gauge-seg.on.medium { background: var(--warning); border-color: var(--warning); }
+.gauge-seg.on.high { background: var(--orange); border-color: var(--orange); }
+.gauge-seg.on.critical { background: var(--error); border-color: var(--error); }
+.gauge-labels { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-muted); margin-top: 5px; }
+
+.risk-row { display: flex; gap: 22px; flex-wrap: wrap; }
+.risk-box { flex: 1; min-width: 220px; }
+.risk-box .lbl { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
+
+/* Требования */
+.req-item { display: flex; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.req-item:last-child { border-bottom: none; }
+.req-item .num { flex: 0 0 22px; height: 22px; border-radius: 6px; background: var(--accent-light); color: var(--accent); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.req-item .body { flex: 1; }
+.req-item .txt { font-size: 14px; color: var(--text-primary); line-height: 1.45; }
+.req-item .src { font-size: 12px; color: var(--accent); margin-top: 4px; }
+
+/* Меры — вкладки по типам */
+.mtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.mtab { padding: 9px 15px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-input); cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary); transition: all .15s; display: inline-flex; align-items: center; gap: 8px; }
+.mtab .cnt { font-size: 11px; font-weight: 700; min-width: 18px; height: 18px; border-radius: 9px; background: var(--border); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
+.mtab.active { border-color: var(--accent); color: var(--text-primary); background: var(--bg-hover); }
+.mtab.active .cnt { background: var(--accent); color: #fff; }
+.mtab:hover:not(.active) { color: var(--text-primary); }
+
+.mgroup { display: none; }
+.mgroup.show { display: block; }
+.measure { border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; margin-bottom: 11px; background: var(--bg-input); transition: border-color .15s, transform .15s; cursor: pointer; }
+.measure:hover { border-color: var(--accent); }
+.measure .m-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.measure .m-name { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.35; }
+.measure .m-eff { font-size: 11.5px; color: var(--success); background: rgba(16,185,129,.12); padding: 4px 10px; border-radius: 14px; white-space: nowrap; font-weight: 500; }
+.measure .m-desc { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px; }
+.measure .m-just { font-size: 13px; color: var(--text-primary); line-height: 1.55; margin-top: 10px; padding: 10px 12px; background: var(--accent-light); border-radius: 8px; border-left: 3px solid var(--accent); display: none; }
+.measure.open .m-just { display: block; animation: fadeUp .22s ease; }
+.measure .m-toggle { font-size: 12px; color: var(--accent); margin-top: 9px; user-select: none; display: inline-flex; align-items: center; gap: 5px; }
+.measure .m-toggle svg { width: 13px; height: 13px; transition: transform .2s; stroke: currentColor; fill: none; stroke-width: 2.5; }
+.measure.open .m-toggle svg { transform: rotate(180deg); }
+
+/* Сроки */
+.dl-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.dl-item:last-child { border-bottom: none; }
+.dl-item .dl-m { color: var(--text-primary); flex: 1; }
+.dl-item .dl-t { color: var(--accent); font-weight: 600; white-space: nowrap; }
+
+/* История */
+.hist-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: all .15s; }
+.hist-item:hover { border-color: var(--accent); background: var(--bg-hover); }
+.hist-item .h-t { font-size: 13.5px; color: var(--text-primary); font-weight: 500; }
+.hist-item .h-m { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+.empty-hint { font-size: 13px; color: var(--text-muted); text-align: center; padding: 16px; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.muted { color: var(--text-muted); font-size: 12.5px; }
+
+/* Навигация по разделам */
+.topnav { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.nav-tab { background: none; border: none; padding: 10px 16px; font-size: 14px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; }
+.nav-tab:hover { color: var(--text-primary); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.view { display: none; }
+.view.show { display: block; animation: fadeUp .2s ease; }
+/* Подвкладки и формы базы знаний */
+.kb-subtabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.kb-subtab { background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all .15s; }
+.kb-subtab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.kb-pane { display: none; }
+.kb-pane.show { display: block; }
+.kb-checks { display: flex; flex-wrap: wrap; gap: 8px; max-height: 140px; overflow-y: auto; padding: 4px 0; }
+.kb-checks label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); border-radius: 7px; padding: 5px 9px; cursor: pointer; }
+.kb-msg { margin-left: 12px; }
+.kb-file-link { display: inline-block; margin-top: 7px; font-size: 12.5px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.kb-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px; }
+.kb-row .k-t { font-size: 13px; color: var(--text-primary); }
+.kb-row .k-m { font-size: 11px; color: var(--text-muted); }
+.kb-del { background: none; border: none; color: var(--danger, #e5484d); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+.kb-del:hover { background: rgba(229,72,77,.12); }
+.kb-group-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 7px; }
+/* Бейджи источника меры + summary */
+.m-src { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 20px; margin-left: 8px; vertical-align: 1px; }
+.m-src.ai { background: rgba(124,92,255,.16); color: #9d86ff; }
+.m-src.base { background: var(--bg-hover); color: var(--text-muted); }
+.ai-summary { display: flex; gap: 10px; align-items: flex-start; background: linear-gradient(90deg, rgba(124,92,255,.1), transparent); border: 1px solid rgba(124,92,255,.25); border-radius: 11px; padding: 12px 14px; margin-bottom: 14px; font-size: 13.5px; color: var(--text-primary); }
+.ai-summary svg { width: 18px; height: 18px; stroke: #9d86ff; fill: none; stroke-width: 2; flex: 0 0 auto; margin-top: 1px; }
+</style>
+<script src="_config.js"></script>
+<script src="_shared-guard.js"></script>
+<script src="_shared.js"></script>
+</head>
+<body>
+
+<header>
+    <div class="header-left"><a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a><h1>Меры информационной безопасности</h1></div>
+    <div class="header-right">
+        <div class="status-bar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
+    </div>
+</header>
+
+<main>
+    <nav class="topnav">
+        <button class="nav-tab active" data-view="analyze" onclick="switchView('analyze')">Анализ нарушения</button>
+        <button class="nav-tab" data-view="history" onclick="switchView('history')">История</button>
+        <button class="nav-tab" id="navKb" data-view="kb" onclick="switchView('kb')">База знаний</button>
+    </nav>
+
+    <div id="viewAnalyze" class="view show">
+    <div class="intro">
+        <h2>Что делает агент</h2>
+        <p>Принимает выявленное нарушение информационной безопасности — и формирует <b>компенсирующие меры</b> (организационные, технические, административные, контролирующие) с обоснованием, ссылками на нормативы и оценкой остаточного риска. Можно ввести описание вручную или загрузить акт проверки.</p>
+    </div>
+
+    <!-- ВВОД -->
+    <div class="panel">
+        <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="form" onclick="switchMode('form')"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Описание</button>
+            <button class="mode-tab" data-mode="file" onclick="switchMode('file')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Загрузить акт</button>
+        </div>
+
+        <!-- режим: форма -->
+        <div class="mode-pane show" id="paneForm">
+            <div class="field">
+                <label>Нарушение <span class="req">*</span></label>
+                <input type="text" id="fViolation" maxlength="500" placeholder="Краткая формулировка нарушения">
+            </div>
+            <div class="field">
+                <label>Описание нарушения</label>
+                <textarea id="fDescription" placeholder="Подробное описание: что выявлено, при каких условиях…"></textarea>
+            </div>
+            <div class="field-row">
+                <div class="field"><label>Объект контроля</label><input type="text" id="fObject" maxlength="300" placeholder="Система / сервер / процесс"></div>
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <label>Уровень критичности</label>
+                    <div class="seg" id="segCrit">
+                        <button class="seg-btn" data-v="low" onclick="pickSeg('segCrit',this)">Низкий</button>
+                        <button class="seg-btn active" data-v="medium" onclick="pickSeg('segCrit',this)">Средний</button>
+                        <button class="seg-btn" data-v="high" onclick="pickSeg('segCrit',this)">Высокий</button>
+                        <button class="seg-btn" data-v="critical" onclick="pickSeg('segCrit',this)">Критический</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Уровень риска</label>
+                    <div class="seg" id="segRisk">
+                        <button class="seg-btn" data-v="low" onclick="pickSeg('segRisk',this)">Низкий</button>
+                        <button class="seg-btn active" data-v="medium" onclick="pickSeg('segRisk',this)">Средний</button>
+                        <button class="seg-btn" data-v="high" onclick="pickSeg('segRisk',this)">Высокий</button>
+                        <button class="seg-btn" data-v="critical" onclick="pickSeg('segRisk',this)">Критический</button>
+                    </div>
+                </div>
+            </div>
+            <div class="field">
+                <label>Результаты проверок</label>
+                <textarea id="fChecks" placeholder="Выдержки из акта / заключения комиссии (необязательно)"></textarea>
+            </div>
+        </div>
+
+        <!-- режим: файл -->
+        <div class="mode-pane" id="paneFile">
+            <label class="drop-zone" id="uploadArea" for="fileInput">
+                <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></div>
+                <div class="title">Перетащите акт проверки сюда или нажмите</div>
+                <div class="hint">DOCX, PDF, XLSX, CSV, TXT (макс. 50 МБ)</div>
+                <div class="filename" id="fileName"></div>
+            </label>
+            <input type="file" id="fileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.rtf,.odt" onchange="fileSelected(this)">
+        </div>
+
+        <div class="actions-row" style="margin-top:6px">
+            <button class="btn-primary" id="analyzeBtn" onclick="analyze()" style="flex:0 0 auto;min-width:220px">Сформировать меры</button>
+            <button class="btn-ghost" onclick="loadExample()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Пример</button>
+            <button class="btn-ghost" onclick="resetAll()"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.4 2.6L3 8"/><path d="M3 3v5h5"/></svg>Сброс</button>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">
+        <div>Анализирую нарушение и подбираю меры...</div>
+        <div class="timer" id="timer">0 сек</div>
+        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+    </div>
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- РЕЗУЛЬТАТ -->
+    <div id="result"></div>
+    </div><!-- /viewAnalyze -->
+
+    <!-- ИСТОРИЯ -->
+    <div id="viewHistory" class="view">
+        <div class="panel">
+            <h2 class="sec" style="margin-top:0"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>История разборов</h2>
+            <p class="muted" style="margin:-4px 0 12px">Ваши прошлые анализы нарушений. Нажмите на запись, чтобы открыть отчёт.</p>
+            <div id="histList"><div class="empty-hint">Загрузка…</div></div>
+        </div>
+    </div>
+
+    <!-- БАЗА ЗНАНИЙ (только админ) -->
+    <div id="viewKb" class="view">
+        <div class="panel">
+            <h2 class="sec" style="margin-top:0"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>База знаний</h2>
+            <p class="muted" style="margin:-4px 0 12px">Пополняйте базу — на ней строятся меры и поиск нарушений. Каждая запись автоматически векторизуется для семантического поиска.</p>
+            <div class="kb-subtabs">
+                <button class="kb-subtab active" data-kb="vio" onclick="kbSub('vio')">Нарушение</button>
+                <button class="kb-subtab" data-kb="meas" onclick="kbSub('meas')">Мера</button>
+                <button class="kb-subtab" data-kb="req" onclick="kbSub('req')">Требование</button>
+                <button class="kb-subtab" data-kb="norm" onclick="kbSub('norm')">Нормативный документ</button>
+            </div>
+
+            <!-- добавить нарушение -->
+            <div class="kb-pane show" id="kbVio">
+                <div class="field"><label>Название нарушения <span class="req">*</span></label><input type="text" id="kbvTitle" maxlength="500" placeholder="Напр.: Отсутствует резервное копирование"></div>
+                <div class="field-row">
+                    <div class="field"><label>Категория</label><input type="text" id="kbvCat" maxlength="120" placeholder="Напр.: Резервное копирование"></div>
+                    <div class="field"><label>Затронутые процессы</label><input type="text" id="kbvProc" maxlength="200" placeholder="через ; — напр.: Хранение данных; Восстановление"></div>
+                </div>
+                <div class="field"><label>Описание</label><textarea id="kbvDesc" placeholder="Подробности (помогают семантическому поиску)"></textarea></div>
+                <div class="field"><label>Критичность</label><div class="seg" id="kbvCrit">
+                    <button class="seg-btn" data-v="low" onclick="pickSeg('kbvCrit',this)">Низкий</button>
+                    <button class="seg-btn active" data-v="medium" onclick="pickSeg('kbvCrit',this)">Средний</button>
+                    <button class="seg-btn" data-v="high" onclick="pickSeg('kbvCrit',this)">Высокий</button>
+                    <button class="seg-btn" data-v="critical" onclick="pickSeg('kbvCrit',this)">Критический</button>
+                </div></div>
+                <div class="field"><label>Связанные меры (необязательно)</label><div id="kbvMeasures" class="kb-checks"><span class="muted">список загрузится…</span></div></div>
+                <button class="btn-primary" onclick="kbAddViolation()" style="min-width:200px">Сохранить нарушение</button>
+                <span class="muted kb-msg" id="kbvMsg"></span>
+            </div>
+
+            <!-- добавить меру -->
+            <div class="kb-pane" id="kbMeas">
+                <div class="field"><label>Тип меры</label><div class="seg" id="kbmType">
+                    <button class="seg-btn active" data-v="organizational" onclick="pickSeg('kbmType',this)">Орг.</button>
+                    <button class="seg-btn" data-v="technical" onclick="pickSeg('kbmType',this)">Тех.</button>
+                    <button class="seg-btn" data-v="administrative" onclick="pickSeg('kbmType',this)">Адм.</button>
+                    <button class="seg-btn" data-v="controlling" onclick="pickSeg('kbmType',this)">Контр.</button>
+                </div></div>
+                <div class="field"><label>Название меры <span class="req">*</span></label><input type="text" id="kbmName" maxlength="500" placeholder="Напр.: Внедрить автоматизированное резервное копирование"></div>
+                <div class="field"><label>Описание</label><textarea id="kbmDesc" placeholder="Что конкретно сделать"></textarea></div>
+                <div class="field"><label>Ожидаемый эффект</label><input type="text" id="kbmEff" maxlength="500" placeholder="Что даст мера"></div>
+                <button class="btn-primary" onclick="kbAddMeasure()" style="min-width:200px">Сохранить меру</button>
+                <span class="muted kb-msg" id="kbmMsg"></span>
+            </div>
+
+            <!-- добавить требование -->
+            <div class="kb-pane" id="kbReq">
+                <div class="field"><label>Текст требования <span class="req">*</span></label><textarea id="kbrText" placeholder="Напр.: Обеспечить резервное копирование критичных систем"></textarea></div>
+                <div class="field"><label>Источник (документ, пункт)</label><input type="text" id="kbrRef" maxlength="500" placeholder="Напр.: Политика ИБ, разд. 5.2"></div>
+                <button class="btn-primary" onclick="kbAddRequirement()" style="min-width:200px">Сохранить требование</button>
+                <span class="muted kb-msg" id="kbrMsg"></span>
+            </div>
+
+            <!-- добавить нормативный документ -->
+            <div class="kb-pane" id="kbNorm">
+                <div class="field-row">
+                    <div class="field"><label>Название документа <span class="req">*</span></label><input type="text" id="kbnName" maxlength="500" placeholder="Напр.: ГОСТ Р 57580 / Политика ИБ"></div>
+                    <div class="field"><label>Версия / редакция</label><input type="text" id="kbnVer" maxlength="50" placeholder="Напр.: 2024"></div>
+                </div>
+                <div class="field"><label>Раздел (необязательно)</label><input type="text" id="kbnSection" maxlength="200" placeholder="Напр.: Раздел 7"></div>
+                <div class="field"><label>Текст документа <span class="req">*</span></label>
+                    <textarea id="kbnText" style="min-height:120px" placeholder="Вставьте текст нормативного документа — он будет нарезан на фрагменты и векторизован для семантического поиска требований."></textarea>
+                    <label class="kb-file-link" for="kbnFile">или загрузить файл (DOCX, PDF, TXT) — текст подставится сюда</label>
+                    <input type="file" id="kbnFile" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.rtf,.odt" onchange="kbNormFile(this)">
+                    <span class="muted" id="kbnFileMsg"></span>
+                </div>
+                <button class="btn-primary" onclick="kbAddNorm()" style="min-width:200px">Сохранить документ</button>
+                <span class="muted kb-msg" id="kbnMsg"></span>
+            </div>
+
+            <h2 class="sec" style="margin-top:20px"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Содержимое базы знаний</h2>
+            <div id="kbContents"><div class="empty-hint">Загрузка…</div></div>
+        </div>
+    </div>
+</main>
+
+<script>
+GigaChat.auth.requireAuth({ onOk: function () {
+    document.documentElement.classList.remove('gc-pending-auth');
+} });
+GigaChat.injectToolCss();
+var esc = GigaChat.escapeHtml;
+var ICON_DOC = '<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:2;vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+var ICON_OK = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--success);fill:none;stroke-width:2.6;vertical-align:-2px"><polyline points="20 6 9 17 4 12"/></svg>';
+var WEBHOOK_URL = GigaChat.webhookUrl('compliance');
+var statusDot = document.getElementById('statusDot'), statusText = document.getElementById('statusText');
+GigaChat.startHealthCheck(WEBHOOK_URL, statusDot, statusText);
+
+var MODE = 'form';
+var selectedFile = null;
+var seg = { crit: 'medium', risk: 'medium' };
+var lastResult = null;
+var lastIncidentId = null; // id инцидента из ответа analyze — нужен approve, чтобы перевести его в status='approved'
+var busy = false, timerInt = null, t0 = 0;
+
+var TYPE_META = {
+    organizational: { label: 'Организационные', icon: '<path d="M3 21h18M5 21V7l8-4 8 4v14M9 9h0M9 13h0M9 17h0"/>' },
+    technical:      { label: 'Технические',     icon: '<path d="M14.7 6.3a4 4 0 0 1-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5z"/>' },
+    administrative: { label: 'Административные', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>' },
+    controlling:    { label: 'Контролирующие',  icon: '<path d="M9 11l3 3 8-8"/><path d="M21 12a9 9 0 1 1-6.2-8.5"/>' }
+};
+var CRIT_RU = { low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический' };
+var CRIT_ORDER = ['low','medium','high','critical'];
+
+function switchMode(m) {
+    MODE = m;
+    document.querySelectorAll('.mode-tab').forEach(function (b) { b.classList.toggle('active', b.dataset.mode === m); });
+    document.getElementById('paneForm').classList.toggle('show', m === 'form');
+    document.getElementById('paneFile').classList.toggle('show', m === 'file');
+}
+function pickSeg(group, btn) {
+    var el = document.getElementById(group);
+    el.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var key = group === 'segCrit' ? 'crit' : (group === 'segRisk' ? 'risk' : group);
+    seg[key] = btn.dataset.v;
+}
+
+// ---- файл ----
+function hasFiles(e) { var t = e.dataTransfer && e.dataTransfer.types; if (!t) return false; for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true; return false; }
+var uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); uploadArea.classList.add('dragging'); });
+uploadArea.addEventListener('dragleave', function (e) { if (e.relatedTarget && uploadArea.contains(e.relatedTarget)) return; uploadArea.classList.remove('dragging'); });
+uploadArea.addEventListener('drop', function (e) { e.preventDefault(); uploadArea.classList.remove('dragging'); if (e.dataTransfer.files.length) { selectedFile = e.dataTransfer.files[0]; document.getElementById('fileName').textContent = selectedFile.name; } });
+function fileSelected(input) { if (input.files.length) { selectedFile = input.files[0]; document.getElementById('fileName').textContent = selectedFile.name; } }
+
+// ---- таймер/лоадер ----
+function startTimer() { t0 = Date.now(); var el = document.getElementById('timer'), pf = document.getElementById('progressFill'); timerInt = setInterval(function () { var s = Math.floor((Date.now() - t0) / 1000); el.textContent = s + ' сек'; pf.style.width = Math.min(95, (s / 30) * 100) + '%'; }, 500); }
+function stopTimer() { if (timerInt) { clearInterval(timerInt); timerInt = null; } document.getElementById('progressFill').style.width = '100%'; }
+
+// ---- анализ ----
+async function analyze() {
+    if (busy) return;
+    var payload;
+    if (MODE === 'form') {
+        var v = document.getElementById('fViolation').value.trim();
+        if (!v) { showErr('Укажите нарушение (поле обязательно).'); return; }
+        payload = {
+            violation: v,
+            description: document.getElementById('fDescription').value.trim(),
+            control_object: document.getElementById('fObject').value.trim(),
+            criticality: seg.crit, risk_level: seg.risk,
+            check_results: document.getElementById('fChecks').value.trim()
+        };
+    } else {
+        if (!selectedFile) { showErr('Загрузите файл акта проверки.'); return; }
+        var text = '';
+        try {
+            if (GigaChat.canExtractInBrowser && GigaChat.canExtractInBrowser(selectedFile.name)) {
+                text = await GigaChat.extractBrowserText(selectedFile);
+            }
+        } catch (e) { /* отдадим файл бэкенду как есть */ }
+        payload = { violation: selectedFile.name, description: text, criticality: seg.crit, risk_level: seg.risk, _filename: selectedFile.name };
+    }
+
+    busy = true; document.getElementById('analyzeBtn').disabled = true;
+    document.getElementById('errorBox').style.display = 'none';
+    document.getElementById('result').classList.remove('show');
+    document.getElementById('loading').classList.add('show');
+    document.getElementById('progressBar').classList.add('show');
+    startTimer();
+
+    try {
+        var res = await fetch(WEBHOOK_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify(Object.assign({ action: 'analyze', token: GigaChat.auth.getToken() }, payload))
+        });
+        if (res.status === 401 || res.status === 403) { stopTimer(); document.getElementById('loading').classList.remove('show'); GigaChat.auth.clearAuth(); GigaChat.auth.redirectToLogin(); return; }
+        if (!res.ok) throw new Error('Сервер вернул ' + res.status);
+        var data = await res.json();
+        if (data && data.auth_required) { stopTimer(); document.getElementById('loading').classList.remove('show'); GigaChat.auth.clearAuth(); GigaChat.auth.redirectToLogin(); return; }
+        stopTimer(); document.getElementById('loading').classList.remove('show');
+        lastIncidentId = (data && data.incident_id) || null;
+        render(normalize(data, payload));
+    } catch (e) {
+        stopTimer(); document.getElementById('loading').classList.remove('show');
+        showErr('Бэкенд агента ещё не настроен или недоступен (' + esc(e.message) + '). Нажмите «Пример», чтобы увидеть, как выглядит результат.');
+    } finally {
+        busy = false; document.getElementById('analyzeBtn').disabled = false;
+    }
+}
+
+function showErr(msg) { var b = document.getElementById('errorBox'); b.innerHTML = msg; b.style.display = 'block'; }
+
+// Приводим ответ бэкенда к единому виду (на случай разных схем).
+function normalize(data, payload) {
+    data = data || {};
+    var m = data.measures || {};
+    return {
+        violation: data.violation || (payload && payload.violation) || '—',
+        category: data.category || 'Не определена',
+        criticality: data.criticality || (payload && payload.criticality) || 'medium',
+        processes: data.processes || [],
+        risk_level: data.risk_level || (payload && payload.risk_level) || 'medium',
+        residual_risk: data.residual_risk || 'low',
+        requirements: data.requirements || [],
+        measures: {
+            organizational: m.organizational || [], technical: m.technical || [],
+            administrative: m.administrative || [], controlling: m.controlling || []
+        },
+        deadlines: data.deadlines || [],
+        summary: data.summary || '', match_method: data.match_method || '', ai_used: !!data.ai_used
+    };
+}
+
+// ---- рендер ----
+function render(r) {
+    lastResult = r;
+    var total = ['organizational','technical','administrative','controlling']
+        .reduce(function (a, t) { return a + (r.measures[t] || []).length; }, 0);
+
+    var html = '';
+    // 1. Нарушение
+    html += '<div class="panel reveal" style="animation-delay:.02s">' +
+        '<div class="vio-head"><div style="flex:1;min-width:240px">' +
+        '<div class="vio-title">' + esc(r.violation) + '</div>' +
+        '<div class="chips"><span class="chip">' + esc(r.category) + '</span>' +
+        (r.processes || []).map(function (p) { return '<span class="chip proc">' + esc(p) + '</span>'; }).join('') +
+        '</div></div>' +
+        '<span class="badge ' + r.criticality + '">' + (CRIT_RU[r.criticality] || r.criticality) + '</span></div></div>';
+
+    // Резюме от ИИ (если включился LLM)
+    if (r.summary) {
+        html += '<div class="ai-summary reveal" style="animation-delay:.04s"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21l2.3-7.4-6-4.6h7.6z"/></svg><div>' + esc(r.summary) + '</div></div>';
+    }
+
+    // 2. Риск
+    html += '<div class="panel reveal" style="animation-delay:.06s"><h2 class="sec"><svg viewBox="0 0 24 24"><path d="M12 2 2 7v6c0 5 4 9 10 11 6-2 10-6 10-11V7z"/></svg>Оценка риска</h2>' +
+        '<div class="risk-row">' +
+        '<div class="risk-box"><div class="lbl">Уровень риска нарушения</div>' + gauge(r.risk_level) + '</div>' +
+        '<div class="risk-box"><div class="lbl">Ожидаемый остаточный риск (после мер)</div>' + gauge(r.residual_risk) + '</div>' +
+        '</div></div>';
+
+    // 3. Нарушенные требования
+    if (r.requirements && r.requirements.length) {
+        html += '<div class="panel reveal" style="animation-delay:.1s"><h2 class="sec"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Нарушенные нормативные требования</h2>' +
+            r.requirements.map(function (q, i) {
+                return '<div class="req-item"><div class="num">' + (i + 1) + '</div><div class="body"><div class="txt">' + esc(q.text || q) + '</div>' +
+                    (q.source ? '<div class="src">' + ICON_DOC + ' ' + esc(q.source) + '</div>' : '') + '</div></div>';
+            }).join('') + '</div>';
+    }
+
+    // 4. Меры (вкладки)
+    html += '<div class="panel reveal" style="animation-delay:.14s"><h2 class="sec"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Компенсирующие меры (' + total + ')</h2>';
+    html += '<div class="mtabs">';
+    var firstType = null;
+    ['organizational','technical','administrative','controlling'].forEach(function (t) {
+        var n = (r.measures[t] || []).length;
+        if (n && !firstType) firstType = t;
+        html += '<button class="mtab" data-mt="' + t + '" onclick="showMtab(\'' + t + '\')">' +
+            '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--accent);fill:none;stroke-width:2">' + TYPE_META[t].icon + '</svg>' +
+            TYPE_META[t].label + '<span class="cnt">' + n + '</span></button>';
+    });
+    html += '</div>';
+    ['organizational','technical','administrative','controlling'].forEach(function (t) {
+        html += '<div class="mgroup" data-mg="' + t + '">';
+        var arr = r.measures[t] || [];
+        if (!arr.length) html += '<div class="empty-hint">Меры этого типа не сформированы.</div>';
+        arr.forEach(function (m, i) {
+            var srcBadge = m.source === 'ai' ? '<span class="m-src ai">ИИ</span>' : (m.source === 'base' ? '<span class="m-src base">базовая</span>' : '');
+            html += '<div class="measure" onclick="this.classList.toggle(\'open\')">' +
+                '<div class="m-head"><div class="m-name">' + esc(m.name || '') + srcBadge + '</div>' +
+                (m.effect ? '<div class="m-eff">' + esc(m.effect) + '</div>' : '') + '</div>' +
+                (m.description ? '<div class="m-desc">' + esc(m.description) + '</div>' : '') +
+                (m.justification ? '<div class="m-toggle">Обоснование <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div><div class="m-just">' + esc(m.justification) + '</div>' : '') +
+                '</div>';
+        });
+        html += '</div>';
+    });
+    html += '</div>';
+
+    // 5. Сроки
+    if (r.deadlines && r.deadlines.length) {
+        html += '<div class="panel reveal" style="animation-delay:.18s"><h2 class="sec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Рекомендуемые сроки реализации</h2>' +
+            r.deadlines.map(function (d) { return '<div class="dl-item"><div class="dl-m">' + esc(d.measure || d.name || '') + '</div><div class="dl-t">' + esc(d.term || d.deadline || '') + '</div></div>'; }).join('') + '</div>';
+    }
+
+    // 6. Действия
+    html += '<div class="panel reveal" style="animation-delay:.22s"><div class="actions-row">' +
+        '<button class="btn-ghost" onclick="approve()"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Утвердить</button>' +
+        '<button class="btn-ghost" onclick="exportReport()"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Экспорт отчёта</button>' +
+        '<button class="btn-ghost" onclick="copyReport()"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Копировать</button>' +
+        '<span class="muted" id="actMsg"></span>' +
+        '</div></div>';
+
+    var box = document.getElementById('result');
+    box.innerHTML = html;
+    box.classList.add('show');
+    // активируем первую непустую вкладку мер + анимируем шкалы
+    if (firstType) showMtab(firstType);
+    setTimeout(function () { box.querySelectorAll('.gauge-seg').forEach(function (s) { s.classList.add('on'); }); }, 60);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function gauge(level) {
+    var idx = CRIT_ORDER.indexOf(level); if (idx < 0) idx = 1;
+    // Сегменты до текущего уровня (включительно) получают класс уровня → красятся
+    // в render() при добавлении .on (анимация). Остальные остаются приглушёнными.
+    var segs = CRIT_ORDER.map(function (lv, i) {
+        return '<div class="gauge-seg' + (i <= idx ? ' ' + level : '') + '"></div>';
+    }).join('');
+    return '<div class="gauge"><div class="gauge-track">' + segs + '</div>' +
+        '<div class="gauge-labels"><span>Низкий</span><span>Средний</span><span>Высокий</span><span>Критич.</span></div>' +
+        '<div style="margin-top:7px"><span class="badge ' + level + '" style="font-size:11px">' + (CRIT_RU[level] || level) + '</span></div></div>';
+}
+function showMtab(t) {
+    document.querySelectorAll('.mtab').forEach(function (b) { b.classList.toggle('active', b.dataset.mt === t); });
+    document.querySelectorAll('.mgroup').forEach(function (g) { g.classList.toggle('show', g.dataset.mg === t); });
+}
+
+// ---- утвердить / экспорт / копировать ----
+async function approve() {
+    if (!lastResult) return;
+    var msg = document.getElementById('actMsg');
+    try {
+        // incident_id — чтобы бэкенд перевёл инцидент в status='approved' (а не только записал кейс)
+        var res = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ action: 'approve', token: GigaChat.auth.getToken(), result: lastResult, incident_id: lastIncidentId || '' }) });
+        var d = null; try { d = await res.json(); } catch (e2) {}
+        if (res.ok && d && d.ok) {
+            msg.innerHTML = ICON_OK + ' Утверждено — кейс добавлен в базу знаний';
+        } else {
+            msg.textContent = 'Не удалось утвердить: ' + ((d && (d.response || d.error)) || ('сервер вернул ' + res.status)) + '. Повтори позже.';
+        }
+    } catch (e) { msg.textContent = 'Не удалось утвердить — бэкенд недоступен. Повтори позже.'; }
+}
+function reportText() {
+    var r = lastResult; if (!r) return '';
+    var L = [];
+    L.push('ОТЧЁТ О КОМПЕНСИРУЮЩИХ МЕРАХ');
+    L.push('');
+    L.push('Нарушение: ' + r.violation);
+    L.push('Категория: ' + r.category + '   Критичность: ' + (CRIT_RU[r.criticality] || r.criticality));
+    if ((r.processes || []).length) L.push('Затронутые процессы: ' + r.processes.join('; '));
+    L.push('Уровень риска: ' + (CRIT_RU[r.risk_level] || r.risk_level) + '   Остаточный риск: ' + (CRIT_RU[r.residual_risk] || r.residual_risk));
+    if ((r.requirements || []).length) {
+        L.push(''); L.push('Нарушенные требования:');
+        r.requirements.forEach(function (q, i) { L.push('  ' + (i + 1) + '. ' + (q.text || q) + (q.source ? ' [' + q.source + ']' : '')); });
+    }
+    L.push(''); L.push('Компенсирующие меры:');
+    ['organizational','technical','administrative','controlling'].forEach(function (t) {
+        var arr = r.measures[t] || []; if (!arr.length) return;
+        L.push('  ' + TYPE_META[t].label + ':');
+        arr.forEach(function (m, i) {
+            L.push('    ' + (i + 1) + ') ' + m.name);
+            if (m.description) L.push('       ' + m.description);
+            if (m.justification) L.push('       Обоснование: ' + m.justification);
+            if (m.effect) L.push('       Ожидаемый эффект: ' + m.effect);
+        });
+    });
+    if ((r.deadlines || []).length) {
+        L.push(''); L.push('Сроки реализации:');
+        r.deadlines.forEach(function (d) { L.push('  • ' + (d.measure || d.name) + ' — ' + (d.term || d.deadline)); });
+    }
+    return L.join('\n');
+}
+function exportReport() {
+    var txt = reportText(); if (!txt) return;
+    var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'Меры_информационной_безопасности_отчёт.txt'; a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+}
+function copyReport() {
+    var txt = reportText(); if (!txt) return;
+    GigaChat.copyToClipboard(txt).then(function (ok) { document.getElementById('actMsg').innerHTML = ok ? (ICON_OK + ' Скопировано') : 'Не удалось скопировать'; });
+}
+
+// ---- сброс ----
+function resetAll() {
+    document.getElementById('fViolation').value = '';
+    document.getElementById('fDescription').value = '';
+    document.getElementById('fObject').value = '';
+    document.getElementById('fChecks').value = '';
+    selectedFile = null; document.getElementById('fileName').textContent = '';
+    document.getElementById('fileInput').value = '';
+    document.getElementById('result').classList.remove('show');
+    document.getElementById('errorBox').style.display = 'none';
+    document.getElementById('progressBar').classList.remove('show');
+}
+
+// ---- встроенный пример (демо без бэкенда) ----
+function loadExample() {
+    switchMode('form');
+    document.getElementById('fViolation').value = 'Отсутствует резервное копирование критически важных серверов';
+    document.getElementById('fDescription').value = 'Для группы критичных серверов не настроено резервное копирование; восстановление данных при сбое или шифровальщике не гарантировано.';
+    document.getElementById('fObject').value = 'Серверная инфраструктура (критичные серверы и СУБД)';
+    pickSeg('segCrit', document.querySelector('#segCrit [data-v=critical]'));
+    pickSeg('segRisk', document.querySelector('#segRisk [data-v=critical]'));
+    render({
+        violation: 'Отсутствует резервное копирование критически важных серверов',
+        category: 'Резервное копирование', criticality: 'critical',
+        processes: ['Восстановление данных', 'Непрерывность деятельности', 'Хранение данных'],
+        risk_level: 'critical', residual_risk: 'low',
+        requirements: [{ text: 'Обеспечить резервное копирование и восстановление информации критичных систем.', source: 'Политика информационной безопасности, разд. «Резервное копирование» (пример — заменить реальным пунктом ГОСТ/приказа)' }],
+        measures: {
+            technical: [{ name: 'Внедрить автоматизированное резервное копирование', description: 'Настроить ежедневное автоматическое резервное копирование критичных серверов и СУБД.', justification: 'Автоматизация исключает человеческий фактор и обеспечивает регулярность копий.', effect: 'Гарантированное восстановление данных' }],
+            organizational: [{ name: 'Организовать хранение копий на отдельной площадке', description: 'Хранить резервные копии географически отдельно (offsite / отдельный сегмент сети).', justification: 'Защищает копии при физическом инциденте на основной площадке.', effect: 'Сохранность копий при инциденте' }],
+            controlling: [{ name: 'Проводить ежеквартальную проверку восстановления', description: 'Регулярно тест-восстанавливать данные из копий и фиксировать результат.', justification: 'Подтверждает реальную работоспособность процедуры восстановления.', effect: 'Подтверждённая восстановимость' }],
+            administrative: [{ name: 'Назначить ответственных за контроль процедур', description: 'Закрепить приказом ответственных за выполнение и контроль резервного копирования.', justification: 'Персональная ответственность обеспечивает исполнимость процедур.', effect: 'Исполнимость и подотчётность' }]
+        },
+        deadlines: [
+            { measure: 'Внедрить автоматизированное резервное копирование', term: '14 дней' },
+            { measure: 'Организовать offsite-хранение копий', term: '30 дней' },
+            { measure: 'Назначить ответственных', term: '7 дней' },
+            { measure: 'Первая проверка восстановления', term: '45 дней' }
+        ]
+    });
+    document.getElementById('actMsg') && (document.getElementById('actMsg').textContent = '');
+}
+
+// ===================== РАЗДЕЛЫ: Анализ / История / База знаний =====================
+var KB_URL = GigaChat.webhookUrl('compliance-kb');
+var kbCache = null; // {violations, measures, requirements, risks, norms}
+
+function switchView(v) {
+    document.querySelectorAll('.nav-tab').forEach(function (b) { b.classList.toggle('active', b.dataset.view === v); });
+    document.querySelectorAll('.view').forEach(function (el) { el.classList.remove('show'); });
+    var el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
+    if (el) el.classList.add('show');
+    if (v === 'history') loadHistory();
+    if (v === 'kb') loadKb();
+}
+
+// -------- История --------
+async function loadHistory() {
+    var box = document.getElementById('histList');
+    box.innerHTML = '<div class="empty-hint">Загрузка…</div>';
+    try {
+        var res = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ action: 'history', token: GigaChat.auth.getToken() }) });
+        var d = await res.json();
+        var items = (d && d.incidents) || [];
+        if (!items.length) { box.innerHTML = '<div class="empty-hint">Пока нет разборов. Сформируйте меры на вкладке «Анализ нарушения».</div>'; return; }
+        var ST = { draft: 'черновик', approved: 'утверждён', rejected: 'отклонён' };
+        box.innerHTML = items.map(function (it, i) {
+            return '<div class="hist-item" onclick="openHistory(' + i + ')">' +
+                '<div style="flex:1;min-width:0"><div class="h-t">' + esc(it.violation || '—') + '</div>' +
+                '<div class="h-m">' + esc(it.created || '') + ' · ' + esc(it.category || '') + ' · ' + (ST[it.status] || it.status || '') + '</div></div>' +
+                '<span class="badge ' + (it.criticality || 'medium') + '" style="font-size:10.5px">' + (CRIT_RU[it.criticality] || it.criticality || '') + '</span></div>';
+        }).join('');
+        window._histItems = items;
+    } catch (e) { box.innerHTML = '<div class="empty-hint">Не удалось загрузить историю (сервис недоступен).</div>'; }
+}
+function openHistory(i) {
+    var it = (window._histItems || [])[i]; if (!it) return;
+    var rep = it.report; if (typeof rep === 'string') { try { rep = JSON.parse(rep); } catch (e) { rep = null; } }
+    if (!rep || !rep.measures) { alert('Отчёт по этой записи недоступен.'); return; }
+    switchView('analyze');
+    render(normalize(rep, null));
+}
+
+// -------- База знаний --------
+function kbSub(s) {
+    document.querySelectorAll('.kb-subtab').forEach(function (b) { b.classList.toggle('active', b.dataset.kb === s); });
+    var map = { vio: 'kbVio', meas: 'kbMeas', req: 'kbReq', norm: 'kbNorm' };
+    document.querySelectorAll('.kb-pane').forEach(function (p) { p.classList.remove('show'); });
+    document.getElementById(map[s]).classList.add('show');
+}
+async function kbCall(payload) {
+    payload.token = GigaChat.auth.getToken();
+    var res = await fetch(KB_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify(payload) });
+    var d = null; try { d = await res.json(); } catch (e) {}
+    return d || { ok: false, error: 'Сервер вернул ' + res.status };
+}
+function kbMsg(id, ok, text) { var el = document.getElementById(id); el.innerHTML = (ok ? ICON_OK + ' ' : '') + esc(text); el.style.color = ok ? '' : 'var(--danger,#e5484d)'; }
+
+async function loadKb() {
+    var box = document.getElementById('kbContents');
+    if (!kbCache) box.innerHTML = '<div class="empty-hint">Загрузка…</div>';
+    var d = await kbCall({ action: 'kb_list' });
+    if (!d.ok) { box.innerHTML = '<div class="empty-hint">' + esc(d.error || 'Не удалось загрузить') + '</div>'; return; }
+    kbCache = d;
+    // чекбоксы мер в форме нарушения
+    var mc = document.getElementById('kbvMeasures');
+    mc.innerHTML = (d.measures || []).length ? (d.measures.map(function (m) {
+        return '<label><input type="checkbox" value="' + m.id + '"> ' + esc(m.name) + '</label>';
+    }).join('')) : '<span class="muted">Сначала добавьте меры.</span>';
+    // список содержимого
+    function grp(title, arr, type, label) {
+        if (!arr || !arr.length) return '';
+        return '<div class="kb-group-title">' + title + ' (' + arr.length + ')</div>' + arr.map(label).join('');
+    }
+    var html = '';
+    html += grp('Нарушения', d.violations, 'violation', function (v) {
+        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc(v.title) + '</div><div class="k-m">' + esc(v.category || '') + ' · ' + (CRIT_RU[v.criticality] || '') + (v.has_vec ? ' · ✓ вектор' : ' · без вектора') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'violation\',' + v.id + ',null,this)">×</button></div>';
+    });
+    html += grp('Меры', d.measures, 'measure', function (m) {
+        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc(m.name) + '</div><div class="k-m">' + esc(m.type || '') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'measure\',' + m.id + ',null,this)">×</button></div>';
+    });
+    html += grp('Требования', d.requirements, 'requirement', function (r) {
+        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc((r.text || '').slice(0, 120)) + '</div><div class="k-m">' + esc(r.source || '') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'requirement\',' + r.id + ',null,this)">×</button></div>';
+    });
+    html += grp('Нормативные документы', d.norms, 'norm', function (n) {
+        return '<div class="kb-row"><div style="min-width:0"><div class="k-t">' + esc(n.doc_name) + '</div><div class="k-m">' + (n.chunks || 0) + ' фрагм.' + (n.has_vec ? ' · ✓ вектор' : '') + '</div></div><button class="kb-del" title="Удалить" onclick="kbDelete(\'norm\',null,\'' + esc((n.doc_name || '').replace(/\x27/g, '')) + '\',this)">×</button></div>';
+    });
+    box.innerHTML = html || '<div class="empty-hint">База знаний пуста.</div>';
+}
+async function kbDelete(entity, id, doc_name, btn) {
+    if (!confirm('Удалить эту запись из Базы знаний?')) return;
+    if (btn) btn.disabled = true;
+    var d = await kbCall({ action: 'kb_delete', entity: entity, id: id || 0, doc_name: doc_name || '' });
+    if (d.ok) { kbCache = null; loadKb(); } else { alert('Не удалось удалить: ' + (d.error || d.message || '')); if (btn) btn.disabled = false; }
+}
+async function kbAddViolation() {
+    var title = document.getElementById('kbvTitle').value.trim();
+    if (!title) { kbMsg('kbvMsg', false, 'Укажите название нарушения'); return; }
+    var mids = Array.prototype.slice.call(document.querySelectorAll('#kbvMeasures input:checked')).map(function (c) { return parseInt(c.value, 10); });
+    kbMsg('kbvMsg', false, 'Сохранение…');
+    var d = await kbCall({ action: 'kb_add_violation', title: title, category: document.getElementById('kbvCat').value.trim(),
+        processes: document.getElementById('kbvProc').value.trim(), description: document.getElementById('kbvDesc').value.trim(),
+        criticality: seg.kbvCrit || 'medium', measure_ids: mids });
+    if (d.ok) { kbMsg('kbvMsg', true, d.message || 'Сохранено'); document.getElementById('kbvTitle').value = ''; document.getElementById('kbvDesc').value = ''; kbCache = null; loadKb(); }
+    else kbMsg('kbvMsg', false, d.error || 'Ошибка');
+}
+async function kbAddMeasure() {
+    var name = document.getElementById('kbmName').value.trim();
+    if (!name) { kbMsg('kbmMsg', false, 'Укажите название меры'); return; }
+    kbMsg('kbmMsg', false, 'Сохранение…');
+    var d = await kbCall({ action: 'kb_add_measure', mtype: seg.kbmType || 'organizational', name: name,
+        description: document.getElementById('kbmDesc').value.trim(), effect: document.getElementById('kbmEff').value.trim() });
+    if (d.ok) { kbMsg('kbmMsg', true, d.message || 'Сохранено'); document.getElementById('kbmName').value = ''; document.getElementById('kbmDesc').value = ''; document.getElementById('kbmEff').value = ''; kbCache = null; loadKb(); }
+    else kbMsg('kbmMsg', false, d.error || 'Ошибка');
+}
+async function kbAddRequirement() {
+    var text = document.getElementById('kbrText').value.trim();
+    if (!text) { kbMsg('kbrMsg', false, 'Укажите текст требования'); return; }
+    kbMsg('kbrMsg', false, 'Сохранение…');
+    var d = await kbCall({ action: 'kb_add_requirement', text: text, norm_ref: document.getElementById('kbrRef').value.trim(), criticality: 'medium' });
+    if (d.ok) { kbMsg('kbrMsg', true, d.message || 'Сохранено'); document.getElementById('kbrText').value = ''; kbCache = null; loadKb(); }
+    else kbMsg('kbrMsg', false, d.error || 'Ошибка');
+}
+async function kbNormFile(input) {
+    var f = input.files && input.files[0]; if (!f) return;
+    var msg = document.getElementById('kbnFileMsg'); msg.textContent = 'Извлекаю текст…';
+    try {
+        var txt = '';
+        if (GigaChat.canExtractInBrowser && GigaChat.canExtractInBrowser(f.name)) { txt = await GigaChat.extractBrowserText(f); }
+        else if (/\.(txt|csv|md)$/i.test(f.name)) { txt = await f.text(); }
+        else { msg.textContent = 'Этот формат разбирается на сервере — вставьте текст вручную.'; return; }
+        document.getElementById('kbnText').value = txt || '';
+        if (!document.getElementById('kbnName').value.trim()) document.getElementById('kbnName').value = f.name.replace(/\.[^.]+$/, '');
+        msg.textContent = txt ? ('Текст извлечён (' + txt.length + ' симв.)') : 'Текст не извлечён';
+    } catch (e) { msg.textContent = 'Не удалось извлечь текст — вставьте вручную.'; }
+}
+async function kbAddNorm() {
+    var name = document.getElementById('kbnName').value.trim();
+    var text = document.getElementById('kbnText').value.trim();
+    if (!name || !text) { kbMsg('kbnMsg', false, 'Укажите название и текст документа'); return; }
+    kbMsg('kbnMsg', false, 'Сохранение и векторизация…');
+    var d = await kbCall({ action: 'kb_add_norm', doc_name: name, doc_version: document.getElementById('kbnVer').value.trim(),
+        section: document.getElementById('kbnSection').value.trim(), text: text });
+    if (d.ok) { kbMsg('kbnMsg', true, d.message || 'Сохранено'); document.getElementById('kbnText').value = ''; kbCache = null; loadKb(); }
+    else kbMsg('kbnMsg', false, d.error || 'Ошибка');
+}
+</script>
+</body>
+</html>
+
+

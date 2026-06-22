@@ -1,461 +1,463 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Загрузка документов — GigaChat</title>
-<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
-<style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
-<style>
-:root {
-    --bg-primary: #1f1f1e;
-    --bg-secondary: #1f1e1c;
-    --bg-input: #2c2c2a;
-    --bg-card: #1f1e1c;
-    --border: #363432;
-    --text-primary: #d4d4d4;
-    --text-secondary: #8a8a8a;
-    --text-muted: #5a5a5a;
-    --accent: #d4a574;
-    --accent-hover: #c08a5a;
-    --accent-light: rgba(212, 165, 116, 0.12);
-    --success: #10b981;
-    --warning: #f59e0b;
-    --error: #ef4444;
-}
-:root[data-theme="light"] {
-    --bg-primary: #fdfdfc;
-    --bg-secondary: #f3f1ec;
-    --bg-input: #fffffe;
-    --bg-card: #fffffe;
-    --border: #e3dfd5;
-    --text-primary: #1f1f1e;
-    --text-secondary: #6b6b68;
-    --text-muted: #a8a59f;
-    --accent: #b8895d;
-    --accent-hover: #a0764d;
-    --accent-light: rgba(184, 137, 93, 0.15);
-}
-/* Общие стили tool-страницы — в _shared.js через GigaChat.injectToolCss().
-   Здесь — только per-page правила (#result, .history) и html scrollbar. */
-html {
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-}
-html::-webkit-scrollbar { width: 5px; }
-html::-webkit-scrollbar-track { background: transparent; }
-html::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-html::-webkit-scrollbar-thumb:hover { background: var(--accent); }
-/* doc-loader: контент уже 800px (в shared 900px — переопределяем). */
-main { max-width: 800px; }
-#fileInput { display: none; }
-/* #result — цветной info-блок (отличается от shared .error-box: успех, варн, ошибка). */
-#result {
-    display: none;
-    padding: 20px 24px;
-    border-radius: 12px;
-    line-height: 1.7;
-    font-size: 14px;
-    white-space: pre-wrap;
-    margin-bottom: 16px;
-}
-#result.success { background: rgba(16, 185, 129, 0.10); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; }
-#result.error { background: rgba(239, 68, 68, 0.10); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--error); }
-#result.warning { background: rgba(245, 158, 11, 0.10); border: 1px solid rgba(245, 158, 11, 0.4); color: var(--warning); }
-/* Отступ под кнопкой «Загрузить другой документ» — чтобы не прилипала к .history снизу. */
-.reset-btn.show { margin-bottom: 16px; }
-/* .history — список загруженных файлов в этой сессии. Только в doc-loader. */
-.history { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: none; }
-.history.show { display: block; }
-.history-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: var(--bg-input); border-bottom: 1px solid var(--border); }
-.history-head h3 { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.5px; font-weight: 600; margin: 0; padding: 0; background: none; border: none; }
-.history-clear-btn { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: 6px; font-size: 11.5px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
-.history-clear-btn:hover { color: var(--error); border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); }
-.history-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
-.history-item:last-child { border-bottom: none; }
-.history-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
-.history-item .info { color: var(--text-muted); font-size: 12px; font-family: Consolas, monospace; flex-shrink: 0; }
-/* R8.100: «или выбрать папку целиком» — линк под drop-zone (как в file-merger). */
-.or-folder { text-align: center; margin: -8px 0 16px; font-size: 13px; color: var(--text-secondary); }
-.or-folder a { color: var(--accent); cursor: pointer; text-decoration: none; border-bottom: 1px dashed var(--accent); padding-bottom: 1px; }
-.or-folder a:hover { color: var(--accent-hover); border-color: var(--accent-hover); }
-
-</style>
-<script src="_config.js"></script>
-<script src="_shared-guard.js"></script>
-<script src="_shared.js"></script>
-<script src="lib/jszip.min.js"></script>
-</head>
-<body>
-
-<header>
-    <div class="header-left"><a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a><h1>Загрузка документов</h1></div>
-    <div class="header-right">
-        <div class="status-bar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
-    </div>
-</header>
-
-<main>
-    <div class="intro">
-        <h2>Что делает инструмент</h2>
-        <p>Загружает документ в <b>базу данных</b> для поиска по смыслу — после загрузки документ можно искать через <b>агента по документам</b>, задавая вопросы по содержимому.</p>
-        <p>Принимаются <code>.pdf</code>, <code>.doc</code>, <code>.docx</code>, <code>.xls</code>, <code>.xlsx</code>, <code>.ppt</code>, <code>.pptx</code>, <code>.txt</code>, <code>.rtf</code>, <code>.odt</code>, изображения. Максимум — 50 МБ.</p>
-    </div>
-
-    <label class="drop-zone" id="uploadArea" for="fileInput">
-        <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
-        <div class="title">Перетащите файл сюда или нажмите для выбора</div>
-        <div class="hint">PDF, Word, Excel, изображения (макс. 50 МБ)</div>
-        <div class="filename" id="fileName"></div>
-        <div class="filesize" id="fileSize"></div>
-    </label>
-
-    <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.odt,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp" onchange="fileSelected(this)">
-    <!-- R8.100: webkitdirectory отдельным input'ом — один input не может быть и files, и directory. -->
-    <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
-    <div class="or-folder">или <a id="pickFolderLink">выбрать папку целиком</a></div>
-
-    <button id="sendBtn" class="btn-primary" onclick="sendFile()" disabled>Загрузить в базу данных</button>
-
-    <div class="loading" id="loading">
-        <div>Обрабатываю документ: OCR → нарезка → эмбеддинг → сохранение</div>
-        <div class="timer" id="timer">0 сек</div>
-        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
-    </div>
-
-    <div id="result"></div>
-
-    <div class="reset-btn" id="resetBtn">
-        <button onclick="resetForm()">Загрузить другой документ</button>
-    </div>
-
-    <div class="history" id="history">
-        <div class="history-head">
-            <h3>Загруженные документы</h3>
-            <button class="history-clear-btn" onclick="clearHistory()" title="Очистить локальную историю в браузере (документы в базе данных не удаляются)">Очистить</button>
-        </div>
-        <div id="historyList"></div>
-    </div>
-</main>
-
-<script>
-    // Auth-gate: без токена → /login.html. После успеха снимаем mask.
-    GigaChat.auth.requireAuth({ onOk: function () {
-        document.documentElement.classList.remove('gc-pending-auth');
-    }});
-    GigaChat.injectToolCss();
-    var WEBHOOK_URL = GigaChat.webhookUrl('upload-doc');
-    var escapeHtml = GigaChat.escapeHtml; // ДО любых вызовов renderHistory
-
-    var FETCH_TIMEOUT_MS = 300000;
-    var selectedFiles = [];   // R8.100: мультизагрузка — отдельные файлы И папка целиком
-    var isProcessing = false;
-    var timerInterval = null;
-    var startTime = 0;
-    var ALLOWED_EXTENSIONS = ['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','rtf','odt','jpg','jpeg','png','tiff','tif','bmp','webp'];
-
-    var uploadArea = document.getElementById('uploadArea');
-    var sendBtn = document.getElementById('sendBtn');
-    var loading = document.getElementById('loading');
-    var result = document.getElementById('result');
-    var resetBtnDiv = document.getElementById('resetBtn');
-    var progressBar = document.getElementById('progressBar');
-    var progressFill = document.getElementById('progressFill');
-
-    var uploadHistory = [];
-    try {
-        var saved = localStorage.getItem('doc_upload_history');
-        if (saved) uploadHistory = JSON.parse(saved);
-    } catch(e) {}
-    renderHistory();
-
-    var statusDot = document.getElementById('statusDot');
-    var statusText = document.getElementById('statusText');
-    GigaChat.startHealthCheck(WEBHOOK_URL, statusDot, statusText);
-
-    // hasFiles: dragover на текст/ссылке/URL не должен подсвечивать зону
-    function hasFiles(e) {
-        var t = e.dataTransfer && e.dataTransfer.types;
-        if (!t) return false;
-        for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
-        return false;
-    }
-    uploadArea.addEventListener('dragover', function(e) {
-        if (!hasFiles(e)) return;
-        e.preventDefault();
-        uploadArea.classList.add('dragging');
-    });
-    uploadArea.addEventListener('dragleave', function(e) {
-        // relatedTarget — куда уходит курсор. Если внутрь uploadArea — не снимаем.
-        if (e.relatedTarget && uploadArea.contains(e.relatedTarget)) return;
-        uploadArea.classList.remove('dragging');
-    });
-    uploadArea.addEventListener('drop', function(e) {
-        e.preventDefault();
-        uploadArea.classList.remove('dragging');
-        if (e.dataTransfer.files.length > 0) addSelected(e.dataTransfer.files);
-    });
-
-    function fileSelected(input) {
-        if (input.files.length > 0) addSelected(input.files);
-        input.value = ''; // чтобы тот же файл/папку можно было выбрать снова
-    }
-
-    // R8.100: «выбрать папку целиком» (webkitdirectory) — как в file-merger.
-    // Отдельный #folderInput, т.к. один input не может быть и files, и directory.
-    var folderInput = document.getElementById('folderInput');
-    var pickFolderLink = document.getElementById('pickFolderLink');
-    if (pickFolderLink && folderInput) {
-        pickFolderLink.addEventListener('click', function (e) { e.preventDefault(); folderInput.click(); });
-        folderInput.addEventListener('change', function (e) {
-            if (e.target.files && e.target.files.length) addSelected(e.target.files);
-            folderInput.value = '';
-        });
-    }
-
-    // Собирает выбранное (файлы или папка рекурсивно): оставляет только
-    // поддерживаемые форматы и размер <= 50 МБ, остальное пропускает со счётчиком.
-    function addSelected(fileList) {
-        var picked = [], skippedExt = 0, skippedBig = 0;
-        for (var i = 0; i < fileList.length; i++) {
-            var f = fileList[i];
-            var ext = (f.name || '').split('.').pop().toLowerCase();
-            if (ALLOWED_EXTENSIONS.indexOf(ext) === -1) { skippedExt++; continue; }
-            if (f.size > 50 * 1024 * 1024) { skippedBig++; continue; }
-            picked.push(f);
-        }
-        selectedFiles = picked;
-        showFilesInfo(skippedExt, skippedBig);
-    }
-
-    function showFilesInfo(skippedExt, skippedBig) {
-        var nameEl = document.getElementById('fileName');
-        var sizeEl = document.getElementById('fileSize');
-        sizeEl.style.color = '';
-        var skipped = (skippedExt || 0) + (skippedBig || 0);
-        if (selectedFiles.length === 0) {
-            nameEl.textContent = 'Нет подходящих файлов';
-            var why = [];
-            if (skippedExt) why.push('формат: ' + skippedExt);
-            if (skippedBig) why.push('> 50 МБ: ' + skippedBig);
-            sizeEl.textContent = why.length ? ('пропущено — ' + why.join(', ')) : '';
-            sizeEl.style.color = 'var(--error)';
-            sendBtn.disabled = true;
-            return;
-        }
-        var totalBytes = 0;
-        for (var j = 0; j < selectedFiles.length; j++) totalBytes += selectedFiles[j].size;
-        var totalMB = (totalBytes / 1024 / 1024).toFixed(2);
-        if (selectedFiles.length === 1) {
-            nameEl.textContent = selectedFiles[0].name;
-            sizeEl.textContent = totalMB + ' МБ';
-        } else {
-            nameEl.textContent = 'Выбрано документов: ' + selectedFiles.length;
-            sizeEl.textContent = totalMB + ' МБ всего';
-        }
-        if (skipped) sizeEl.textContent += ' · пропущено: ' + skipped;
-        sendBtn.disabled = false;
-    }
-
-    // Браузерные парсеры (docx/xlsx/txt/md/log/csv) — в _shared.js: GigaChat.canExtractInBrowser,
-    // GigaChat.extractBrowserText. Локально дублировать не нужно — единая точка правды.
-
-    // R8.100: прогресс учитывает батч — завершённые файлы + анимация текущего.
-    // Для одного файла (batchTotal=1) поведение прежнее: ~до 95% за 120 сек.
-    var batchTotal = 1, batchDone = 0, fileStart = 0;
-    function startTimer() {
-        startTime = Date.now();
-        fileStart = Date.now();
-        var timerEl = document.getElementById('timer');
-        timerInterval = setInterval(function() {
-            var elapsed = Math.floor((Date.now() - startTime) / 1000);
-            var min = Math.floor(elapsed / 60);
-            var sec = elapsed % 60;
-            timerEl.textContent = min > 0 ? (min + ' мин ' + sec + ' сек') : (sec + ' сек');
-            var fileFrac = Math.min(0.95, ((Date.now() - fileStart) / 1000) / 120);
-            var pct = ((batchDone + fileFrac) / batchTotal) * 100;
-            progressFill.style.width = Math.min(99, pct) + '%';
-        }, 1000);
-    }
-
-    function stopTimer() {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-        }
-        progressFill.style.width = '100%';
-    }
-
-    // R8.100: загрузка ОДНОГО файла в БД. Возвращает {ok, text, error, authRequired}.
-    // UI-оркестрацию (лоадер / прогресс / история / результат) делает sendFile.
-    // Развилка: docx/xlsx/txt — извлекаем текст в браузере и шлём JSON; PDF/
-    // картинки — multipart, OCR на сервере.
-    async function uploadOne(file, onStatus) {
-        var controller = new AbortController();
-        var timeoutId = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT_MS);
-        try {
-            var res;
-            if (GigaChat.canExtractInBrowser(file.name)) {
-                if (onStatus) onStatus('извлекаю текст...');
-                var extractedText;
-                try {
-                    extractedText = await GigaChat.extractBrowserText(file);
-                } catch (extractErr) {
-                    throw new Error('не удалось извлечь текст: ' + extractErr.message);
-                }
-                if (!extractedText || !extractedText.trim()) {
-                    throw new Error('из файла не удалось извлечь текст (он пустой).');
-                }
-                if (onStatus) onStatus('нарезаю и сохраняю в базу данных...');
-                res = await fetch(WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-                    body: JSON.stringify({ text: extractedText, fileName: file.name, source: 'browser', token: GigaChat.auth.getToken() }),
-                    signal: controller.signal
-                });
-            } else {
-                if (onStatus) onStatus('OCR → нарезка → эмбеддинг → сохранение...');
-                var formData = new FormData();
-                formData.append('file', file);
-                formData.append('token', GigaChat.auth.getToken());
-                res = await fetch(WEBHOOK_URL, { method: 'POST', body: formData, signal: controller.signal });
-            }
-            if (!res.ok) throw new Error('сервер вернул ошибку: ' + res.status);
-            var data;
-            try { data = await res.json(); }
-            catch (parseErr) { throw new Error('сервер вернул некорректный ответ (не JSON).'); }
-            if (data && data.auth_required) return { authRequired: true };
-            var responseText = data.response || JSON.stringify(data);
-            // Источник правды — флаги бэкенда, не текст (подстрока «ошибк» ложно матчилась).
-            var isError = (data.success === false) || !!data.error;
-            return { ok: !isError, text: responseText, error: isError ? responseText : null };
-        } catch (e) {
-            var msg = (e.name === 'AbortError') ? 'сервер не ответил за 5 минут' : e.message;
-            return { ok: false, text: msg, error: msg };
-        } finally {
-            clearTimeout(timeoutId);
-        }
-    }
-
-    // R8.100: загрузка очереди (1 файл / несколько файлов / папка целиком) —
-    // ПОСЛЕДОВАТЕЛЬНО, чтобы не перегружать сервер (OCR/эмбеддинг тяжёлые).
-    async function sendFile() {
-        if (!selectedFiles.length || isProcessing) return;
-        if (selectedFiles.length > 25 && !confirm('Загрузить ' + selectedFiles.length + ' документов? Это может занять время.')) return;
-        isProcessing = true;
-        sendBtn.disabled = true;
-        loading.classList.add('show');
-        progressBar.classList.add('show');
-        progressFill.style.width = '0%';
-        result.style.display = 'none';
-        resetBtnDiv.classList.remove('show');
-        batchTotal = selectedFiles.length;
-        batchDone = 0;
-        startTimer();
-        var loadingText = loading.querySelector('div');
-
-        var results = [], authGone = false;
-        for (var k = 0; k < selectedFiles.length; k++) {
-            var file = selectedFiles[k];
-            fileStart = Date.now();
-            var t0 = Date.now();
-            var prefix = (batchTotal > 1) ? ('Файл ' + (k + 1) + ' из ' + batchTotal + ' · ' + file.name + ' — ') : '';
-            var r = await uploadOne(file, function (s) { if (loadingText) loadingText.textContent = prefix + s; });
-            if (r && r.authRequired) { authGone = true; break; }
-            var secs = Math.floor((Date.now() - t0) / 1000);
-            results.push({ name: file.name, ok: r.ok, error: r.error, text: r.text });
-            if (r.ok) {
-                uploadHistory.unshift({
-                    name: file.name,
-                    size: (file.size / 1024 / 1024).toFixed(1) + ' МБ',
-                    time: secs + ' сек',
-                    date: new Date().toLocaleString('ru-RU')
-                });
-            }
-            batchDone = k + 1;
-            progressFill.style.width = Math.round((batchDone / batchTotal) * 100) + '%';
-        }
-
-        stopTimer();
-        loading.classList.remove('show');
-
-        if (authGone) { GigaChat.auth.clearAuth(); GigaChat.auth.redirectToLogin(); return; }
-
-        if (uploadHistory.length > 20) uploadHistory = uploadHistory.slice(0, 20);
-        try { localStorage.setItem('doc_upload_history', JSON.stringify(uploadHistory)); }
-        catch (e) { console.warn('localStorage переполнен, история не сохранена:', e); }
-        renderHistory();
-
-        var okCount = 0;
-        for (var j = 0; j < results.length; j++) if (results[j].ok) okCount++;
-        var errCount = results.length - okCount;
-
-        if (results.length === 1) {
-            // Один файл — показываем ответ сервера как раньше.
-            result.className = results[0].ok ? 'success' : 'warning';
-            result.textContent = results[0].text || (results[0].ok ? 'Документ загружен.' : 'Не удалось загрузить.');
-        } else {
-            result.className = (errCount === 0) ? 'success' : (okCount === 0 ? 'error' : 'warning');
-            var lines = [];
-            for (var m = 0; m < results.length; m++) {
-                lines.push((results[m].ok ? '✓ ' : '✗ ') + results[m].name + (results[m].ok ? '' : (' — ' + (results[m].error || 'ошибка'))));
-            }
-            result.textContent = 'Загружено: ' + okCount + ' из ' + results.length +
-                (errCount ? (' · ошибок: ' + errCount) : '') + '\n\n' + lines.join('\n');
-        }
-        result.style.display = 'block';
-
-        isProcessing = false;
-        resetBtnDiv.classList.add('show');
-    }
-
-    function resetForm() {
-        selectedFiles = [];
-        document.getElementById('fileInput').value = '';
-        if (folderInput) folderInput.value = '';
-        document.getElementById('fileName').textContent = '';
-        var sizeEl = document.getElementById('fileSize');
-        sizeEl.textContent = '';
-        sizeEl.style.color = '';
-        sendBtn.disabled = true;
-        result.style.display = 'none';
-        resetBtnDiv.classList.remove('show');
-        progressBar.classList.remove('show');
-    }
-
-    function renderHistory() {
-        var historyDiv = document.getElementById('history');
-        var listDiv = document.getElementById('historyList');
-        if (uploadHistory.length === 0) {
-            historyDiv.classList.remove('show');
-            return;
-        }
-        historyDiv.classList.add('show');
-        listDiv.innerHTML = '';
-        for (var i = 0; i < uploadHistory.length; i++) {
-            var item = uploadHistory[i];
-            var div = document.createElement('div');
-            div.className = 'history-item';
-            div.innerHTML = '<span class="name">' + escapeHtml(item.name) + '</span>' +
-                '<span class="info">' + escapeHtml(item.size) + ' · ' + escapeHtml(item.time) + ' · ' + escapeHtml(item.date) + '</span>';
-            listDiv.appendChild(div);
-        }
-    }
-
-    // Очистить локальную историю в браузере. На документы в БД не влияет — там
-    // они остаются и продолжают участвовать в поиске RAG-агента. Чтобы удалить
-    // их из БД — используется отдельный SQL (DELETE FROM documents WHERE filename = ...).
-    function clearHistory() {
-        if (uploadHistory.length === 0) return;
-        var msg = 'Очистить локальную историю в этом браузере?\n\n' +
-                  'ВНИМАНИЕ: документы из базы данных НЕ удаляются — они продолжат участвовать в поиске.\n' +
-                  'Удалится только список выше.';
-        if (!confirm(msg)) return;
-        uploadHistory = [];
-        try { localStorage.removeItem('doc_upload_history'); } catch(e) {}
-        renderHistory();
-    }
-
-</script>
-</body>
-</html>
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Загрузка документов — GigaChat</title>
+<script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+<style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
+<style>
+:root {
+    --bg-primary: #0c0c0c;
+    --bg-secondary: #08080a;
+    --bg-input: #161617;
+    --bg-card: #08080a;
+    --border: rgba(255, 255, 255, .08);
+    --text-primary: #ececea;
+    --text-secondary: #9b9b96;
+    --text-muted: #6c6c66;
+    --accent: #1d414e;
+    --accent-hover: #536e77;
+    --accent-light: rgba(212, 165, 116, 0.12);
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+:root[data-theme="light"] {
+    --bg-primary: #fafaf7;
+    --bg-secondary: #f4f3ee;
+    --bg-input: #ffffff;
+    --bg-card: #ffffff;
+    --border: rgba(15, 15, 12, .09);
+    --text-primary: #1a1a17;
+    --text-secondary: #6b6a64;
+    --text-muted: #a09e96;
+    --accent: #1d414e;
+    --accent-hover: #2b4d59;
+    --accent-light: rgba(184, 137, 93, 0.15);
+}
+/* Общие стили tool-страницы — в _shared.js через GigaChat.injectToolCss().
+   Здесь — только per-page правила (#result, .history) и html scrollbar. */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+html::-webkit-scrollbar { width: 5px; }
+html::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+html::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+/* doc-loader: контент уже 800px (в shared 900px — переопределяем). */
+main { max-width: 800px; }
+#fileInput { display: none; }
+/* #result — цветной info-блок (отличается от shared .error-box: успех, варн, ошибка). */
+#result {
+    display: none;
+    padding: 20px 24px;
+    border-radius: 12px;
+    line-height: 1.7;
+    font-size: 14px;
+    white-space: pre-wrap;
+    margin-bottom: 16px;
+}
+#result.success { background: rgba(16, 185, 129, 0.10); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; }
+#result.error { background: rgba(239, 68, 68, 0.10); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--error); }
+#result.warning { background: rgba(245, 158, 11, 0.10); border: 1px solid rgba(245, 158, 11, 0.4); color: var(--warning); }
+/* Отступ под кнопкой «Загрузить другой документ» — чтобы не прилипала к .history снизу. */
+.reset-btn.show { margin-bottom: 16px; }
+/* .history — список загруженных файлов в этой сессии. Только в doc-loader. */
+.history { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: none; }
+.history.show { display: block; }
+.history-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: var(--bg-input); border-bottom: 1px solid var(--border); }
+.history-head h3 { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.5px; font-weight: 600; margin: 0; padding: 0; background: none; border: none; }
+.history-clear-btn { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: 6px; font-size: 11.5px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.history-clear-btn:hover { color: var(--error); border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); }
+.history-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.history-item:last-child { border-bottom: none; }
+.history-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.history-item .info { color: var(--text-muted); font-size: 12px; font-family: Consolas, monospace; flex-shrink: 0; }
+/* R8.100: «или выбрать папку целиком» — линк под drop-zone (как в file-merger). */
+.or-folder { text-align: center; margin: -8px 0 16px; font-size: 13px; color: var(--text-secondary); }
+.or-folder a { color: var(--accent); cursor: pointer; text-decoration: none; border-bottom: 1px dashed var(--accent); padding-bottom: 1px; }
+.or-folder a:hover { color: var(--accent-hover); border-color: var(--accent-hover); }
+
+</style>
+<script src="_config.js"></script>
+<script src="_shared-guard.js"></script>
+<script src="_shared.js"></script>
+<script src="lib/jszip.min.js"></script>
+</head>
+<body>
+
+<header>
+    <div class="header-left"><a class="btn-home" href="../GigaChat-Platform.html" aria-label="Назад к GigaChat"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a><h1>Загрузка документов</h1></div>
+    <div class="header-right">
+        <div class="status-bar"><span class="dot checking" id="statusDot"></span><span id="statusText">проверка...</span></div>
+    </div>
+</header>
+
+<main>
+    <div class="intro">
+        <h2>Что делает инструмент</h2>
+        <p>Загружает документ в <b>базу данных</b> для поиска по смыслу — после загрузки документ можно искать через <b>агента по документам</b>, задавая вопросы по содержимому.</p>
+        <p>Принимаются <code>.pdf</code>, <code>.doc</code>, <code>.docx</code>, <code>.xls</code>, <code>.xlsx</code>, <code>.ppt</code>, <code>.pptx</code>, <code>.txt</code>, <code>.rtf</code>, <code>.odt</code>, изображения. Максимум — 50 МБ.</p>
+    </div>
+
+    <label class="drop-zone" id="uploadArea" for="fileInput">
+        <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="title">Перетащите файл сюда или нажмите для выбора</div>
+        <div class="hint">PDF, Word, Excel, изображения (макс. 50 МБ)</div>
+        <div class="filename" id="fileName"></div>
+        <div class="filesize" id="fileSize"></div>
+    </label>
+
+    <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.odt,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp" onchange="fileSelected(this)">
+    <!-- R8.100: webkitdirectory отдельным input'ом — один input не может быть и files, и directory. -->
+    <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+    <div class="or-folder">или <a id="pickFolderLink">выбрать папку целиком</a></div>
+
+    <button id="sendBtn" class="btn-primary" onclick="sendFile()" disabled>Загрузить в базу данных</button>
+
+    <div class="loading" id="loading">
+        <div>Обрабатываю документ: OCR → нарезка → эмбеддинг → сохранение</div>
+        <div class="timer" id="timer">0 сек</div>
+        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+    </div>
+
+    <div id="result"></div>
+
+    <div class="reset-btn" id="resetBtn">
+        <button onclick="resetForm()">Загрузить другой документ</button>
+    </div>
+
+    <div class="history" id="history">
+        <div class="history-head">
+            <h3>Загруженные документы</h3>
+            <button class="history-clear-btn" onclick="clearHistory()" title="Очистить локальную историю в браузере (документы в базе данных не удаляются)">Очистить</button>
+        </div>
+        <div id="historyList"></div>
+    </div>
+</main>
+
+<script>
+    // Auth-gate: без токена → /login.html. После успеха снимаем mask.
+    GigaChat.auth.requireAuth({ onOk: function () {
+        document.documentElement.classList.remove('gc-pending-auth');
+    }});
+    GigaChat.injectToolCss();
+    var WEBHOOK_URL = GigaChat.webhookUrl('upload-doc');
+    var escapeHtml = GigaChat.escapeHtml; // ДО любых вызовов renderHistory
+
+    var FETCH_TIMEOUT_MS = 300000;
+    var selectedFiles = [];   // R8.100: мультизагрузка — отдельные файлы И папка целиком
+    var isProcessing = false;
+    var timerInterval = null;
+    var startTime = 0;
+    var ALLOWED_EXTENSIONS = ['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','rtf','odt','jpg','jpeg','png','tiff','tif','bmp','webp'];
+
+    var uploadArea = document.getElementById('uploadArea');
+    var sendBtn = document.getElementById('sendBtn');
+    var loading = document.getElementById('loading');
+    var result = document.getElementById('result');
+    var resetBtnDiv = document.getElementById('resetBtn');
+    var progressBar = document.getElementById('progressBar');
+    var progressFill = document.getElementById('progressFill');
+
+    var uploadHistory = [];
+    try {
+        var saved = localStorage.getItem('doc_upload_history');
+        if (saved) uploadHistory = JSON.parse(saved);
+    } catch(e) {}
+    renderHistory();
+
+    var statusDot = document.getElementById('statusDot');
+    var statusText = document.getElementById('statusText');
+    GigaChat.startHealthCheck(WEBHOOK_URL, statusDot, statusText);
+
+    // hasFiles: dragover на текст/ссылке/URL не должен подсвечивать зону
+    function hasFiles(e) {
+        var t = e.dataTransfer && e.dataTransfer.types;
+        if (!t) return false;
+        for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
+        return false;
+    }
+    uploadArea.addEventListener('dragover', function(e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        uploadArea.classList.add('dragging');
+    });
+    uploadArea.addEventListener('dragleave', function(e) {
+        // relatedTarget — куда уходит курсор. Если внутрь uploadArea — не снимаем.
+        if (e.relatedTarget && uploadArea.contains(e.relatedTarget)) return;
+        uploadArea.classList.remove('dragging');
+    });
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragging');
+        if (e.dataTransfer.files.length > 0) addSelected(e.dataTransfer.files);
+    });
+
+    function fileSelected(input) {
+        if (input.files.length > 0) addSelected(input.files);
+        input.value = ''; // чтобы тот же файл/папку можно было выбрать снова
+    }
+
+    // R8.100: «выбрать папку целиком» (webkitdirectory) — как в file-merger.
+    // Отдельный #folderInput, т.к. один input не может быть и files, и directory.
+    var folderInput = document.getElementById('folderInput');
+    var pickFolderLink = document.getElementById('pickFolderLink');
+    if (pickFolderLink && folderInput) {
+        pickFolderLink.addEventListener('click', function (e) { e.preventDefault(); folderInput.click(); });
+        folderInput.addEventListener('change', function (e) {
+            if (e.target.files && e.target.files.length) addSelected(e.target.files);
+            folderInput.value = '';
+        });
+    }
+
+    // Собирает выбранное (файлы или папка рекурсивно): оставляет только
+    // поддерживаемые форматы и размер <= 50 МБ, остальное пропускает со счётчиком.
+    function addSelected(fileList) {
+        var picked = [], skippedExt = 0, skippedBig = 0;
+        for (var i = 0; i < fileList.length; i++) {
+            var f = fileList[i];
+            var ext = (f.name || '').split('.').pop().toLowerCase();
+            if (ALLOWED_EXTENSIONS.indexOf(ext) === -1) { skippedExt++; continue; }
+            if (f.size > 50 * 1024 * 1024) { skippedBig++; continue; }
+            picked.push(f);
+        }
+        selectedFiles = picked;
+        showFilesInfo(skippedExt, skippedBig);
+    }
+
+    function showFilesInfo(skippedExt, skippedBig) {
+        var nameEl = document.getElementById('fileName');
+        var sizeEl = document.getElementById('fileSize');
+        sizeEl.style.color = '';
+        var skipped = (skippedExt || 0) + (skippedBig || 0);
+        if (selectedFiles.length === 0) {
+            nameEl.textContent = 'Нет подходящих файлов';
+            var why = [];
+            if (skippedExt) why.push('формат: ' + skippedExt);
+            if (skippedBig) why.push('> 50 МБ: ' + skippedBig);
+            sizeEl.textContent = why.length ? ('пропущено — ' + why.join(', ')) : '';
+            sizeEl.style.color = 'var(--error)';
+            sendBtn.disabled = true;
+            return;
+        }
+        var totalBytes = 0;
+        for (var j = 0; j < selectedFiles.length; j++) totalBytes += selectedFiles[j].size;
+        var totalMB = (totalBytes / 1024 / 1024).toFixed(2);
+        if (selectedFiles.length === 1) {
+            nameEl.textContent = selectedFiles[0].name;
+            sizeEl.textContent = totalMB + ' МБ';
+        } else {
+            nameEl.textContent = 'Выбрано документов: ' + selectedFiles.length;
+            sizeEl.textContent = totalMB + ' МБ всего';
+        }
+        if (skipped) sizeEl.textContent += ' · пропущено: ' + skipped;
+        sendBtn.disabled = false;
+    }
+
+    // Браузерные парсеры (docx/xlsx/txt/md/log/csv) — в _shared.js: GigaChat.canExtractInBrowser,
+    // GigaChat.extractBrowserText. Локально дублировать не нужно — единая точка правды.
+
+    // R8.100: прогресс учитывает батч — завершённые файлы + анимация текущего.
+    // Для одного файла (batchTotal=1) поведение прежнее: ~до 95% за 120 сек.
+    var batchTotal = 1, batchDone = 0, fileStart = 0;
+    function startTimer() {
+        startTime = Date.now();
+        fileStart = Date.now();
+        var timerEl = document.getElementById('timer');
+        timerInterval = setInterval(function() {
+            var elapsed = Math.floor((Date.now() - startTime) / 1000);
+            var min = Math.floor(elapsed / 60);
+            var sec = elapsed % 60;
+            timerEl.textContent = min > 0 ? (min + ' мин ' + sec + ' сек') : (sec + ' сек');
+            var fileFrac = Math.min(0.95, ((Date.now() - fileStart) / 1000) / 120);
+            var pct = ((batchDone + fileFrac) / batchTotal) * 100;
+            progressFill.style.width = Math.min(99, pct) + '%';
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        progressFill.style.width = '100%';
+    }
+
+    // R8.100: загрузка ОДНОГО файла в БД. Возвращает {ok, text, error, authRequired}.
+    // UI-оркестрацию (лоадер / прогресс / история / результат) делает sendFile.
+    // Развилка: docx/xlsx/txt — извлекаем текст в браузере и шлём JSON; PDF/
+    // картинки — multipart, OCR на сервере.
+    async function uploadOne(file, onStatus) {
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT_MS);
+        try {
+            var res;
+            if (GigaChat.canExtractInBrowser(file.name)) {
+                if (onStatus) onStatus('извлекаю текст...');
+                var extractedText;
+                try {
+                    extractedText = await GigaChat.extractBrowserText(file);
+                } catch (extractErr) {
+                    throw new Error('не удалось извлечь текст: ' + extractErr.message);
+                }
+                if (!extractedText || !extractedText.trim()) {
+                    throw new Error('из файла не удалось извлечь текст (он пустой).');
+                }
+                if (onStatus) onStatus('нарезаю и сохраняю в базу данных...');
+                res = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                    body: JSON.stringify({ text: extractedText, fileName: file.name, source: 'browser', token: GigaChat.auth.getToken() }),
+                    signal: controller.signal
+                });
+            } else {
+                if (onStatus) onStatus('OCR → нарезка → эмбеддинг → сохранение...');
+                var formData = new FormData();
+                formData.append('file', file);
+                formData.append('token', GigaChat.auth.getToken());
+                res = await fetch(WEBHOOK_URL, { method: 'POST', body: formData, signal: controller.signal });
+            }
+            if (!res.ok) throw new Error('сервер вернул ошибку: ' + res.status);
+            var data;
+            try { data = await res.json(); }
+            catch (parseErr) { throw new Error('сервер вернул некорректный ответ (не JSON).'); }
+            if (data && data.auth_required) return { authRequired: true };
+            var responseText = data.response || JSON.stringify(data);
+            // Источник правды — флаги бэкенда, не текст (подстрока «ошибк» ложно матчилась).
+            var isError = (data.success === false) || !!data.error;
+            return { ok: !isError, text: responseText, error: isError ? responseText : null };
+        } catch (e) {
+            var msg = (e.name === 'AbortError') ? 'сервер не ответил за 5 минут' : e.message;
+            return { ok: false, text: msg, error: msg };
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    // R8.100: загрузка очереди (1 файл / несколько файлов / папка целиком) —
+    // ПОСЛЕДОВАТЕЛЬНО, чтобы не перегружать сервер (OCR/эмбеддинг тяжёлые).
+    async function sendFile() {
+        if (!selectedFiles.length || isProcessing) return;
+        if (selectedFiles.length > 25 && !confirm('Загрузить ' + selectedFiles.length + ' документов? Это может занять время.')) return;
+        isProcessing = true;
+        sendBtn.disabled = true;
+        loading.classList.add('show');
+        progressBar.classList.add('show');
+        progressFill.style.width = '0%';
+        result.style.display = 'none';
+        resetBtnDiv.classList.remove('show');
+        batchTotal = selectedFiles.length;
+        batchDone = 0;
+        startTimer();
+        var loadingText = loading.querySelector('div');
+
+        var results = [], authGone = false;
+        for (var k = 0; k < selectedFiles.length; k++) {
+            var file = selectedFiles[k];
+            fileStart = Date.now();
+            var t0 = Date.now();
+            var prefix = (batchTotal > 1) ? ('Файл ' + (k + 1) + ' из ' + batchTotal + ' · ' + file.name + ' — ') : '';
+            var r = await uploadOne(file, function (s) { if (loadingText) loadingText.textContent = prefix + s; });
+            if (r && r.authRequired) { authGone = true; break; }
+            var secs = Math.floor((Date.now() - t0) / 1000);
+            results.push({ name: file.name, ok: r.ok, error: r.error, text: r.text });
+            if (r.ok) {
+                uploadHistory.unshift({
+                    name: file.name,
+                    size: (file.size / 1024 / 1024).toFixed(1) + ' МБ',
+                    time: secs + ' сек',
+                    date: new Date().toLocaleString('ru-RU')
+                });
+            }
+            batchDone = k + 1;
+            progressFill.style.width = Math.round((batchDone / batchTotal) * 100) + '%';
+        }
+
+        stopTimer();
+        loading.classList.remove('show');
+
+        if (authGone) { GigaChat.auth.clearAuth(); GigaChat.auth.redirectToLogin(); return; }
+
+        if (uploadHistory.length > 20) uploadHistory = uploadHistory.slice(0, 20);
+        try { localStorage.setItem('doc_upload_history', JSON.stringify(uploadHistory)); }
+        catch (e) { console.warn('localStorage переполнен, история не сохранена:', e); }
+        renderHistory();
+
+        var okCount = 0;
+        for (var j = 0; j < results.length; j++) if (results[j].ok) okCount++;
+        var errCount = results.length - okCount;
+
+        if (results.length === 1) {
+            // Один файл — показываем ответ сервера как раньше.
+            result.className = results[0].ok ? 'success' : 'warning';
+            result.textContent = results[0].text || (results[0].ok ? 'Документ загружен.' : 'Не удалось загрузить.');
+        } else {
+            result.className = (errCount === 0) ? 'success' : (okCount === 0 ? 'error' : 'warning');
+            var lines = [];
+            for (var m = 0; m < results.length; m++) {
+                lines.push((results[m].ok ? '✓ ' : '✗ ') + results[m].name + (results[m].ok ? '' : (' — ' + (results[m].error || 'ошибка'))));
+            }
+            result.textContent = 'Загружено: ' + okCount + ' из ' + results.length +
+                (errCount ? (' · ошибок: ' + errCount) : '') + '\n\n' + lines.join('\n');
+        }
+        result.style.display = 'block';
+
+        isProcessing = false;
+        resetBtnDiv.classList.add('show');
+    }
+
+    function resetForm() {
+        selectedFiles = [];
+        document.getElementById('fileInput').value = '';
+        if (folderInput) folderInput.value = '';
+        document.getElementById('fileName').textContent = '';
+        var sizeEl = document.getElementById('fileSize');
+        sizeEl.textContent = '';
+        sizeEl.style.color = '';
+        sendBtn.disabled = true;
+        result.style.display = 'none';
+        resetBtnDiv.classList.remove('show');
+        progressBar.classList.remove('show');
+    }
+
+    function renderHistory() {
+        var historyDiv = document.getElementById('history');
+        var listDiv = document.getElementById('historyList');
+        if (uploadHistory.length === 0) {
+            historyDiv.classList.remove('show');
+            return;
+        }
+        historyDiv.classList.add('show');
+        listDiv.innerHTML = '';
+        for (var i = 0; i < uploadHistory.length; i++) {
+            var item = uploadHistory[i];
+            var div = document.createElement('div');
+            div.className = 'history-item';
+            div.innerHTML = '<span class="name">' + escapeHtml(item.name) + '</span>' +
+                '<span class="info">' + escapeHtml(item.size) + ' · ' + escapeHtml(item.time) + ' · ' + escapeHtml(item.date) + '</span>';
+            listDiv.appendChild(div);
+        }
+    }
+
+    // Очистить локальную историю в браузере. На документы в БД не влияет — там
+    // они остаются и продолжают участвовать в поиске RAG-агента. Чтобы удалить
+    // их из БД — используется отдельный SQL (DELETE FROM documents WHERE filename = ...).
+    function clearHistory() {
+        if (uploadHistory.length === 0) return;
+        var msg = 'Очистить локальную историю в этом браузере?\n\n' +
+                  'ВНИМАНИЕ: документы из базы данных НЕ удаляются — они продолжат участвовать в поиске.\n' +
+                  'Удалится только список выше.';
+        if (!confirm(msg)) return;
+        uploadHistory = [];
+        try { localStorage.removeItem('doc_upload_history'); } catch(e) {}
+        renderHistory();
+    }
+
+</script>
+</body>
+</html>
+
+
