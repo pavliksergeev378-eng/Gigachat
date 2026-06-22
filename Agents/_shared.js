@@ -1262,7 +1262,7 @@
       // #4a4a48 + мягкий едва заметный «неон» (box-shadow в акцентном тоне).
       // !important перебивает per-agent #msg / #msg:focus.
       + '.gc-input-wrap > textarea{border:1px solid #3d3d3b !important;transition:border-color .2s,box-shadow .2s !important}'
-      + '.gc-input-wrap > textarea:focus{border-color:#4a4a48 !important;box-shadow:0 0 4px rgba(212,165,116,.07) !important}'
+      + '.gc-input-wrap > textarea:focus{border-color:#4a4a48 !important;box-shadow:0 0 4px rgba(96,120,129,.15) !important}'
       // Кнопка-отправка как иконка внутри поля: квадратная, акцентный фон, ↵.
       + '.gc-send-icon{position:absolute;right:11px;bottom:6px;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--text-secondary);border:none;border-radius:8px;cursor:pointer;padding:0;transition:color .15s,background .15s,opacity .15s;z-index:2}'
       + '.gc-send-icon:hover:not(:disabled){color:var(--accent);background:var(--bg-hover)}'
@@ -3969,7 +3969,7 @@
       // .drop-zone — зона перетаскивания файла
       '.drop-zone{display:block;border:2px dashed var(--border);border-radius:12px;padding:40px 24px;text-align:center;transition:all .2s;cursor:pointer;background:var(--bg-card);margin-bottom:16px}' +
       '.drop-zone > *{pointer-events:none}' +
-      '.drop-zone:hover,.drop-zone.dragging{border-color:var(--accent);background:var(--accent-light,rgba(212,165,116,.12))}' +
+      '.drop-zone:hover,.drop-zone.dragging{border-color:var(--accent);background:var(--accent-light,rgba(96,120,129,.15))}' +
       '.drop-zone .icon{width:48px;height:48px;margin:0 auto 12px;color:var(--accent);opacity:.6}' +
       '.drop-zone .icon svg{width:100%;height:100%;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}' +
       '.drop-zone .title{font-size:15px;color:var(--text-primary);margin-bottom:6px;font-weight:500}' +
@@ -4002,7 +4002,7 @@
       '.reset-btn{display:none;gap:10px;justify-content:flex-end}' +
       '.reset-btn.show{display:flex}' +
       '.reset-btn button{padding:10px 20px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;font-family:inherit;transition:all .2s}' +
-      '.reset-btn button:hover{background:var(--accent-light,rgba(212,165,116,.15));color:var(--accent);border-color:var(--accent)}' +
+      '.reset-btn button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}' +
       // .status-bar (контейнер статуса в шапке tool-страниц). Цвета точки — из injectStatusDotCss.
       '.status-bar{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary);letter-spacing:.5px}' +
       '.status-bar .dot{width:6px;height:6px;border-radius:50%}';
@@ -4095,7 +4095,7 @@
       '.status-dot{width:8px;height:8px;border-radius:50%}' +
       // Кнопка экспорта (общая)
       '.btn-export{padding:6px 16px;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-secondary);border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s}' +
-      '.btn-export:hover{background:var(--accent-light,rgba(212,165,116,.15));color:var(--accent);border-color:var(--accent)}' +
+      '.btn-export:hover{background:var(--accent);color:#fff;border-color:var(--accent)}' +
       // .msg общие
       '.msg{animation:gcFadeIn .25s ease;line-height:1.55;font-size:14px;color:var(--text-primary);word-wrap:break-word;overflow-wrap:anywhere}' +
       '.msg + .msg{margin-top:40px}' +
@@ -4226,7 +4226,7 @@
       '.gc-mic-btn.loading::before{content:"";position:absolute;width:15px;height:15px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:gcMicSpin .7s linear infinite}' +
       '@keyframes gcMicSpin{to{transform:rotate(360deg)}}' +
       '.gc-reg-hint{position:fixed;left:50%;bottom:92px;z-index:100000;transform:translateX(-50%) translateY(14px);display:flex;align-items:center;gap:12px;max-width:min(460px,calc(100vw - 32px));padding:13px 18px 13px 14px;border-radius:14px;background:var(--bg-card);border:1px solid var(--accent);box-shadow:0 16px 46px rgba(0,0,0,0.36);color:var(--text-primary);font-size:14px;line-height:1.45;opacity:0;pointer-events:none;animation:gcRegHintLife 5s cubic-bezier(.2,.7,.2,1) forwards}' +
-      '.gc-reg-hint .gc-reg-ic{flex-shrink:0;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent-light,rgba(184,137,93,0.16));color:var(--accent)}' +
+      '.gc-reg-hint .gc-reg-ic{flex-shrink:0;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff}' +
       '.gc-reg-hint .gc-reg-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
       '.gc-reg-hint b{color:var(--accent);font-weight:600}' +
       '@keyframes gcRegHintLife{0%{opacity:0;transform:translateX(-50%) translateY(14px) scale(.97)}8%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}86%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(-10px) scale(.98)}}' +
@@ -5507,7 +5507,7 @@
 
     // Build steps
     var steps = [];
-    var n8nBase = (cfg && cfg.N8N_BASE) || 'http://localhost:5678';
+    var n8nBase = (cfg && cfg.N8N_BASE != null) ? cfg.N8N_BASE : 'http://localhost:5678';
     sorted.forEach(function(id) {
       var n = nodes[id];
       if (!n) return;
@@ -5575,20 +5575,20 @@
   function n8nApiFetch(path, options) {
 	// Same-origin через Caddy reverse_proxy (решает CORS).
 	// Если n8n на том же хосте — прямой fetch (локальная разработка).
-	var n8nBase = (cfg && cfg.N8N_BASE || 'http://localhost:5678');
+	var n8nBase = (cfg && cfg.N8N_BASE != null) ? cfg.N8N_BASE : 'http://localhost:5678';
 	var url;
 	try {
 		var n8nOrigin = new URL(n8nBase).origin;
 		var pageOrigin = window.location.origin;
 		if (n8nOrigin === pageOrigin) {
 			// Один origin — прямой fetch
-			url = n8nBase + '/rest/' + path.replace(/^//, '');
+			url = n8nBase + '/rest/' + path.replace(/^\//, '');
 		} else {
 			// Разные origin — через Caddy proxy (same-origin)
-			url = pageOrigin + '/rest/' + path.replace(/^//, '');
+			url = pageOrigin + '/rest/' + path.replace(/^\//, '');
 		}
 	} catch(e) {
-		url = n8nBase + '/rest/' + path.replace(/^//, '');
+		url = n8nBase + '/rest/' + path.replace(/^\//, '');
 	}
 	options = options || {};
 	options.headers = options.headers || {};
