@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>GigaChat Diagnostics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="Agents/_config.js"></script>
+  <script src="Agents/_shared.js"></script>
+  <style>
+    body{margin:0;padding:24px;background:#0f172a;color:#e5e7eb;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    h1{margin:0 0 8px;font-size:24px} p{color:#94a3b8}
+    .panel{background:#111827;border:1px solid #334155;border-radius:14px;padding:16px;margin:16px 0}
+    button{background:#38bdf8;color:#001018;border:0;border-radius:10px;padding:10px 14px;margin:4px 8px 4px 0;cursor:pointer;font-weight:700}
+    button.secondary{background:transparent;color:#e5e7eb;border:1px solid #334155}
+    input{background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:10px;padding:9px 10px;margin:4px 8px 4px 0;min-width:220px}
+    pre{white-space:pre-wrap;word-break:break-word;background:#020617;border:1px solid #334155;border-radius:12px;padding:14px;max-height:520px;overflow:auto}
+    .small{font-size:12px;color:#94a3b8}
+  </style>
+</head>
+<body>
+  <h1>GigaChat Diagnostics</h1>
+  <p>Страница не требует вставки команд в Console. Полный token не выводится, только первые 8 символов.</p>
+
+  <div class="panel">
+    <h2>1. Проверка загрузки JS</h2>
+    <button onclick="checkJs()">Проверить GigaChat</button>
+    <pre id="jsOut">Нажми кнопку.</pre>
+  </div>
+
+  <div class="panel">
+    <h2>2. Текущая авторизация</h2>
+    <button onclick="showAuth()">Показать auth</button>
+    <button class="secondary" onclick="verifyAuth()">Проверить planner-auth verify</button>
+    <pre id="authOut">Нажми кнопку.</pre>
+  </div>
+
+  <div class="panel">
+    <h2>3. Group Sync</h2>
+    <button onclick="groupsMy()">Мои группы</button>
+    <button onclick="groupsList()">Список групп</button>
+    <pre id="groupOut">Нажми кнопку.</pre>
+  </div>
+
+  <div class="panel">
+    <h2>4. Тестовое создание группы</h2>
+    <input id="groupName" value="Тестовая группа">
+    <input id="groupDesc" value="Проверка">
+    <button onclick="groupCreate()">Создать группу</button>
+    <p class="small">После создания нажми «Мои группы» и «Список групп».</p>
+    <pre id="createOut">Нажми кнопку только если можно создать тестовую группу.</pre>
+  </div>
+
+  <div class="panel">
+    <h2>5. Вступить в группу</h2>
+    <input id="joinId" placeholder="group_id, например 1">
+    <button onclick="groupJoin()">Вступить</button>
+    <pre id="joinOut">Нажми кнопку только если есть group_id.</pre>
+  </div>
+
+<script>
+function safeJson(obj){try{return JSON.stringify(obj,null,2)}catch(e){return String(obj)}}
+function maskToken(t){t=String(t||'');return t?t.slice(0,8)+'...MASKED':''}
+function out(id,data){document.getElementById(id).textContent=typeof data==='string'?data:safeJson(data)}
+
+function checkJs(){
+  out('jsOut',{
+    hasGigaChat:!!window.GigaChat,
+    hasAuth:!!(window.GigaChat&&GigaChat.auth),
+    hasGroups:!!(window.GigaChat&&GigaChat.groups),
+    config:window.GIGACHAT_CONFIG||null,
+    methods:{
+      auth_getUsername:!!(window.GigaChat&&GigaChat.auth&&GigaChat.auth.getUsername),
+      auth_apiCall:!!(window.GigaChat&&GigaChat.auth&&GigaChat.auth.apiCall),
+      groups_my:!!(window.GigaChat&&GigaChat.groups&&GigaChat.groups.my),
+      groups_list:!!(window.GigaChat&&GigaChat.groups&&GigaChat.groups.list),
+      groups_create:!!(window.GigaChat&&GigaChat.groups&&GigaChat.groups.create),
+      groups_join:!!(window.GigaChat&&GigaChat.groups&&GigaChat.groups.join)
+    }
+  });
+}
+
+function showAuth(){
+  var token='';
+  try{token=localStorage.getItem('gigachat_token')||localStorage.getItem('planner_token')||''}catch(e){}
+  out('authOut',{
+    token_prefix:maskToken(token),
+    username:window.GigaChat&&GigaChat.auth?GigaChat.auth.getUsername():null,
+    displayName:window.GigaChat&&GigaChat.auth?GigaChat.auth.getDisplayName():null,
+    isAdmin:window.GigaChat&&GigaChat.auth?GigaChat.auth.isAdmin():null,
+    raw_localStorage:{
+      gigachat_username:localStorage.getItem('gigachat_username'),
+      gigachat_display_name:localStorage.getItem('gigachat_display_name'),
+      gigachat_is_admin:localStorage.getItem('gigachat_is_admin'),
+      gigachat_groups:localStorage.getItem('gigachat_groups')
+    }
+  });
+}
+
+async function verifyAuth(){
+  try{
+    if(!window.GigaChat||!GigaChat.auth||!GigaChat.auth.apiCall){out('authOut','Нет GigaChat.auth.apiCall. Проверь Agents/_shared.js');return}
+    var token=localStorage.getItem('gigachat_token')||localStorage.getItem('planner_token')||'';
+    if(!token){out('authOut','Токен не найден. Сначала залогинься.');return}
+    out('authOut',await GigaChat.auth.apiCall({action:'verify',token:token}));
+  }catch(e){out('authOut',{error:String(e&&e.message||e),stack:e&&e.stack})}
+}
+
+async function groupsMy(){
+  try{
+    if(!window.GigaChat||!GigaChat.groups||!GigaChat.groups.my){out('groupOut','Нет GigaChat.groups.my. Значит стоит старый Agents/_shared.js без group helper.');return}
+    out('groupOut',await GigaChat.groups.my());
+  }catch(e){out('groupOut',{error:String(e&&e.message||e),stack:e&&e.stack})}
+}
+
+async function groupsList(){
+  try{
+    if(!window.GigaChat||!GigaChat.groups||!GigaChat.groups.list){out('groupOut','Нет GigaChat.groups.list. Значит стоит старый Agents/_shared.js без group helper.');return}
+    out('groupOut',await GigaChat.groups.list());
+  }catch(e){out('groupOut',{error:String(e&&e.message||e),stack:e&&e.stack})}
+}
+
+async function groupCreate(){
+  try{
+    var name=document.getElementById('groupName').value;
+    var desc=document.getElementById('groupDesc').value;
+    if(!window.GigaChat||!GigaChat.groups||!GigaChat.groups.create){out('createOut','Нет GigaChat.groups.create. Значит стоит старый Agents/_shared.js без group helper.');return}
+    out('createOut',await GigaChat.groups.create(name,desc));
+  }catch(e){out('createOut',{error:String(e&&e.message||e),stack:e&&e.stack})}
+}
+
+async function groupJoin(){
+  try{
+    var id=document.getElementById('joinId').value;
+    if(!window.GigaChat||!GigaChat.groups||!GigaChat.groups.join){out('joinOut','Нет GigaChat.groups.join. Значит стоит старый Agents/_shared.js без group helper.');return}
+    out('joinOut',await GigaChat.groups.join(id));
+  }catch(e){out('joinOut',{error:String(e&&e.message||e),stack:e&&e.stack})}
+}
+checkJs();
+</script>
+</body>
+</html>

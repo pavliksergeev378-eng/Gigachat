@@ -1,0 +1,1026 @@
+{
+  "name": "Group Sync. Поток — no department dependency",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "group-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "gs-webhook-0001",
+      "name": "Webhook Group Sync",
+      "webhookId": "group-sync-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst action = String(body.action || '').trim();\n\nconst ALLOWED = ['list_groups','my_group','join_group','create_group','leave_group','group_detail','add_member','remove_member'];\nif (!ALLOWED.includes(action)) {\n  return [{ json: { valid: 0, error: 'Неизвестный action: ' + action } }];\n}\n\nconst token = String(body.token || '').trim();\nif (!/^[a-f0-9]{64}$/.test(token)) {\n  return [{ json: { valid: 0, error: 'unauthorized', auth_required: true } }];\n}\n\nconst out = { valid: 1, action, token };\n\nif (action === 'create_group') {\n  const name = String(body.name || '').trim().slice(0, 200);\n  if (!name || name.length < 2) return [{ json: { valid: 0, error: 'Название группы обязательно (мин. 2 символа)' } }];\n  out.group_name = name;\n  out.group_desc = String(body.description || '').trim().slice(0, 1000);\n}\n\nif (action === 'join_group' || action === 'leave_group' || action === 'group_detail') {\n  const gid = parseInt(body.group_id, 10);\n  if (!gid || gid < 1) return [{ json: { valid: 0, error: 'group_id обязателен' } }];\n  out.group_id = gid;\n}\n\nif (action === 'add_member') {\n  const gid = parseInt(body.group_id, 10);\n  const uid = parseInt(body.user_id, 10);\n  if (!gid || gid < 1) return [{ json: { valid: 0, error: 'group_id обязателен' } }];\n  if (!uid || uid < 1) return [{ json: { valid: 0, error: 'user_id обязателен' } }];\n  out.group_id = gid;\n  out.target_user_id = uid;\n}\n\nif (action === 'remove_member') {\n  const gid = parseInt(body.group_id, 10);\n  const uid = parseInt(body.user_id, 10);\n  if (!gid || gid < 1) return [{ json: { valid: 0, error: 'group_id обязателен' } }];\n  if (!uid || uid < 1) return [{ json: { valid: 0, error: 'user_id обязателен' } }];\n  out.group_id = gid;\n  out.target_user_id = uid;\n}\n\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        400
+      ],
+      "id": "gs-validate-0002",
+      "name": "Валидация"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        400
+      ],
+      "id": "gs-if-valid-0003",
+      "name": "Валидно?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (\n  UPDATE auth_sessions SET last_used_at = NOW()\n  WHERE token = $1 AND expires_at > NOW()\n  RETURNING user_id\n)\nSELECT u.id AS user_id, u.username, u.display_name, u.is_admin\nFROM upd JOIN auth_users u ON u.id = upd.user_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        840,
+        400
+      ],
+      "id": "gs-verify-sql-0004",
+      "name": "SQL: Verify token",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nconst src = $('Валидация').first().json;\nif (data && data.error) {\n  return [{ json: { token_valid: false, response: 'error', error: 'database_unavailable' } }];\n}\nif (!data || !data.user_id) {\n  return [{ json: { token_valid: false, response: 'error', error: 'unauthorized', auth_required: true } }];\n}\nreturn [{ json: { ...src, token_valid: true, user_id: data.user_id, username: data.username, display_name: data.display_name, is_admin: data.is_admin } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ],
+      "id": "gs-token-result-0005",
+      "name": "Token result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c",
+              "leftValue": "={{ $json.token_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1400,
+        400
+      ],
+      "id": "gs-if-token-ok-0006",
+      "name": "Token OK?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list_groups",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-list"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "my_group",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-my"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "join_group",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-join"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_group",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-create"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "leave_group",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-leave"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "group_detail",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-detail"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add_member",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-add"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove_member",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r-remove"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        400
+      ],
+      "id": "gs-switch-0007",
+      "name": "Switch action"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT g.id, g.name, g.description, g.created_at, COUNT(gm.user_id)::int AS member_count FROM task_groups g LEFT JOIN group_members gm ON g.id = gm.group_id GROUP BY g.id ORDER BY g.name",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        100
+      ],
+      "id": "gs-list-sql-0010",
+      "name": "SQL: list groups",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT g.id, g.name, g.description, gm.role FROM task_groups g JOIN group_members gm ON g.id = gm.group_id WHERE gm.user_id = $1::integer ORDER BY g.name",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        240
+      ],
+      "id": "gs-my-sql-0011",
+      "name": "SQL: my groups",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO group_members (group_id, user_id, role) VALUES ($1::integer, $2::integer, 'member') ON CONFLICT DO NOTHING RETURNING group_id",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.group_id, $('Token result').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        380
+      ],
+      "id": "gs-join-sql-0012",
+      "name": "SQL: join group",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (\n  INSERT INTO task_groups (name, description, created_by)\n  VALUES ($1, $2, $3::integer)\n  RETURNING id\n)\nINSERT INTO group_members (group_id, user_id, role)\nSELECT id, $3::integer, 'manager' FROM ins\nRETURNING group_id",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.group_name, $('Token result').first().json.group_desc, $('Token result').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        520
+      ],
+      "id": "gs-create-sql-0013",
+      "name": "SQL: create group",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM group_members WHERE group_id = $1::integer AND user_id = $2::integer AND role <> 'manager' RETURNING group_id",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.group_id, $('Token result').first().json.user_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        660
+      ],
+      "id": "gs-leave-sql-0014",
+      "name": "SQL: leave group",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.id AS user_id, u.username, COALESCE(u.display_name, u.username) AS display_name, gm.role, gm.added_at::text FROM group_members gm JOIN auth_users u ON u.id = gm.user_id WHERE gm.group_id = $1::integer ORDER BY CASE gm.role WHEN 'manager' THEN 0 ELSE 1 END, u.username",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.group_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        800
+      ],
+      "id": "gs-detail-sql-0015",
+      "name": "SQL: group detail",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH requester AS (\n  SELECT user_id FROM auth_sessions WHERE token = $3 AND expires_at > NOW()\n),\ncheck_role AS (\n  SELECT gm.role FROM group_members gm, requester r\n  WHERE gm.group_id = $1::integer AND gm.user_id = r.user_id\n),\nadmin_check AS (\n  SELECT is_admin FROM auth_users, requester r WHERE id = r.user_id\n)\nINSERT INTO group_members (group_id, user_id, role, added_by)\nSELECT $1::integer, $2::integer, 'member', (SELECT user_id FROM requester)\nWHERE EXISTS (SELECT 1 FROM check_role WHERE role = 'manager')\n   OR EXISTS (SELECT 1 FROM admin_check WHERE is_admin = true)\nRETURNING group_id",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.group_id, $('Token result').first().json.target_user_id, $('Token result').first().json.token] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        940
+      ],
+      "id": "gs-add-sql-0016",
+      "name": "SQL: add member",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH requester AS (\n  SELECT user_id FROM auth_sessions WHERE token = $3 AND expires_at > NOW()\n),\ncheck_role AS (\n  SELECT gm.role FROM group_members gm, requester r\n  WHERE gm.group_id = $1::integer AND gm.user_id = r.user_id\n),\nadmin_check AS (\n  SELECT is_admin FROM auth_users, requester r WHERE id = r.user_id\n)\nDELETE FROM group_members\nWHERE group_id = $1::integer AND user_id = $2::integer AND role <> 'manager'\n  AND (EXISTS (SELECT 1 FROM check_role WHERE role = 'manager')\n       OR EXISTS (SELECT 1 FROM admin_check WHERE is_admin = true))\nRETURNING group_id",
+        "options": {
+          "queryReplacement": "={{ [$('Token result').first().json.group_id, $('Token result').first().json.target_user_id, $('Token result').first().json.token] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1960,
+        1080
+      ],
+      "id": "gs-remove-sql-0017",
+      "name": "SQL: remove member",
+      "credentials": {
+        "postgres": {
+          "id": "OYsyciMf7Eq9W4FS",
+          "name": "Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .map(i => i && i.json ? i.json : null)\n  .filter(row => row && Object.keys(row).length > 0);\n\nif (rows.length > 0 && rows[0].error) {\n  return [{ json: { response: 'error', error: String(rows[0].error.message || rows[0].error) } }];\n}\n\nreturn [{\n  json: {\n    response: 'ok',\n    groups: rows\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        100
+      ],
+      "id": "gs-fmt-list-0020",
+      "name": "Format list"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .map(i => i && i.json ? i.json : null)\n  .filter(row => row && Object.keys(row).length > 0);\n\nif (rows.length > 0 && rows[0].error) {\n  return [{ json: { response: 'error', error: String(rows[0].error.message || rows[0].error) } }];\n}\n\nconst inGroup = rows.length > 0;\n\nreturn [{\n  json: {\n    response: 'ok',\n    in_group: inGroup,\n    groups: rows\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        240
+      ],
+      "id": "gs-fmt-my-0021",
+      "name": "Format my"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nif (data && data.error) {\n  return [{ json: { response: 'error', error: String(data.error.message || data.error) } }];\n}\nif (!data || !data.group_id) {\n  return [{ json: { response: 'ok', joined: false, message: 'Вы уже в этой группе или группа не найдена' } }];\n}\nreturn [{ json: { response: 'ok', joined: true, group_id: data.group_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        380
+      ],
+      "id": "gs-fmt-join-0022",
+      "name": "Format join"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nif (data && data.error) {\n  const msg = String(data.error.message || data.error);\n  if (/unique|duplicate|already exists/i.test(msg)) {\n    return [{ json: { response: 'error', error: 'Группа с таким названием уже существует' } }];\n  }\n  return [{ json: { response: 'error', error: msg } }];\n}\nif (!data || !data.group_id) {\n  return [{ json: { response: 'error', error: 'Не удалось создать группу' } }];\n}\nreturn [{ json: { response: 'ok', created: true, group_id: data.group_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        520
+      ],
+      "id": "gs-fmt-create-0023",
+      "name": "Format create"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nif (data && data.error) {\n  return [{ json: { response: 'error', error: String(data.error.message || data.error) } }];\n}\nif (!data || !data.group_id) {\n  return [{ json: { response: 'ok', left: false, message: 'Вы не в этой группе или являетесь руководителем' } }];\n}\nreturn [{ json: { response: 'ok', left: true, group_id: data.group_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        660
+      ],
+      "id": "gs-fmt-leave-0024",
+      "name": "Format leave"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .map(i => i && i.json ? i.json : null)\n  .filter(row => row && Object.keys(row).length > 0);\n\nif (rows.length > 0 && rows[0].error) {\n  return [{ json: { response: 'error', error: String(rows[0].error.message || rows[0].error) } }];\n}\n\nreturn [{ json: { response: 'ok', members: rows } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        800
+      ],
+      "id": "gs-fmt-detail-0025",
+      "name": "Format detail"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nif (data && data.error) {\n  return [{ json: { response: 'error', error: String(data.error.message || data.error) } }];\n}\nif (!data || !data.group_id) {\n  return [{ json: { response: 'error', error: 'Нет прав. Только руководитель группы или админ может добавлять участников.' } }];\n}\nreturn [{ json: { response: 'ok', added: true, group_id: data.group_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        940
+      ],
+      "id": "gs-fmt-add-0026",
+      "name": "Format add"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item && item.json ? item.json : null;\nif (data && data.error) {\n  return [{ json: { response: 'error', error: String(data.error.message || data.error) } }];\n}\nif (!data || !data.group_id) {\n  return [{ json: { response: 'error', error: 'Нет прав или пользователь не найден в группе. Руководителя удалить нельзя.' } }];\n}\nreturn [{ json: { response: 'ok', removed: true, group_id: data.group_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        1080
+      ],
+      "id": "gs-fmt-remove-0027",
+      "name": "Format remove"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2520,
+        400
+      ],
+      "id": "gs-resp-ok-0030",
+      "name": "Ответ: OK"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: 'error', error: $json.error || 'Ошибка', auth_required: $json.auth_required || false }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1680,
+        1280
+      ],
+      "id": "gs-resp-err-0031",
+      "name": "Ответ: ошибка"
+    }
+  ],
+  "connections": {
+    "Webhook Group Sync": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "Валидно?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидно?": {
+      "main": [
+        [
+          {
+            "node": "SQL: Verify token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: Verify token": {
+      "main": [
+        [
+          {
+            "node": "Token result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token result": {
+      "main": [
+        [
+          {
+            "node": "Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token OK?": {
+      "main": [
+        [
+          {
+            "node": "Switch action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ: ошибка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch action": {
+      "main": [
+        [
+          {
+            "node": "SQL: list groups",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: my groups",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: join group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: create group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: leave group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: group detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: add member",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQL: remove member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: list groups": {
+      "main": [
+        [
+          {
+            "node": "Format list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: my groups": {
+      "main": [
+        [
+          {
+            "node": "Format my",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: join group": {
+      "main": [
+        [
+          {
+            "node": "Format join",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: create group": {
+      "main": [
+        [
+          {
+            "node": "Format create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: leave group": {
+      "main": [
+        [
+          {
+            "node": "Format leave",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: group detail": {
+      "main": [
+        [
+          {
+            "node": "Format detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: add member": {
+      "main": [
+        [
+          {
+            "node": "Format add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL: remove member": {
+      "main": [
+        [
+          {
+            "node": "Format remove",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format list": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format my": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format join": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format create": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format leave": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format detail": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format add": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format remove": {
+      "main": [
+        [
+          {
+            "node": "Ответ: OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "group-sync-no-department-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "group-sync-workflow",
+  "tags": []
+}
