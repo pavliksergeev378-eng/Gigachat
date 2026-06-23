@@ -173,9 +173,7 @@ tr.my-table-select:not(.progress):hover, tr.my-table-select:not(.progress).focus
   color: var(--white-color);
 }
 
-body {
-  background-color: var(--gray-lighter-color);
-}
+/* body background — задаётся в GigaChat-Platform.html через inline-стили */
 
 /*a {
   color: var(--main-color);

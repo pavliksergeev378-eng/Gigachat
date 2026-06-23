@@ -1,48 +1,51 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <title>Объединение таблиц — GigaChat</title>
     <style>
         /* Pre-paint фон + базовый body */
-        html { color-scheme: light; background: #fdfdfc; }
-        html[data-theme="dark"] { color-scheme: dark; background: #1f1f1e; }
+        html { color-scheme: light; background: #fafaf7; }
+        html[data-theme="dark"] { color-scheme: dark; background: #1a1a17; }
         body {
             margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif;
-            color: #1f1f1e; background: #fdfdfc;
+            color: #1a1a17; background: #fafaf7;
         }
-        html[data-theme="dark"] body { color: #d4d4d4; background: #1f1f1e; }
+        html[data-theme="dark"] body { color: #ececea; background: #1a1a17; }
     </style>
-    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1f1f1e':'#fdfdfc','important');document.documentElement.classList.add('gc-pending-auth');}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1a1a17':'#fafaf7','important');document.documentElement.classList.add('gc-pending-auth');}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
     <style>html.gc-pending-auth header,html.gc-pending-auth main{display:none !important}</style>
     <style>
         :root {
-            --bg-primary: #1f1f1e;
-            --bg-secondary: #1f1e1c;
-            --bg-input: #2c2c2a;
-            --bg-card: #1f1e1c;
-            --border: #363432;
-            --text-primary: #d4d4d4;
-            --text-secondary: #8a8a8a;
-            --text-muted: #5a5a5a;
-            --accent: #d4a574;
-            --accent-hover: #c08a5a;
-            --accent-light: rgba(212, 165, 116, 0.12);
+            --bg-primary: #0c0c0c;
+            --bg-secondary: #08080a;
+            --bg-input: #161617;
+            --bg-card: #08080a;
+            --border: rgba(255, 255, 255, .08);
+            --text-primary: #ececea;
+            --text-secondary: #9b9b96;
+            --text-muted: #6c6c66;
+            --accent: #607881;
+            --accent-hover: #536e77;
+            --accent-light: rgba(96,120,129,0.15);
+            --orange: #f97316; --bg-hover: rgba(96,120,129,0.10);
             --error: #ef4444;
+            --warning: #f59e0b;
             --success: #10b981;
         }
         :root[data-theme="light"] {
-            --bg-primary: #fdfdfc;
-            --bg-secondary: #f3f1ec;
-            --bg-input: #fffffe;
-            --bg-card: #fffffe;
-            --border: #e3dfd5;
-            --text-primary: #1f1f1e;
-            --text-secondary: #6b6b68;
-            --text-muted: #a8a59f;
-            --accent: #b8895d;
-            --accent-hover: #a0764d;
-            --accent-light: rgba(184, 137, 93, 0.15);
+            --bg-primary: #fafaf7;
+            --bg-secondary: #f4f3ee;
+            --bg-input: #ffffff;
+            --bg-card: #ffffff;
+            --border: rgba(15, 15, 12, .09);
+            --text-primary: #1a1a17;
+            --text-secondary: #6b6a64;
+            --text-muted: #a09e96;
+            --accent: #1d414e;
+            --accent-hover: #2b4d59;
+            --accent-light: rgba(29,65,78,0.15);
+            --bg-hover: rgba(184,137,93,0.07);
         }
         html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
         html::-webkit-scrollbar { width: 5px; }
@@ -76,7 +79,7 @@
         }
         .file-row .drag-handle:active { cursor: grabbing; }
         .file-row .badge {
-            background: var(--accent-light); color: var(--accent);
+            background: var(--accent); color: #fff;
             font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 500;
             flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;
             /* Выравнивание имён файлов: одинаковая ширина badge → имена в одной колонке */
@@ -248,8 +251,8 @@
             padding: 8px 12px; cursor: pointer; border-radius: 6px;
             font-size: 13px; color: var(--text-primary);
         }
-        .gc-dropdown-menu li:hover { background: var(--accent-light); color: var(--accent); }
-        .gc-dropdown-menu li.selected { background: var(--accent-light); color: var(--accent); font-weight: 500; }
+        .gc-dropdown-menu li:hover { background: var(--accent); color: #fff; }
+        .gc-dropdown-menu li.selected { background: var(--accent); color: #fff; font-weight: 500; }
         .gc-dropdown-menu li.selected::before { content: '✓ '; color: var(--accent); margin-right: 4px; }
 
         /* === Preview === */
@@ -1212,3 +1215,5 @@
     </script>
 </body>
 </html>
+
+

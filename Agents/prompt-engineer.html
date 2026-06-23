@@ -1,46 +1,48 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GigaChat Prompt</title>
 <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.add('gc-pending-auth')}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
-<style>html{background:#1f1f1e}html[data-theme="light"]{background:#fdfdfc}html.gc-pending-auth .sidebar,html.gc-pending-auth .main{display:none !important}</style>
+<style>html{background:#0c0c0c}html[data-theme="light"]{background:#fafaf7}html.gc-pending-auth .sidebar,html.gc-pending-auth .main{display:none !important}</style>
 <style>
 :root {
-  --bg-primary: #1f1f1e;
-  --bg-secondary: #1f1e1c;
+  --bg-primary: #0c0c0c;
+  --bg-secondary: #08080a;
   --bg-sidebar: #262626;
-  --bg-tertiary: #2c2c2a;
-  --bg-input: #2c2c2a;
+  --bg-tertiary: #161617;
+  --bg-input: #161617;
   --bg-user: rgba(212, 165, 116, 0.10);
-  --bg-bot: #1f1e1c;
-  --accent: #d4a574;
-  --accent-hover: #c08a5a;
-  --accent-light: rgba(212, 165, 116, 0.15);
-  --text-primary: #d4d4d4;
-  --text-secondary: #8a8a8a;
-  --text-muted: #5a5a5a;
-  --border: #363432;
-  --code-bg: #1f1e1c;
+  --bg-bot: #08080a;
+  --accent: #607881;
+  --accent-hover: #536e77;
+  --accent-light: rgba(96,120,129,0.15);
+  --orange: #f97316; --bg-hover: rgba(96,120,129,0.10);
+  --text-primary: #ececea;
+  --text-secondary: #9b9b96;
+  --text-muted: #6c6c66;
+  --border: rgba(255, 255, 255, .08);
+  --code-bg: #08080a;
   --sidebar-width: 270px;
 }
 :root[data-theme="light"] {
-  --bg-primary: #fdfdfc;
-  --bg-secondary: #f3f1ec;
-  --bg-sidebar: #fdfdfc;
-  --bg-tertiary: #fffffe;
-  --bg-input: #fffffe;
+  --bg-primary: #fafaf7;
+  --bg-secondary: #f4f3ee;
+  --bg-sidebar: #fafaf7;
+  --bg-tertiary: #ffffff;
+  --bg-input: #ffffff;
   --bg-user: rgba(184, 137, 93, 0.12);
-  --bg-bot: #f3f1ec;
-  --accent: #b8895d;
-  --accent-hover: #a0764d;
-  --accent-light: rgba(184, 137, 93, 0.15);
-  --text-primary: #1f1f1e;
-  --text-secondary: #6b6b68;
-  --text-muted: #a8a59f;
-  --border: #e3dfd5;
-  --code-bg: #f3f1ec;
+  --bg-bot: #f4f3ee;
+  --accent: #1d414e;
+  --accent-hover: #2b4d59;
+  --bg-hover: rgba(184,137,93,0.07);
+  --accent-light: rgba(29,65,78,0.15);
+  --text-primary: #1a1a17;
+  --text-secondary: #6b6a64;
+  --text-muted: #a09e96;
+  --border: rgba(15, 15, 12, .09);
+  --code-bg: #f4f3ee;
 }
 /* Общие стили чат-агента — в _shared.js через GigaChat.injectAgentCss().
    Здесь только prompt-engineer-specific правила: prompt-block, btn-copy. */
@@ -69,7 +71,7 @@
 .prompt-block { background:var(--code-bg); border:1px solid var(--border); border-radius:8px; margin:12px 0; overflow:hidden; }
 .prompt-block-header { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg-tertiary); }
 .prompt-block-header span { font-size:11px; color:var(--text-muted); font-weight:500; text-transform:uppercase; letter-spacing:0.5px; }
-.btn-copy { padding:4px 10px; background:var(--accent-light); border:1px solid var(--accent); color:var(--accent); border-radius:4px; cursor:pointer; font-size:11px; transition:all .2s; }
+.btn-copy { padding:4px 10px; background:var(--accent); color:#fff; border-radius:4px; cursor:pointer; font-size:11px; transition:all .2s; }
 .btn-copy:hover { background:var(--accent); color:#fff; }
 .prompt-block pre { padding:14px; font-family:'Cascadia Code','Fira Code',monospace; font-size:13px; line-height:1.6; color:var(--text-primary); overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
 </style>
@@ -116,10 +118,10 @@
         // extras.prompt в .prompt-block.
         function formatResponse(text) {
             var clean = (text || '').replace(/```[\s\S]*?```/g, '').trim();
-            // BUG-FIX #3: явно передаём accent (#d4a574 — золотистый проектный)
+            // BUG-FIX #3: явно передаём accent (#1d414e — золотистый проектный)
             // — иначе formatMarkdown подставляет дефолтный #7c3aed (фиолетовый),
             // и заголовки ## ### в ответе выглядели чужеродно.
-            return GigaChat.formatMarkdown(clean, '#d4a574');
+            return GigaChat.formatMarkdown(clean, '#1d414e');
         }
 
         // Кастомный рендер bot-сообщения: content (без code) + extras.prompt в pre.
@@ -169,7 +171,7 @@
             // BUG-FIX: во время псевдо-стриминга formatMarkdown без accentColor
             // подставлял фиолетовый #7c3aed, а финал — золотистый. markdownAccent
             // фиксит расхождение: всю печать заголовки сразу золотистые.
-            markdownAccent: '#d4a574',
+            markdownAccent: '#1d414e',
             formatBotHtml: formatBotMessage,
             parseBotMessage: function (data) {
                 return {
@@ -216,3 +218,6 @@
     </script>
 </body>
 </html>
+
+
+

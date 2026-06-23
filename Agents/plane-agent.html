@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -6,17 +6,17 @@
     <style>
         /* Pre-paint фон + color-scheme + базовый body — первый paint
            в правильных цветах и шрифтах. */
-        html { color-scheme: light; background: #fdfdfc; }
-        html[data-theme="dark"] { color-scheme: dark; background: #1f1f1e; }
+        html { color-scheme: light; background: #fafaf7; }
+        html[data-theme="dark"] { color-scheme: dark; background: #1a1a17; }
         body {
             margin: 0;
             font-family: 'Segoe UI', Tahoma, sans-serif;
-            color: #1f1f1e;
-            background: #fdfdfc;
+            color: #1a1a17;
+            background: #fafaf7;
         }
         html[data-theme="dark"] body {
-            color: #d4d4d4;
-            background: #1f1f1e;
+            color: #ececea;
+            background: #1a1a17;
         }
         html.gc-pending-auth, html.gc-pending-auth body { background: inherit !important }
         html.gc-pending-auth .sidebar,
@@ -51,42 +51,44 @@
             transition: none !important;
         }
     </style>
-    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1f1f1e':'#fdfdfc','important');document.documentElement.classList.add('gc-pending-auth');if(localStorage.getItem('plane_board_open')==='1'){document.documentElement.classList.add('plane-preboard');}}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
+    <script>(function(){try{var t=localStorage.getItem('giga_theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1a1a17':'#fafaf7','important');document.documentElement.classList.add('gc-pending-auth');if(localStorage.getItem('plane_board_open')==='1'){document.documentElement.classList.add('plane-preboard');}}catch(e){document.documentElement.setAttribute('data-theme','light')}})();</script>
     <style>
         :root {
-            --bg-primary: #1f1f1e;
-            --bg-secondary: #1f1e1c;
+            --bg-primary: #0c0c0c;
+            --bg-secondary: #08080a;
             --bg-sidebar: #262626;
-            --bg-input: #2c2c2a;
+            --bg-input: #161617;
             --bg-user: rgba(212, 165, 116, 0.10);
-            --bg-bot: #1f1e1c;
-            --border: #363432;
-            --text-primary: #d4d4d4;
-            --text-secondary: #8a8a8a;
-            --text-muted: #5a5a5a;
-            --accent: #d4a574;
-            --accent-hover: #c08a5a;
+            --bg-bot: #08080a;
+            --border: rgba(255, 255, 255, .08);
+            --text-primary: #ececea;
+            --text-secondary: #9b9b96;
+            --text-muted: #6c6c66;
+            --accent: #607881;
+            --accent-hover: #536e77;
             /* LOW-4 fix: добавляем недостающие переменные для Phase 1 компонентов */
-            --accent-light: rgba(212, 165, 116, 0.18);
+            --accent-light: rgba(96,120,129,0.15);
+            --orange: #f97316; --bg-hover: rgba(96,120,129,0.10);
             --bg-card: #262522;
             --error: #ef4444;
             --sidebar-width: 270px;
         }
         :root[data-theme="light"] {
-            --bg-primary: #fdfdfc;
-            --bg-secondary: #f3f1ec;
-            --bg-sidebar: #fdfdfc;
-            --bg-input: #fffffe;
+            --bg-primary: #fafaf7;
+            --bg-secondary: #f4f3ee;
+            --bg-sidebar: #fafaf7;
+            --bg-input: #ffffff;
             --bg-user: rgba(184, 137, 93, 0.12);
-            --bg-bot: #f3f1ec;
-            --border: #e3dfd5;
-            --text-primary: #1f1f1e;
-            --text-secondary: #6b6b68;
-            --text-muted: #a8a59f;
-            --accent: #b8895d;
-            --accent-hover: #a0764d;
+            --bg-bot: #f4f3ee;
+            --border: rgba(15, 15, 12, .09);
+            --text-primary: #1a1a17;
+            --text-secondary: #6b6a64;
+            --text-muted: #a09e96;
+            --accent: #1d414e;
+            --accent-hover: #2b4d59;
             /* LOW-4: light theme overrides для новых vars */
-            --accent-light: rgba(184, 137, 93, 0.14);
+            --bg-hover: rgba(184,137,93,0.07);
+            --accent-light: rgba(29,65,78,0.15);
             --bg-card: #ffffff;
             --error: #d92020;
         }
@@ -308,8 +310,8 @@
             color: var(--text-secondary); border-radius: 4px;
             transition: color .15s ease, background .15s ease;
         }
-        .modal-box .pw-eye:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
-        :root[data-theme="light"] .modal-box .pw-eye:hover { background: rgba(0,0,0,0.05); }
+        .modal-box .pw-eye:hover { color: var(--accent); background: rgba(255, 255, 255, .06); }
+        :root[data-theme="light"] .modal-box .pw-eye:hover { background: rgba(15, 15, 12, .055); }
         .modal-box .pw-eye svg {
             width: 18px; height: 18px;
             stroke: currentColor; fill: none;
@@ -860,7 +862,7 @@
             border: 1.5px solid var(--text-muted); flex-shrink: 0; position: relative;
             cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
         /* Hover по пустому квадратику — подсветка границы + лёгкий акцентный фон. */
-        .cm-subtasks .sub-check:hover { border-color: var(--accent); background: var(--accent-light); }
+        .cm-subtasks .sub-check:hover { border-color: #fff; background: var(--accent); }
         .cm-subtasks .sub-item.done .sub-check { background: var(--accent); border-color: var(--accent); }
         /* Hover по квадратику с галочкой — затемняем до accent-hover. */
         .cm-subtasks .sub-item.done .sub-check:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
@@ -874,7 +876,7 @@
             display: inline-flex; align-items: center; justify-content: center;
             background: transparent; border: none; border-radius: 5px;
             color: var(--text-muted); cursor: pointer; transition: color .15s, background .15s; }
-        .cm-subtasks .sub-detach:hover { color: var(--accent); background: var(--accent-light); }
+        .cm-subtasks .sub-detach:hover { color: #fff; background: var(--accent); }
         .cm-subtasks .sub-detach svg { width: 14px; height: 14px; display: block; }
         .cm-subtasks .sub-add { display: flex; gap: 6px; margin-top: 6px; }
         .cm-subtasks .sub-add input { flex: 1; padding: 6px 10px; background: var(--bg-input);
@@ -931,7 +933,7 @@
             border-radius: 5px; color: var(--text-secondary); cursor: pointer; font-size: 12px;
             transition: all 0.15s; font-family: inherit; }
         .cm-watch-btn:hover { border-color: var(--accent); color: var(--accent); }
-        .cm-watch-btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+        .cm-watch-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
         .cm-watch-btn svg { width: 14px; height: 14px; }
         .cm-watchers-list { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; color: var(--text-muted); }
         .cm-watcher-chip { background: var(--bg-input); padding: 2px 8px; border-radius: 3px; }
@@ -939,7 +941,7 @@
         .cm-time { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
         .cm-time h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-primary); font-weight: 500;
             display: flex; align-items: center; gap: 8px; }
-        .cm-time .tt-total { background: var(--accent-light); color: var(--accent);
+        .cm-time .tt-total { background: var(--accent); color: #fff;
             padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
         .cm-time .tt-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
         .cm-time .tt-btn { display: inline-flex; align-items: center; gap: 6px;
@@ -1028,7 +1030,7 @@
         .cm-desc-edit-tools button { background: transparent; border: none; color: var(--text-secondary);
             cursor: pointer; padding: 4px 8px; border-radius: 4px; font-family: inherit;
             font-size: 12px; font-weight: 500; transition: all 0.1s; min-width: 28px; }
-        .cm-desc-edit-tools button:hover { background: var(--accent-light); color: var(--accent); }
+        .cm-desc-edit-tools button:hover { background: var(--accent); color: #fff; }
         .cm-desc-edit-tools .md-sep { width: 1px; background: var(--border); margin: 2px 0; }
         /* R7.93: .export-menu* стили удалены вместе с dashboard-export кнопкой
            (Excel/Word/PDF). Plane UI имеет свой export по проекту. */
@@ -1075,7 +1077,7 @@
             padding: 4px 10px; background: var(--bg-input); border: 1px solid var(--border);
             color: var(--text-secondary); border-radius: 5px; cursor: pointer;
             font-family: inherit; font-size: 11px; transition: all 0.15s; }
-        .pc-inline-actions button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+        .pc-inline-actions button:hover { border-color: var(--accent); color: #fff; background: var(--accent); }
         .pc-inline-actions button.danger { color: #ef4444; }
         .pc-inline-actions button.danger:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
         .pc-inline-actions button.primary { color: var(--accent); }
@@ -1100,7 +1102,7 @@
             display: inline-flex; align-items: center; justify-content: center;
             border-radius: 50%; font-size: 11px; font-weight: 700; }
         .multi-step-row.pending .ms-icon { background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border); }
-        .multi-step-row.running .ms-icon { background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent);
+        .multi-step-row.running .ms-icon { background: var(--accent); color: #fff; border: 1px solid var(--accent);
             animation: msSpin 1s linear infinite; }
         @keyframes msSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .multi-step-row.ok .ms-icon { background: #4a9659; color: #fff; }
@@ -1112,7 +1114,7 @@
         .multi-step-header { display: flex; align-items: center; gap: 8px; padding-bottom: 6px;
             margin-bottom: 4px; border-bottom: 1px solid var(--border); font-weight: 500;
             color: var(--text-primary); font-size: 13px; }
-        .multi-step-header .ms-counter { background: var(--accent-light); color: var(--accent);
+        .multi-step-header .ms-counter { background: var(--accent); color: #fff;
             padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; margin-left: auto; }
         /* R7 #16: более плавные и заметные анимации появления */
         @keyframes chatFadeIn {
@@ -1199,7 +1201,7 @@
             font-family: inherit;
         }
         .board-chip:hover { color: var(--text-primary); border-color: var(--accent); }
-        .board-chip.active { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+        .board-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
         .board-add-task {
             margin-left: auto;
             height: 28px; padding: 0 12px 0 10px; border-radius: 6px;
@@ -1282,8 +1284,8 @@
             transition: background 0.12s, color 0.12s;
             white-space: nowrap;
         }
-        .gc-dropdown-menu li:hover { background: var(--accent-light); color: var(--accent); }
-        .gc-dropdown-menu li.selected { background: var(--accent-light); color: var(--accent); font-weight: 500; }
+        .gc-dropdown-menu li:hover { background: var(--accent); color: #fff; }
+        .gc-dropdown-menu li.selected { background: var(--accent); color: #fff; font-weight: 500; }
         .gc-dropdown-menu li.selected::before { content: '✓ '; color: var(--accent); margin-right: 2px; }
 
         /* === Phase 1: Quick-create в колонках === */
@@ -1311,7 +1313,7 @@
 
         /* === Phase 1: Bulk selection === */
         .board-card.selected {
-            border-color: var(--accent); background: var(--accent-light);
+            border-color: #fff; background: var(--accent);
             box-shadow: inset 0 0 0 1px var(--accent);
         }
         .board-bulk-bar {
@@ -1400,7 +1402,7 @@
             padding: 8px 12px; font-size: 13px; cursor: pointer; border-radius: 6px;
             font-family: inherit; transition: background 0.12s, color 0.12s;
         }
-        .context-menu button:hover { background: var(--accent-light); color: var(--accent); }
+        .context-menu button:hover { background: var(--accent); color: #fff; }
         .context-menu button.danger { color: #ef4444; }
         .context-menu button.danger:hover { background: rgba(239,68,68,0.12); color: #ef4444; }
         .context-menu hr { border: none; border-top: 1px solid var(--border); margin: 6px 4px; }
@@ -1636,7 +1638,7 @@
             opacity: 0.6;
         }
         .card-modal-comment:hover .cm-btn { opacity: 1; }
-        .card-modal-comment .cm-btn.cm-edit:hover { color: var(--accent); background: var(--accent-light); }
+        .card-modal-comment .cm-btn.cm-edit:hover { color: #fff; background: var(--accent); }
         .card-modal-comment .cm-btn.cm-delete:hover { color: #ef4444; background: rgba(239, 68, 68, 0.12); }
         .card-modal-comment .cm-btn:active { transform: scale(0.92); }
         /* Inline-редактор */
@@ -1668,7 +1670,7 @@
             display: flex; align-items: center; gap: 6px;
         }
         /* Золотистый бейдж-счётчик: фон = акцент, тёмно-коричневый текст
-           (читается и на dark #d4a574, и на light #b8895d). */
+           (читается и на dark #1d414e, и на light #1d414e). */
         .card-modal-comments h4 .cm-count {
             color: #3a2a18; font-size: 11px; font-weight: 600;
             background: var(--accent); padding: 1px 8px; border-radius: 10px;
@@ -1745,7 +1747,7 @@
         /* === Phase 1: Sticky project pill в чате === */
         .sticky-project-pill {
             display: none; align-items: center; gap: 6px;
-            background: var(--accent-light); color: var(--accent);
+            background: var(--accent); color: #fff;
             padding: 4px 10px; border-radius: 12px; font-size: 11px;
             margin: 6px 14px;
         }
@@ -1865,8 +1867,8 @@
         .gc-export-picker .ep-range input { flex: 1; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; }
         .gc-export-picker .ep-presets { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
         .gc-export-picker .ep-presets button { flex: 1; min-width: 100px; padding: 8px 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; transition: 0.15s; }
-        .gc-export-picker .ep-presets button:hover { border-color: var(--accent); background: var(--accent-light); }
-        .gc-export-picker .ep-presets button.active { border-color: var(--accent); background: var(--accent); color: #1f1f1e; font-weight: 600; }
+        .gc-export-picker .ep-presets button:hover { border-color: #fff; background: var(--accent); }
+        .gc-export-picker .ep-presets button.active { border-color: var(--accent); background: var(--accent); color: #1a1a17; font-weight: 600; }
         .gc-export-picker .ep-summary { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
         .gc-export-picker .ep-summary b { color: var(--text-primary); }
         .gc-export-picker .ep-params { margin-bottom: 10px; }
@@ -7269,7 +7271,7 @@
                         cps: 100,
                         sendBtn: document.getElementById('send'),
                         input: document.getElementById('msg'),
-                        accentColor: '#d4a574'
+                        accentColor: '#1d414e'
                     });
                 } else {
                     // Fallback — на случай если sessionStore ещё не готов
@@ -7321,7 +7323,7 @@
                                 cps: 100,
                                 sendBtn: document.getElementById('send'),
                                 input: document.getElementById('msg'),
-                                accentColor: '#d4a574'
+                                accentColor: '#1d414e'
                             });
                         } else {
                             addAssistantMessage(formatBotMessage(summaryMsg));
@@ -7357,7 +7359,7 @@
                         cps: 100,
                         sendBtn: document.getElementById('send'),
                         input: document.getElementById('msg'),
-                        accentColor: '#d4a574'
+                        accentColor: '#1d414e'
                     });
                     // Длительность: typing (cps=100) + stagger-волна карточек.
                     // Карточки: 1.2с базовая + 150мс на карточку (stagger) + 200мс буфер.
@@ -7724,7 +7726,7 @@
                         cps: 100,
                         sendBtn: document.getElementById('send'),
                         input: document.getElementById('msg'),
-                        accentColor: '#d4a574'
+                        accentColor: '#1d414e'
                     });
                     return;
                 }
@@ -9489,3 +9491,5 @@
     <!-- R8.109: голосовой ввод вынесен в общий _shared.js (setupVoiceInput через createChatAgent) -->
 </body>
 </html>
+
+

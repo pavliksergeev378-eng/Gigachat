@@ -8,46 +8,46 @@
         /* Pre-paint фон + color-scheme — чтобы первый paint был уже в правильных
            цветах, без серифного фолбэка. Дублирует логику из planner.html, чтобы
            переход «дашборд → login» не моргал. */
-        html { color-scheme: light; background: #fdfdfc; }
-        html[data-theme="dark"] { color-scheme: dark; background: #1f1f1e; }
+        html { color-scheme: light; background: #fafaf7; }
+        html[data-theme="dark"] { color-scheme: dark; background: #06090E; }
         body {
             margin: 0;
             font-family: 'Segoe UI', Tahoma, sans-serif;
-            color: #1f1f1e;
-            background: #fdfdfc;
+            color: #1a1a17;
+            background: #fafaf7;
         }
         html[data-theme="dark"] body {
-            color: #d4d4d4;
-            background: #1f1f1e;
+            color: #ececea;
+            background: #06090E;
         }
     </style>
-    <script>(function(){var t='light';try{t=localStorage.getItem('giga_theme')||'light'}catch(e){}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#1f1f1e':'#fdfdfc','important');})();</script>
+    <script>(function(){var t='light';try{t=localStorage.getItem('giga_theme')||'light'}catch(e){}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.setProperty('background',t==='dark'?'#06090E':'#fafaf7','important');})();</script>
     <style>
         :root {
-            --bg-primary: #1f1f1e;
-            --bg-secondary: #1f1e1c;
-            --bg-input: #2c2c2a;
-            --border: #363432;
-            --text-primary: #d4d4d4;
-            --text-secondary: #8a8a8a;
-            --text-muted: #5a5a5a;
-            --accent: #d4a574;
-            --accent-hover: #c08a5a;
+            --bg-primary: #06090E;
+            --bg-secondary: #08080a;
+            --bg-input: #161617;
+            --border: rgba(255, 255, 255, .08);
+            --text-primary: #ececea;
+            --text-secondary: #9b9b96;
+            --text-muted: #6c6c66;
+            --accent: #fafaf7;
+            --accent-hover: #e0e0da;
             --priority-high: #d97757;
-            --bg-hover: rgba(255,255,255,0.06);
+            --bg-hover: rgba(255, 255, 255, .06);
         }
         :root[data-theme="light"] {
-            --bg-primary: #fdfdfc;
-            --bg-secondary: #f3f1ec;
-            --bg-input: #fffffe;
-            --border: #e3dfd5;
-            --text-primary: #1f1f1e;
-            --text-secondary: #6b6b68;
-            --text-muted: #a8a59f;
-            --accent: #b8895d;
-            --accent-hover: #a0764d;
+            --bg-primary: #fafaf7;
+            --bg-secondary: #f4f3ee;
+            --bg-input: #ffffff;
+            --border: rgba(15, 15, 12, .09);
+            --text-primary: #1a1a17;
+            --text-secondary: #6b6a64;
+            --text-muted: #a09e96;
+            --accent: #111827;
+            --accent-hover: #1a2333;
             --priority-high: #c05a3a;
-            --bg-hover: rgba(0,0,0,0.05);
+            --bg-hover: rgba(15, 15, 12, .055);
         }
 
         * { box-sizing: border-box; }
@@ -75,15 +75,15 @@
             position: fixed; top:0;right:0;bottom:0;left:0; z-index: 0;
             pointer-events: none;
             background-image:
-                radial-gradient(circle, rgba(212,165,116,0.22) 1.5px, transparent 2px),
-                radial-gradient(circle, rgba(212,165,116,0.12) 1px, transparent 1.5px);
+                radial-gradient(circle, rgba(250,250,247,0.12) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(250,250,247,0.06) 1px, transparent 1.5px);
             background-size: 60px 60px, 30px 30px;
             background-position: 0 0, 15px 15px;
         }
         :root[data-theme="light"] .bg-dots {
             background-image:
-                radial-gradient(circle, rgba(120,85,45,0.32) 1.5px, transparent 2px),
-                radial-gradient(circle, rgba(120,85,45,0.18) 1px, transparent 1.5px);
+                radial-gradient(circle, rgba(17,24,39,0.10) 1.5px, transparent 2px),
+                radial-gradient(circle, rgba(17,24,39,0.05) 1px, transparent 1.5px);
         }
 
         /* Центральная компоновка — заголовок + модалка прибиты к верху.
@@ -115,7 +115,7 @@
             background-clip: text;
         }
         :root[data-theme="light"] .gc-login-brand h1 {
-            background: linear-gradient(135deg, #1f1f1e 0%, var(--accent) 100%);
+            background: linear-gradient(135deg, #1a1a17 0%, var(--accent) 100%);
             -webkit-background-clip: text;
             background-clip: text;
         }
@@ -204,6 +204,12 @@
         }
         .gc-login-tab:hover { color: var(--text-primary); }
         .gc-login-tab.active { background: var(--accent); color: #fff; }
+        /* Dark theme: #fafaf7 фон + белый текст = белый квадрат на тёмной странице.
+           Меняем фон на полупрозрачный + тёмный текст — читаемо и не слепит. */
+        html[data-theme="dark"] .gc-login-tab.active {
+            background: rgba(250,250,247,0.14);
+            color: var(--accent);
+        }
 
         /* Fade форм при смене вкладки */
         .gc-login-form {
@@ -301,6 +307,10 @@
             border-width: 0 2px 2px 0;
             transform: rotate(45deg) translate(-1px, -1px);
         }
+        /* Dark theme: accent #fafaf7 фон + белая галочка = не видно. */
+        html[data-theme="dark"] .gc-checkbox-row input[type="checkbox"]:checked + .gc-checkbox-box::after {
+            border-color: #111827;
+        }
         .gc-checkbox-row .gc-checkbox-label {
             font-size: 14px; color: var(--text-primary); font-weight: 500;
             letter-spacing: 0.2px; line-height: 1;
@@ -338,6 +348,7 @@
             font-family: inherit; font-size: 14px; font-weight: 600;
             transition: background 0.18s ease, transform 0.1s ease, opacity 0.18s ease;
         }
+        html[data-theme="dark"] .gc-login-footer button { color: #111827; }
         .gc-login-footer button:hover { background: var(--accent-hover); }
         .gc-login-footer button:active { transform: scale(0.98); }
         .gc-login-footer button:disabled { opacity: 0.5; cursor: not-allowed; }
